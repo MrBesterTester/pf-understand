@@ -99,7 +99,7 @@ coverage/
 llm_cache.json
 
 # Output files
-output/
+# output/
 
 # uv manage
 pyproject.toml
