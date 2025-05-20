@@ -3,6 +3,8 @@ import os
 import logging
 import json
 from datetime import datetime
+import time
+import random
 
 # Configure logging
 log_directory = os.getenv("LOG_DIR", "logs")
@@ -29,10 +31,15 @@ cache_file = "llm_cache.json"
 def call_llm(prompt: str, use_cache: bool = True) -> str:
     # Log the prompt
     logger.info(f"PROMPT: {prompt}")
-
+    print(f"\n[LLM] Processing prompt ({len(prompt)} chars)...")
+    
+    # Track statistics
+    start_time = time.time()
+    attempts = 0
+    cache_hits = 0
+    
     # Check cache if enabled
     if use_cache:
-        # Load cache from disk
         cache = {}
         if os.path.exists(cache_file):
             try:
@@ -43,27 +50,93 @@ def call_llm(prompt: str, use_cache: bool = True) -> str:
 
         # Return from cache if exists
         if prompt in cache:
-            logger.info(f"RESPONSE: {cache[prompt]}")
-            return cache[prompt]
+            cache_hits += 1
+            response_text = cache[prompt]
+            logger.info(f"RESPONSE: {response_text}")
+            print(f"[LLM] ✓ Retrieved from cache ({len(response_text)} chars)")
+            return response_text
 
-    from google import genai
-
-    # Configure the API key
-    GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
-    client = genai.Client(api_key=GOOGLE_API_KEY)
-
-    # Get the model and generate content
-    model = "models/gemini-2.5-pro-preview-03-25"  # Note the "models/" prefix
-    response = client.models.generate_content(
-        model=model, 
-        contents=[prompt]
-    )
-    response_text = response.text
-
-    # Log and return
-    logger.info(f"RESPONSE: {response_text}")
+    # Retry configuration
+    max_retries = 20
+    retry_count = 0
+    base_wait_time = 15  # Base wait in seconds
+    max_wait_time = 60   # Cap at 1 minute max
+    connection_errors = 0
+    max_connection_errors = 10
     
-    return response_text
+    while retry_count < max_retries:
+        try:
+            attempts += 1
+            print(f"[LLM] Attempt {attempts}/{max_retries+1} - Calling API...")
+            
+            from google import genai
+            client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+            response = client.models.generate_content(
+                model="models/gemini-2.5-pro-preview-03-25", 
+                contents=[prompt]
+            )
+            response_text = response.text
+            
+            # Cache the successful response
+            if use_cache:
+                cache = {}
+                if os.path.exists(cache_file):
+                    try:
+                        with open(cache_file, "r", encoding="utf-8") as f:
+                            cache = json.load(f)
+                    except:
+                        pass
+                cache[prompt] = response_text
+                try:
+                    with open(cache_file, "w", encoding="utf-8") as f:
+                        json.dump(cache, f)
+                    print(f"[LLM] ✓ Response cached for future use")
+                except Exception as e:
+                    logger.error(f"Failed to save cache: {e}")
+                    
+            elapsed = time.time() - start_time
+            logger.info(f"RESPONSE: {response_text}")
+            print(f"[LLM] ✓ Success! ({len(response_text)} chars in {elapsed:.2f}s)")
+            print(f"[LLM] Preview: {response_text[:100]}..." if len(response_text) > 100 else response_text)
+            return response_text
+            
+        except Exception as e:
+            error_msg = str(e)
+            retry_count += 1
+            
+            if "Connection reset" in error_msg or "ConnectError" in error_msg:
+                connection_errors += 1
+                wait_time = 45 + random.uniform(0, 15)
+                print(f"[LLM] ⚠ Connection reset detected. Retry {retry_count}/{max_retries}. Waiting {wait_time:.2f}s...")
+                
+                if connection_errors >= max_connection_errors:
+                    extra_wait = 180  # 3 minute cooldown
+                    print(f"[LLM] ⚠ Too many connection errors. Taking a {extra_wait/60} minute break...")
+                    time.sleep(extra_wait)
+                    connection_errors = 0
+            
+            elif "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+                jitter = random.uniform(0.8, 1.2)
+                wait_time = min(base_wait_time + (retry_count * 5), max_wait_time) * jitter
+                print(f"[LLM] ⚠ Rate limit hit. Retry {retry_count}/{max_retries}. Waiting {wait_time:.2f}s...")
+                
+                # Extract retry delay if available in error message
+                if "retryDelay" in error_msg:
+                    try:
+                        retry_delay = error_msg.split("'retryDelay': '")[1].split("s'")[0]
+                        print(f"[LLM] ℹ Google suggests waiting {retry_delay}s")
+                    except:
+                        pass
+            
+            else:
+                wait_time = base_wait_time + random.uniform(0, 10)
+                print(f"[LLM] ⚠ Error: {error_msg[:100]}... Retry {retry_count}/{max_retries}. Waiting {wait_time:.2f}s...")
+            
+            time.sleep(wait_time)
+    
+    total_time = time.time() - start_time
+    print(f"[LLM] ✗ Failed after {retry_count} retries ({total_time:.2f}s elapsed)")
+    raise Exception(f"Failed after {max_retries} retries")
 
 
 # # Use Azure OpenAI
