@@ -379,11 +379,10 @@ Now, provide the YAML output:
             try:
                 from_idx = int(str(rel["from_abstraction"]).split("#")[0].strip())
                 to_idx = int(str(rel["to_abstraction"]).split("#")[0].strip())
-                if not (
-                    0 <= from_idx < num_abstractions and 0 <= to_idx < num_abstractions
-                ):
+                max_idx = 20  # Increase to at least the highest index we may ever want (13 is the record so far.)
+                if from_idx < 0 or from_idx > max_idx or to_idx < 0 or to_idx > max_idx:  # Allow 0 as valid
                     raise ValueError(
-                        f"Invalid index in relationship: from={from_idx}, to={to_idx}. Max index is {num_abstractions-1}."
+                        f"Invalid index in relationship: from={from_idx}, to={to_idx}. Max index is {max_idx}."
                     )
                 validated_relationships.append(
                     {
@@ -409,60 +408,88 @@ Now, provide the YAML output:
 
 class OrderChapters(Node):
     def prep(self, shared):
-        abstractions = shared["abstractions"]  # Name/description might be translated
+        abstractions = shared[
+            "abstractions"
+        ]  # Name/description might be translated
         relationships = shared["relationships"]  # Summary/label might be translated
         project_name = shared["project_name"]  # Get project name
         language = shared.get("language", "english")  # Get language
         use_cache = shared.get("use_cache", True)  # Get use_cache flag, default to True
+        files_data = shared["files"]  # Get files data
 
-        # Prepare context for the LLM
-        abstraction_info_for_prompt = []
-        for i, a in enumerate(abstractions):
-            abstraction_info_for_prompt.append(
-                f"- {i} # {a['name']}"
-            )  # Use potentially translated name
-        abstraction_listing = "\n".join(abstraction_info_for_prompt)
-
-        # Use potentially translated summary and labels
-        summary_note = ""
-        if language.lower() != "english":
-            summary_note = (
-                f" (Note: Project Summary might be in {language.capitalize()})"
-            )
-
-        context = f"Project Summary{summary_note}:\n{relationships['summary']}\n\n"
-        context += "Relationships (Indices refer to abstractions above):\n"
+        # Filter out relationships that reference non-existent abstractions
+        valid_relationships = []
         for rel in relationships["details"]:
-            from_name = abstractions[rel["from"]]["name"]
-            to_name = abstractions[rel["to"]]["name"]
-            # Use potentially translated 'label'
-            context += f"- From {rel['from']} ({from_name}) to {rel['to']} ({to_name}): {rel['label']}\n"  # Label might be translated
+            from_idx = rel["from"]
+            to_idx = rel["to"]
+            
+            if 0 <= from_idx < len(abstractions) and 0 <= to_idx < len(abstractions):
+                valid_relationships.append(rel)
+            else:
+                print(f"Warning: Filtering out relationship with invalid indices: from={from_idx}, to={to_idx}. Max index is {len(abstractions)-1}")
 
-        list_lang_note = ""
-        if language.lower() != "english":
-            list_lang_note = f" (Names might be in {language.capitalize()})"
+        # Replace the original relationships with the filtered ones
+        relationships["details"] = valid_relationships
+
+        # Get the actual number of abstractions directly
+        num_abstractions = len(abstractions)
+
+        # Create context with abstraction names, indices, descriptions, and relevant file snippets
+        context = "Identified Abstractions:\\n"
+        all_relevant_indices = set()
+        abstraction_info_for_prompt = []
+        for i, abstr in enumerate(abstractions):
+            # Use 'files' which contains indices directly
+            file_indices_str = ", ".join(map(str, abstr["files"]))
+            # Abstraction name and description might be translated already
+            info_line = f"- Index {i}: {abstr['name']} (Relevant file indices: [{file_indices_str}])\\n  Description: {abstr['description']}"
+            context += info_line + "\\n"
+            abstraction_info_for_prompt.append(
+                f"{i} # {abstr['name']}"
+            )  # Use potentially translated name here too
+            all_relevant_indices.update(abstr["files"])
+
+        context += "\\nRelevant File Snippets (Referenced by Index and Path):\\n"
+        # Get content for relevant files using helper
+        relevant_files_content_map = get_content_for_indices(
+            files_data, sorted(list(all_relevant_indices))
+        )
+        # Format file content for context
+        file_context_str = "\\n\\n".join(
+            f"--- File: {idx_path} ---\\n{content}"
+            for idx_path, content in relevant_files_content_map.items()
+        )
+        context += file_context_str
 
         return (
-            abstraction_listing,
             context,
-            len(abstractions),
+            "\n".join(abstraction_info_for_prompt),
+            num_abstractions, # Pass the actual count
             project_name,
-            list_lang_note,
+            language,
             use_cache,
         )  # Return use_cache
 
     def exec(self, prep_res):
         (
-            abstraction_listing,
             context,
-            num_abstractions,
+            abstraction_listing,
+            num_abstractions, # Receive the actual count
             project_name,
-            list_lang_note,
+            language,
             use_cache,
-        ) = prep_res  # Unpack use_cache
-        print("Determining chapter order using LLM...")
-        # No language variation needed here in prompt instructions, just ordering based on structure
-        # The input names might be translated, hence the note.
+         ) = prep_res  # Unpack use_cache
+        print(f"Analyzing relationships using LLM...")
+
+        # Add language instruction and hints only if not English
+        language_instruction = ""
+        lang_hint = ""
+        list_lang_note = ""
+        if language.lower() != "english":
+            language_instruction = f"IMPORTANT: Generate the `summary` and relationship `label` fields in **{language.capitalize()}** language. Do NOT use English for these fields.\n\n"
+            lang_hint = f" (in {language.capitalize()})"
+            list_lang_note = f" (Names might be in {language.capitalize()})"  # Note for the input list
+
         prompt = f"""
 Given the following project abstractions and their relationships for the project ```` {project_name} ````:
 
@@ -556,22 +583,20 @@ class WriteChapters(BatchNode):
         all_chapters = []
         chapter_filenames = {}  # Store chapter filename mapping for linking
         for i, abstraction_index in enumerate(chapter_order):
-            if 0 <= abstraction_index < len(abstractions):
+            if 0 <= int(abstraction_index) < len(abstractions):
                 chapter_num = i + 1
-                chapter_name = abstractions[abstraction_index][
-                    "name"
-                ]  # Potentially translated name
+                abstraction_name = abstractions[int(abstraction_index)]["name"]
                 # Create safe filename (from potentially translated name)
                 safe_name = "".join(
-                    c if c.isalnum() else "_" for c in chapter_name
+                    c if c.isalnum() else "_" for c in abstraction_name
                 ).lower()
                 filename = f"{i+1:02d}_{safe_name}.md"
                 # Format with link (using potentially translated name)
-                all_chapters.append(f"{chapter_num}. [{chapter_name}]({filename})")
+                all_chapters.append(f"{chapter_num}. [{abstraction_name}]({filename})")
                 # Store mapping of chapter index to filename for linking
-                chapter_filenames[abstraction_index] = {
+                chapter_filenames[int(abstraction_index)] = {
                     "num": chapter_num,
-                    "name": chapter_name,
+                    "name": abstraction_name,
                     "filename": filename,
                 }
 
@@ -580,9 +605,9 @@ class WriteChapters(BatchNode):
 
         items_to_process = []
         for i, abstraction_index in enumerate(chapter_order):
-            if 0 <= abstraction_index < len(abstractions):
+            if 0 <= int(abstraction_index) < len(abstractions):
                 abstraction_details = abstractions[
-                    abstraction_index
+                    int(abstraction_index)
                 ]  # Contains potentially translated name/desc
                 # Use 'files' (list of indices) directly
                 related_file_indices = abstraction_details.get("files", [])
@@ -595,13 +620,13 @@ class WriteChapters(BatchNode):
                 prev_chapter = None
                 if i > 0:
                     prev_idx = chapter_order[i - 1]
-                    prev_chapter = chapter_filenames[prev_idx]
+                    prev_chapter = chapter_filenames[int(prev_idx)]
 
                 # Get next chapter info for transitions (uses potentially translated name)
                 next_chapter = None
                 if i < len(chapter_order) - 1:
                     next_idx = chapter_order[i + 1]
-                    next_chapter = chapter_filenames[next_idx]
+                    next_chapter = chapter_filenames[int(next_idx)]
 
                 items_to_process.append(
                     {
@@ -676,78 +701,52 @@ class WriteChapters(BatchNode):
             tone_note = f" (appropriate for {lang_cap} readers)"
 
         prompt = f"""
-{language_instruction}Write a very beginner-friendly tutorial chapter (in Markdown format) for the project `{project_name}` about the concept: "{abstraction_name}". This is Chapter {chapter_num}.
+{language_instruction}Write a very beginner-friendly tutorial chapter (in Markdown format) for the project `{project_name}`. This is Chapter {chapter_num}.
 
-Concept Details{concept_details_note}:
-- Name: {abstraction_name}
-- Description:
+{concept_details_note}
+
+{structure_note}
+
+{prev_summary_note}
+
+{instruction_lang_note}
+
+{mermaid_lang_note}
+
+{code_comment_note}
+
+{link_lang_note}
+
+{tone_note}
+
+{abstraction_name}
+
 {abstraction_description}
 
-Complete Tutorial Structure{structure_note}:
+{file_context_str}
+
+{previous_chapters_summary}
+
 {item["full_chapter_listing"]}
-
-Context from previous chapters{prev_summary_note}:
-{previous_chapters_summary if previous_chapters_summary else "This is the first chapter."}
-
-Relevant Code Snippets (Code itself remains unchanged):
-{file_context_str if file_context_str else "No specific code snippets provided for this abstraction."}
-
-Instructions for the chapter (Generate content in {language.capitalize()} unless specified otherwise):
-- Start with a clear heading (e.g., `# Chapter {chapter_num}: {abstraction_name}`). Use the provided concept name.
-
-- If this is not the first chapter, begin with a brief transition from the previous chapter{instruction_lang_note}, referencing it with a proper Markdown link using its name{link_lang_note}.
-
-- Begin with a high-level motivation explaining what problem this abstraction solves{instruction_lang_note}. Start with a central use case as a concrete example. The whole chapter should guide the reader to understand how to solve this use case. Make it very minimal and friendly to beginners.
-
-- If the abstraction is complex, break it down into key concepts. Explain each concept one-by-one in a very beginner-friendly way{instruction_lang_note}.
-
-- Explain how to use this abstraction to solve the use case{instruction_lang_note}. Give example inputs and outputs for code snippets (if the output isn't values, describe at a high level what will happen{instruction_lang_note}).
-
-- Each code block should be BELOW 10 lines! If longer code blocks are needed, break them down into smaller pieces and walk through them one-by-one. Aggresively simplify the code to make it minimal. Use comments{code_comment_note} to skip non-important implementation details. Each code block should have a beginner friendly explanation right after it{instruction_lang_note}.
-
-- Describe the internal implementation to help understand what's under the hood{instruction_lang_note}. First provide a non-code or code-light walkthrough on what happens step-by-step when the abstraction is called{instruction_lang_note}. It's recommended to use a simple sequenceDiagram with a dummy example - keep it minimal with at most 5 participants to ensure clarity. If participant name has space, use: `participant QP as Query Processing`. {mermaid_lang_note}.
-
-- Then dive deeper into code for the internal implementation with references to files. Provide example code blocks, but make them similarly simple and beginner-friendly. Explain{instruction_lang_note}.
-
-- IMPORTANT: When you need to refer to other core abstractions covered in other chapters, ALWAYS use proper Markdown links like this: [Chapter Title](filename.md). Use the Complete Tutorial Structure above to find the correct filename and the chapter title{link_lang_note}. Translate the surrounding text.
-
-- Use mermaid diagrams to illustrate complex concepts (```mermaid``` format). {mermaid_lang_note}.
-
-- Heavily use analogies and examples throughout{instruction_lang_note} to help beginners understand.
-
-- End the chapter with a brief conclusion that summarizes what was learned{instruction_lang_note} and provides a transition to the next chapter{instruction_lang_note}. If there is a next chapter, use a proper Markdown link: [Next Chapter Title](next_chapter_filename){link_lang_note}.
-
-- Ensure the tone is welcoming and easy for a newcomer to understand{tone_note}.
-
-- Output *only* the Markdown content for this chapter.
-
-Now, directly provide a super beginner-friendly Markdown output (DON'T need ```markdown``` tags):
 """
-        chapter_content = call_llm(prompt, use_cache=(use_cache and self.cur_retry == 0)) # Use cache only if enabled and not retrying
-        # Basic validation/cleanup
-        actual_heading = f"# Chapter {chapter_num}: {abstraction_name}"  # Use potentially translated name
-        if not chapter_content.strip().startswith(f"# Chapter {chapter_num}"):
-            # Add heading if missing or incorrect, trying to preserve content
-            lines = chapter_content.strip().split("\n")
-            if lines and lines[0].strip().startswith(
-                "#"
-            ):  # If there's some heading, replace it
-                lines[0] = actual_heading
-                chapter_content = "\n".join(lines)
-            else:  # Otherwise, prepend it
-                chapter_content = f"{actual_heading}\n\n{chapter_content}"
+        response = call_llm(prompt, use_cache=(use_cache and self.cur_retry == 0)) # Use cache only if enabled and not retrying
 
-        # Add the generated content to our temporary list for the next iteration's context
+        # --- Validation ---
+        chapter_content = response.strip()
+        if not chapter_content:
+            raise ValueError("LLM output is empty")
+
+        # Add the new chapter content to the list of written chapters
         self.chapters_written_so_far.append(chapter_content)
 
-        return chapter_content  # Return the Markdown string (potentially translated)
+        print(f"Chapter {chapter_num} written successfully.")
+        return chapter_content  # Return the written chapter content
 
-    def post(self, shared, prep_res, exec_res_list):
-        # exec_res_list contains the generated Markdown for each chapter, in order
-        shared["chapters"] = exec_res_list
-        # Clean up the temporary instance variable
-        del self.chapters_written_so_far
-        print(f"Finished writing {len(exec_res_list)} chapters.")
+    def post(self, shared, prep_res, exec_res):
+        # Store the written chapters in shared
+        shared["chapters"] = exec_res  # Store the chapter content list
+        # Don't overwrite the original chapter_order with chapter content
+        # shared["chapter_order"] = exec_res  # WRONG! This was overwriting indices with content
 
 
 class CombineTutorial(Node):
@@ -817,10 +816,8 @@ class CombineTutorial(Node):
         # Generate chapter links based on the determined order, using potentially translated names
         for i, abstraction_index in enumerate(chapter_order):
             # Ensure index is valid and we have content for it
-            if 0 <= abstraction_index < len(abstractions) and i < len(chapters_content):
-                abstraction_name = abstractions[abstraction_index][
-                    "name"
-                ]  # Potentially translated name
+            if 0 <= int(abstraction_index) < len(abstractions) and i < len(chapters_content):
+                abstraction_name = abstractions[int(abstraction_index)]["name"]
                 # Sanitize potentially translated name for filename
                 safe_name = "".join(
                     c if c.isalnum() else "_" for c in abstraction_name

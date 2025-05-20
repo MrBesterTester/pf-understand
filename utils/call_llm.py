@@ -6,6 +6,7 @@ from datetime import datetime
 import time
 import random
 import threading
+import signal
 
 # Configure logging
 log_directory = os.getenv("LOG_DIR", "logs")
@@ -39,7 +40,7 @@ def call_llm(prompt: str, use_cache: bool = True) -> str:
     print_with_timestamp(f"[LLM] Processing prompt ({len(prompt)} chars)...")
     
     # Define maximum chunk size (in characters)
-    MAX_CHUNK_SIZE = 500000  # ~125K tokens (4 chars per token) - more manageable chunk size
+    MAX_CHUNK_SIZE = 200000  # ~50K tokens - ensures critical context stays together
     
     # Check if we need to chunk
     if len(prompt) > MAX_CHUNK_SIZE:
@@ -311,64 +312,137 @@ def list_gemini_models():
             print_with_timestamp(f"✗ {model_name} - Not available: {str(e)}")
 
 def process_chunks_with_timeout(chunks, use_cache):
+    MAX_CHUNK_WAIT = 180  # 3 minutes maximum per chunk
+    MAX_CHUNK_RETRIES = 3  # Try each chunk up to 3 times before giving up
+    
     results = []
     for i, chunk in enumerate(chunks):
         print_with_timestamp(f"\n[LLM] 🔄 Processing chunk {i+1}/{len(chunks)} ({len(chunk)//1000}K chars)")
         
-        # Set a timeout for each chunk
-        success = False
         chunk_result = None
         used_cache = False
+        chunk_successful = False
         
-        # Use a different approach for a repeating progress indicator
-        progress_stop_flag = threading.Event()
-
-        def check_progress_repeatedly():
-            count = 0
-            while not progress_stop_flag.is_set():
-                count += 1
-                print_with_timestamp(f"[LLM] ⏳ Still working on chunk {i+1}... ({count} minute(s) elapsed)")
-                progress_stop_flag.wait(60)  # Wait for 60 seconds or until the flag is set
-
-        progress_thread = threading.Thread(target=check_progress_repeatedly)
-        progress_thread.daemon = True
-        progress_thread.start()
+        # Try the cache first
+        if use_cache and os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    cache = json.load(f)
+                if chunk in cache:
+                    chunk_result = cache[chunk]
+                    used_cache = True
+                    chunk_successful = True
+                    print_with_timestamp(f"[LLM] ✓ Retrieved chunk {i+1} from cache ({len(chunk_result)} chars)")
+            except Exception as e:
+                print_with_timestamp(f"[LLM] ⚠️ Cache error: {str(e)}")
         
-        try:
-            # Check if we can get it from cache first
-            if use_cache:
-                cache = {}
-                if os.path.exists(cache_file):
-                    try:
-                        with open(cache_file, "r", encoding="utf-8") as f:
-                            cache = json.load(f)
-                        if chunk in cache:
-                            chunk_result = cache[chunk]
-                            used_cache = True
-                            print_with_timestamp(f"[LLM] ✓ Retrieved chunk {i+1} from cache ({len(chunk_result)} chars)")
-                            success = True
-                    except:
-                        pass
+        # If not in cache, try with retries
+        retry_count = 0
+        while not chunk_successful and retry_count < MAX_CHUNK_RETRIES:
+            print_with_timestamp(f"[LLM] Chunk {i+1} - Attempt {retry_count+1}/{MAX_CHUNK_RETRIES}")
+            print_with_timestamp(f"[LLM] Starting API call with {MAX_CHUNK_WAIT}s timeout")
+            start_time = time.time()
             
-            # Only call API if not found in cache
-            if not used_cache:
-                chunk_result = call_llm(chunk, use_cache=use_cache)
-                success = True
-        except Exception as e:
-            print_with_timestamp(f"[LLM] ⚠️ Failed to process chunk {i+1}: {str(e)}")
-            chunk_result = f"[Error processing chunk {i+1}]"
-        finally:
-            progress_stop_flag.set()
+            # Set up timeout handler
+            def timeout_handler(signum, frame):
+                raise TimeoutError(f"API call timed out after {MAX_CHUNK_WAIT} seconds")
+            
+            # Set the timeout handler
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(MAX_CHUNK_WAIT)  # Set alarm for MAX_CHUNK_WAIT seconds
+            
+            try:
+                # Make the API call directly
+                client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+                response = client.models.generate_content(
+                    model="models/gemini-2.5-pro-preview-03-25", 
+                    contents=[chunk]
+                )
+                chunk_result = response.text
+                chunk_successful = True
+                
+                # Save to cache if successful
+                if use_cache:
+                    try:
+                        cache = {}
+                        if os.path.exists(cache_file):
+                            with open(cache_file, "r", encoding="utf-8") as f:
+                                cache = json.load(f)
+                        cache[chunk] = chunk_result
+                        with open(cache_file, "w", encoding="utf-8") as f:
+                            json.dump(cache, f)
+                    except Exception as e:
+                        print_with_timestamp(f"[LLM] ⚠️ Failed to save to cache: {str(e)}")
+                
+            except (TimeoutError, Exception) as e:
+                retry_count += 1
+                print_with_timestamp(f"[LLM] ⚠️ Chunk {i+1} - Attempt {retry_count}/{MAX_CHUNK_RETRIES} failed: {str(e)}")
+                
+                # Only wait between retries, not after the final attempt
+                if retry_count < MAX_CHUNK_RETRIES:
+                    # Exponential backoff for retries
+                    wait_time = 30 * (2 ** (retry_count - 1))  # 30s, 60s, 120s...
+                    print_with_timestamp(f"[LLM] Waiting {wait_time}s before next attempt...")
+                    time.sleep(wait_time)
+                
+            finally:
+                # Cancel the alarm
+                signal.alarm(0)
+                elapsed = time.time() - start_time
+                print_with_timestamp(f"[LLM] API call attempt completed in {elapsed:.1f}s")
         
+        # If all retries failed, add a placeholder
+        if not chunk_successful:
+            chunk_result = f"[Failed to process chunk {i+1} after {MAX_CHUNK_RETRIES} attempts]"
+        
+        # Add result and continue
         results.append(chunk_result)
         
-        # Only pause between chunks if we made an API call and not using cache
+        # Pause between chunks
         if i < len(chunks) - 1 and not used_cache:
             wait_time = 30 + random.uniform(0, 15)
-            print_with_timestamp(f"[LLM] ⏱️ Pausing for {wait_time:.2f}s before next chunk (API call made)")
+            print_with_timestamp(f"[LLM] ⏱️ Pausing for {wait_time:.2f}s before next chunk")
             time.sleep(wait_time)
             
     return results
+
+# Helper functions for progress indicator and cache management
+def check_progress_repeatedly(stop_flag, chunk_num):
+    count = 0
+    while not stop_flag.is_set():
+        count += 1
+        print_with_timestamp(f"[LLM] ⏳ Still working on chunk {chunk_num+1}... ({count} minute(s) elapsed)")
+        stop_flag.wait(60)
+
+def check_cache(prompt):
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+            return prompt in cache
+        except:
+            pass
+    return False
+
+def get_from_cache(prompt):
+    with open(cache_file, "r", encoding="utf-8") as f:
+        cache = json.load(f)
+    return cache[prompt]
+
+def save_to_cache(prompt, response):
+    cache = {}
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+        except:
+            pass
+    cache[prompt] = response
+    try:
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+    except Exception as e:
+        print_with_timestamp(f"[LLM] ⚠️ Failed to save to cache: {str(e)}")
 
 if __name__ == "__main__":
     # list_gemini_models()
@@ -379,3 +453,13 @@ if __name__ == "__main__":
     print_with_timestamp("Making call...")
     response1 = call_llm(test_prompt, use_cache=False)
     print_with_timestamp(f"Response: {response1}")
+
+    # In your application code where you parse relationships
+    def validate_relationships(relationships, max_index=6):
+        valid_relationships = []
+        for rel in relationships:
+            if 1 <= rel['from_abstraction'] <= max_index and 1 <= rel['to_abstraction'] <= max_index:
+                valid_relationships.append(rel)
+            else:
+                print_with_timestamp(f"[WARNING] Filtered out invalid relationship: {rel}")
+        return valid_relationships
