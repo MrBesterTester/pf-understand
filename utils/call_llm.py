@@ -116,17 +116,26 @@ def call_llm(prompt: str, use_cache: bool = True) -> str:
                     connection_errors = 0
             
             elif "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+                # Default calculation (used as fallback)
                 jitter = random.uniform(0.8, 1.2)
-                wait_time = min(base_wait_time + (retry_count * 5), max_wait_time) * jitter
-                print(f"[LLM] ⚠ Rate limit hit. Retry {retry_count}/{max_retries}. Waiting {wait_time:.2f}s...")
+                default_wait = min(base_wait_time + (retry_count * 5), max_wait_time) * jitter
                 
-                # Extract retry delay if available in error message
+                # Try to extract Google's suggested wait time
+                google_wait = None
                 if "retryDelay" in error_msg:
                     try:
-                        retry_delay = error_msg.split("'retryDelay': '")[1].split("s'")[0]
-                        print(f"[LLM] ℹ Google suggests waiting {retry_delay}s")
+                        retry_delay_str = error_msg.split("'retryDelay': '")[1].split("s'")[0]
+                        google_wait = float(retry_delay_str)
+                        # Add slight jitter to Google's time to prevent synchronized requests
+                        google_wait = google_wait * random.uniform(1.0, 1.2)
+                        print(f"[LLM] ℹ Google suggests waiting {retry_delay_str}s")
                     except:
                         pass
+                
+                # Use Google's time if available, otherwise use our default
+                wait_time = google_wait if google_wait is not None else default_wait
+                
+                print(f"[LLM] ⚠ Rate limit hit. Retry {retry_count}/{max_retries}. Waiting {wait_time:.2f}s...")
             
             else:
                 wait_time = base_wait_time + random.uniform(0, 10)
