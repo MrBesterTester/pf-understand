@@ -132,6 +132,51 @@ def call_llm(prompt: str, use_cache: bool = True) -> str:
                     except:
                         pass
                 
+                # Extract and display which specific rate limit was hit
+                limit_type = "Unknown rate limit"
+                if "quotaId" in error_msg:
+                    try:
+                        # Extract quota ID details
+                        quota_id = error_msg.split("'quotaId': '")[1].split("'")[0]
+                        
+                        # Categorize the rate limit
+                        if "PerMinute" in quota_id:
+                            time_span = "per-minute"
+                        elif "PerDay" in quota_id:
+                            time_span = "per-day (daily quota)"
+                        else:
+                            time_span = "unknown time period"
+                            
+                        if "InputTokens" in quota_id:
+                            resource = "input tokens"
+                        elif "OutputTokens" in quota_id:
+                            resource = "output tokens"
+                        elif "Requests" in quota_id:
+                            resource = "requests"
+                        else:
+                            resource = "unknown resource"
+                            
+                        if "FreeTier" in quota_id:
+                            tier = "free tier"
+                        elif "PaidTier" in quota_id:
+                            tier = "paid tier"
+                        else:
+                            tier = "unknown tier"
+                            
+                        limit_type = f"{resource} ({time_span}, {tier})"
+                        print(f"[LLM] 🛑 Rate limit exceeded: {limit_type}")
+                        print(f"[LLM] 🔍 Quota ID: {quota_id}")
+                        
+                        # Extract specific limit value if available
+                        if "quotaValue" in error_msg:
+                            try:
+                                quota_value = error_msg.split("'quotaValue': '")[1].split("'")[0]
+                                print(f"[LLM] 📊 Limit value: {quota_value}")
+                            except:
+                                pass
+                    except:
+                        print(f"[LLM] ⚠ Failed to parse specific rate limit details")
+                
                 # Use Google's time if available, otherwise use our default
                 wait_time = google_wait if google_wait is not None else default_wait
                 
