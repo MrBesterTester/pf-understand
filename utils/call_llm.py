@@ -33,6 +33,31 @@ def call_llm(prompt: str, use_cache: bool = True) -> str:
     logger.info(f"PROMPT: {prompt}")
     print(f"\n[LLM] Processing prompt ({len(prompt)} chars)...")
     
+    # Define maximum chunk size (in characters)
+    MAX_CHUNK_SIZE = 1000000  # ~250K tokens (4 chars per token) - well within model limits
+    
+    # Check if we need to chunk
+    if len(prompt) > MAX_CHUNK_SIZE:
+        print(f"[LLM] ⚠ Prompt exceeds {MAX_CHUNK_SIZE//1000}K character limit ({len(prompt)//1000}K chars)")
+        print(f"[LLM] 🧩 Automatically splitting into chunks for processing")
+        
+        # Split the prompt into chunks (try to break at paragraph boundaries)
+        chunks = chunk_text(prompt, MAX_CHUNK_SIZE)
+        print(f"[LLM] 📑 Split into {len(chunks)} chunks")
+        
+        # Process each chunk
+        results = []
+        for i, chunk in enumerate(chunks):
+            print(f"\n[LLM] 🔄 Processing chunk {i+1}/{len(chunks)} ({len(chunk)//1000}K chars)")
+            # Call this function recursively for each chunk
+            chunk_result = call_llm(chunk, use_cache=use_cache)
+            results.append(chunk_result)
+            
+        # Combine results
+        combined_result = "\n\n".join(results)
+        print(f"[LLM] ✅ Successfully processed all chunks ({len(combined_result)} chars total)")
+        return combined_result
+    
     # Track statistics
     start_time = time.time()
     attempts = 0
@@ -192,219 +217,58 @@ def call_llm(prompt: str, use_cache: bool = True) -> str:
     print(f"[LLM] ✗ Failed after {retry_count} retries ({total_time:.2f}s elapsed)")
     raise Exception(f"Failed after {max_retries} retries")
 
-
-# # Use Azure OpenAI
-# def call_llm(prompt, use_cache: bool = True):
-#     from openai import AzureOpenAI
-
-#     endpoint = "https://<azure openai name>.openai.azure.com/"
-#     deployment = "<deployment name>"
-
-#     subscription_key = "<azure openai key>"
-#     api_version = "<api version>"
-
-#     client = AzureOpenAI(
-#         api_version=api_version,
-#         azure_endpoint=endpoint,
-#         api_key=subscription_key,
-#     )
-
-#     r = client.chat.completions.create(
-#         model=deployment,
-#         messages=[{"role": "user", "content": prompt}],
-#         response_format={
-#             "type": "text"
-#         },
-#         max_completion_tokens=40000,
-#         reasoning_effort="medium",
-#         store=False
-#     )
-#     return r.choices[0].message.content
-
-# Use Anthropic Claude 3.7 Sonnet Extended Thinking
-# def call_llm(prompt, use_cache: bool = True):
-#     from anthropic import Anthropic
-#     import time
-#     import random
+def chunk_text(text: str, max_size: int) -> list:
+    """Split text into chunks of approximately max_size characters, breaking at paragraph boundaries."""
+    if len(text) <= max_size:
+        return [text]
     
-#     # Log the prompt
-#     logger.info(f"PROMPT: {prompt}")
-
-#     # Check cache if enabled
-#     if use_cache:
-#         # Load cache from disk
-#         cache = {}
-#         if os.path.exists(cache_file):
-#             try:
-#                 with open(cache_file, "r", encoding="utf-8") as f:
-#                     cache = json.load(f)
-#             except:
-#                 logger.warning(f"Failed to load cache, starting with empty cache")
-
-#         # Return from cache if exists
-#         if prompt in cache:
-#             logger.info(f"RESPONSE: {cache[prompt]}")
-#             return cache[prompt]
+    chunks = []
+    current_chunk = ""
     
-#     # Initialize API client
-#     client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", "your-api-key"))
+    # Split by paragraphs first
+    paragraphs = text.split("\n\n")
     
-#     # Retry configuration
-#     max_retries = 5
-#     retry_count = 0
-#     backoff_time = 1  # Start with 1 second backoff
+    for paragraph in paragraphs:
+        # If adding this paragraph exceeds the limit, store the chunk and start a new one
+        if len(current_chunk) + len(paragraph) + 2 > max_size:
+            # If the current chunk is already close to max size
+            if len(current_chunk) > max_size * 0.5:  # Only store if chunk is substantial
+                chunks.append(current_chunk)
+                current_chunk = paragraph
+            else:
+                # If the paragraph itself is too big, split it by sentences
+                if len(paragraph) > max_size:
+                    sentences = split_into_sentences(paragraph)
+                    for sentence in sentences:
+                        if len(current_chunk) + len(sentence) + 1 > max_size:
+                            chunks.append(current_chunk)
+                            current_chunk = sentence
+                        else:
+                            current_chunk += " " + sentence if current_chunk else sentence
+                else:
+                    # This shouldn't normally happen (small current chunk + small paragraph > max)
+                    # but handle it just in case
+                    chunks.append(current_chunk)
+                    current_chunk = paragraph
+        else:
+            # Add paragraph separator if not the first paragraph in chunk
+            current_chunk += "\n\n" + paragraph if current_chunk else paragraph
     
-#     while retry_count < max_retries:
-#         try:
-#             response = client.messages.create(
-#                 model="claude-3-7-sonnet-20250219",
-#                 max_tokens=21000,
-#                 thinking={
-#                     "type": "enabled",
-#                     "budget_tokens": 20000
-#                 },
-#                 messages=[
-#                     {"role": "user", "content": prompt}
-#                 ]
-#             )
-#             response_text = response.content[1].text
-            
-#             # Log the response
-#             logger.info(f"RESPONSE: {response_text}")
-            
-#             # Update cache if enabled
-#             if use_cache:
-#                 # Load cache again to avoid overwrites
-#                 cache = {}
-#                 if os.path.exists(cache_file):
-#                     try:
-#                         with open(cache_file, "r", encoding="utf-8") as f:
-#                             cache = json.load(f)
-#                     except:
-#                         pass
-
-#                 # Add to cache and save
-#                 cache[prompt] = response_text
-#                 try:
-#                     with open(cache_file, "w", encoding="utf-8") as f:
-#                         json.dump(cache, f)
-#                 except Exception as e:
-#                     logger.error(f"Failed to save cache: {e}")
-                    
-#             return response_text
-            
-#         except Exception as e:
-#             retry_count += 1
-#             if "rate limit" in str(e).lower() or "429" in str(e):
-#                 # Calculate backoff time with jitter
-#                 jitter = random.uniform(0.8, 1.2)
-#                 wait_time = backoff_time * jitter
-                
-#                 logger.warning(f"Rate limit exceeded. Retry {retry_count}/{max_retries}. Waiting for {wait_time:.2f} seconds...")
-#                 print(f"Rate limit exceeded. Retry {retry_count}/{max_retries}. Waiting for {wait_time:.2f} seconds...")
-                
-#                 time.sleep(wait_time)
-#                 # Exponential backoff - double the wait time for next attempt
-#                 backoff_time *= 2
-#             else:
-#                 logger.error(f"API error: {e}")
-#                 if retry_count >= max_retries:
-#                     raise
-#                 time.sleep(1)  # Brief pause before retrying other errors
+    # Don't forget the last chunk
+    if current_chunk:
+        chunks.append(current_chunk)
     
-#     raise Exception(f"Failed to get response after {max_retries} retries")
+    return chunks
 
-# # Use OpenAI o1
-# def call_llm(prompt, use_cache: bool = True):
-#     from openai import OpenAI
-#     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", "your-api-key"))
-#     r = client.chat.completions.create(
-#         model="o1",
-#         messages=[{"role": "user", "content": prompt}],
-#         response_format={
-#             "type": "text"
-#         },
-#         reasoning_effort="medium",
-#         store=False
-#     )
-#     return r.choices[0].message.content
-
-# Use OpenRouter API
-# def call_llm(prompt: str, use_cache: bool = True) -> str:
-#     import requests
-#     # Log the prompt
-#     logger.info(f"PROMPT: {prompt}")
-
-#     # Check cache if enabled
-#     if use_cache:
-#         # Load cache from disk
-#         cache = {}
-#         if os.path.exists(cache_file):
-#             try:
-#                 with open(cache_file, "r", encoding="utf-8") as f:
-#                     cache = json.load(f)
-#             except:
-#                 logger.warning(f"Failed to load cache, starting with empty cache")
-
-#         # Return from cache if exists
-#         if prompt in cache:
-#             logger.info(f"RESPONSE: {cache[prompt]}")
-#             return cache[prompt]
-
-#     # OpenRouter API configuration
-#     api_key = os.getenv("OPENROUTER_API_KEY", "")
-#     model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+def split_into_sentences(text: str) -> list:
+    """Split text into sentences, trying to preserve sentence boundaries."""
+    # Simple splitting by common sentence terminators
+    # In a real implementation, you might want a more sophisticated NLP approach
+    for delimiter in [". ", "! ", "? ", ".\n", "!\n", "?\n"]:
+        text = text.replace(delimiter, delimiter + "[SPLIT]")
     
-#     headers = {
-#         "Authorization": f"Bearer {api_key}",
-#     }
-
-#     data = {
-#         "model": model,
-#         "messages": [{"role": "user", "content": prompt}]
-#     }
-
-#     response = requests.post(
-#         "https://openrouter.ai/api/v1/chat/completions",
-#         headers=headers,
-#         json=data
-#     )
-
-#     if response.status_code != 200:
-#         error_msg = f"OpenRouter API call failed with status {response.status_code}: {response.text}"
-#         logger.error(error_msg)
-#         raise Exception(error_msg)
-#     try:
-#         response_text = response.json()["choices"][0]["message"]["content"]
-#     except Exception as e:
-#         error_msg = f"Failed to parse OpenRouter response: {e}; Response: {response.text}"
-#         logger.error(error_msg)        
-#         raise Exception(error_msg)
-    
-
-#     # Log the response
-#     logger.info(f"RESPONSE: {response_text}")
-
-#     # Update cache if enabled
-#     if use_cache:
-#         # Load cache again to avoid overwrites
-#         cache = {}
-#         if os.path.exists(cache_file):
-#             try:
-#                 with open(cache_file, "r", encoding="utf-8") as f:
-#                     cache = json.load(f)
-#             except:
-#                 pass
-
-#         # Add to cache and save
-#         cache[prompt] = response_text
-#         try:
-#             with open(cache_file, "w", encoding="utf-8") as f:
-#                 json.dump(cache, f)
-#         except Exception as e:
-#             logger.error(f"Failed to save cache: {e}")
-
-#     return response_text
+    sentences = text.split("[SPLIT]")
+    return [s.strip() for s in sentences if s.strip()]
 
 def list_gemini_models():
     client = genai.Client(
