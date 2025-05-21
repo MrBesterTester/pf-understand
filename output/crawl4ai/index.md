@@ -17,24 +17,15 @@ The library manages resources efficiently through its *dispatcher framework* and
 
 ```mermaid
 flowchart TD
-    A0["AsyncWebCrawler
-"]
-    A1["Configuration System
-"]
-    A2["Content Extraction Pipeline
-"]
-    A3["Deep Crawling System
-"]
-    A4["Dispatcher Framework
-"]
-    A5["Caching System
-"]
-    A6["URL Filtering & Scoring
-"]
-    A7["Async Logging Infrastructure
-"]
-    A8["API & Docker Integration
-"]
+    A0["AsyncWebCrawler"]
+    A1["Configuration System"]
+    A2["Content Extraction Pipeline"]
+    A3["Deep Crawling System"]
+    A4["Dispatcher Framework"]
+    A5["Caching System"]
+    A6["URL Filtering & Scoring"]
+    A7["Async Logging Infrastructure"]
+    A8["API & Docker Integration"]
     A0 -- "Initializes with and uses" --> A1
     A0 -- "Processes HTML with" --> A2
     A0 -- "Delegates concurrent crawli..." --> A4

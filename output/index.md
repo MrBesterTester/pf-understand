@@ -6,7 +6,7 @@ nav_order: 1
 
 # PF-Understand Documentation
 
-Welcome to the documentation for Two Tutorials for Mojo using Pocket Flow
+Welcome to the documentation for PF-Understand, a tool for generating comprehensive tutorials from codebases.
 
 ## Tutorials
 

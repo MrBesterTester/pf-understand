@@ -1,4 +1,4 @@
---
+---
 layout: default
 title: My Tutorial for Modular's Max 
 nav_order: 1

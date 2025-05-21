@@ -1,5 +1,21 @@
-remote_theme: just-the-docs/just-the-docs
+# Site settings
 title: "Two Tutorials for Mojo using Pocket Flow"
+# Remove this line as remote_theme should be used for GitHub Pages
+# theme: "just-the-docs"
+color_scheme: "light"
+# Tell Jekyll to use output/ as the documentation directory
+collections_dir: output
+# Just the Docs looks for docs in the base dir unless you set this:
+# If you want your site to start at output/index.md, add:
+defaults:
+  - scope:
+      path: "output"
+      type: "files"
+    values:
+      permalink: "/:basename/"
+
+remote_theme: just-the-docs/just-the-docs
+# title: "Two Tutorials for Mojo using Pocket Flow"
 baseurl: "/pf-understand" # the subpath of your site, e.g. /blog
 url: "https://MrBesterTester.github.io" # Done! Replace with your GitHub username
 
@@ -32,3 +48,13 @@ just_the_docs:
       name: Mojo (v1)
     mojo-v2:
       name: Mojo (v2)
+
+# Enable Mermaid diagram support
+mermaid:
+  # Version of Mermaid library
+  version: "9.1.7"
+  # Set to true to initialize mermaid
+  initialize: true
+
+# Source directory configuration
+source: output
