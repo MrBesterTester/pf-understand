@@ -8,6 +8,74 @@ import random
 import threading
 import signal
 
+"""
+call_llm.py - Google Gemini LLM API Interface
+=============================================
+
+A robust utility for interacting with Google's Gemini LLM API, featuring built-in 
+error handling, rate limiting management, response caching, and large prompt chunking.
+
+Features:
+---------
+- Automatic response caching to avoid redundant API calls
+- Smart handling of large prompts by chunking with context-aware splitting
+- Comprehensive error handling with exponential backoff for retries
+- Detailed logging of all API interactions
+- Rate limit detection and management with dynamic wait times
+- Progress indicators for long-running operations
+- Connection reset handling with cooldown periods
+
+Dependencies:
+------------
+- google.genai: Google Generative AI client library
+- Environment variable: GEMINI_API_KEY must be set
+
+Configuration:
+-------------
+- LOG_DIR: Environment variable to specify logging directory (default: "logs")
+- Cache file: "llm_cache.json" in the current directory
+
+API Reference:
+-------------
+
+call_llm(prompt: str, use_cache: bool = True) -> str
+    Send a prompt to the Google Gemini LLM and retrieve the response.
+    
+    Args:
+        prompt (str): The text prompt to send to the LLM
+        use_cache (bool, optional): Whether to use caching. Defaults to True.
+
+    Returns:
+        str: The LLM's text response
+    
+    Raises:
+        Exception: If all retry attempts fail
+    
+    Example:
+        >>> response = call_llm("Explain quantum computing")
+        >>> print(response)
+
+process_chunks_with_timeout(chunks: list, use_cache: bool) -> list
+    Process multiple text chunks with timeout protection.
+    
+    Args:
+        chunks (list): List of text chunks to process
+        use_cache (bool): Whether to use caching
+    
+    Returns:
+        list: List of responses for each chunk
+
+chunk_text(text: str, max_size: int) -> list
+    Split text into chunks of approximately max_size characters.
+    
+    Args:
+        text (str): The text to split
+        max_size (int): Maximum size of each chunk in characters
+    
+    Returns:
+        list: List of text chunks
+"""
+
 # Configure logging
 log_directory = os.getenv("LOG_DIR", "logs")
 os.makedirs(log_directory, exist_ok=True)
