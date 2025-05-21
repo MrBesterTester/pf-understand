@@ -1,3 +1,10 @@
+---
+layout: default
+title: My Tutorial for Mojo v2
+nav_order: 1
+has_children: true
+permalink: /mojo-v2/
+---
 # Tutorial: mojo
 
 The `mojo` project provides a core data structure called **NDBuffer**, which is a *non-owning, multi-dimensional view* into a block of memory, similar to a tensor. It's designed for high-performance computing by allowing direct memory manipulation via `UnsafePointer`s and supporting *efficient element access* through `Strides and Offset Computation`. `NDBuffer` can handle both *statically known and dynamically determined* dimension sizes using `DimList` and `Dim` abstractions, and it facilitates `SIMD Data Access` for accelerated, vectorized operations on data.

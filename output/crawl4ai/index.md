@@ -1,3 +1,11 @@
+---
+layout: default
+title: My Tutorial for Crawl4ai
+nav_order: 1
+has_children: true
+permalink: /crawl4AI/
+---
+
 # Tutorial: crawl4ai
 
 **Crawl4ai** is an *intelligent web crawling framework* designed specifically for AI applications. It provides **asynchronous web crawling** capabilities with configurable strategies for *content extraction*, deep website exploration, and smart URL prioritization. 

@@ -1,3 +1,10 @@
+---
+layout: default
+title: My Tutorial for Mojo v1
+nav_order: 1
+has_children: true
+permalink: /mojo-v1/
+---
 # Tutorial: mojo
 
 The project `mojo` (as represented by these abstractions) provides a system for **high-performance, multi-dimensional array (tensor) operations**.
