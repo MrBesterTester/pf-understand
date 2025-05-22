@@ -1,0 +1,34 @@
+<h1 id="tutorial-crawl4ai">Tutorial: Crawl4AI</h1>
+
+<blockquote>
+  <p>This tutorial is AI-generated! To learn more, check out <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>
+</blockquote>
+
+<p><code class="language-plaintext highlighter-rouge">Crawl4AI</code><sup><a href="https://github.com/unclecode/crawl4ai/tree/9c58e4ce2ee025debd3f36bf213330bd72b90e46/crawl4ai">View Repo</a></sup> is a flexible Python library for <em>asynchronously crawling websites</em> and <em>extracting structured content</em>, specifically designed for <strong>AI use cases</strong>.
+You primarily interact with the <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code>, which acts as the main coordinator. You provide it with URLs and a <code class="language-plaintext highlighter-rouge">CrawlerRunConfig</code> detailing <em>how</em> to crawl (e.g., using specific strategies for fetching, scraping, filtering, and extraction).
+It can handle single pages or multiple URLs concurrently using a <code class="language-plaintext highlighter-rouge">BaseDispatcher</code>, optionally crawl deeper by following links via <code class="language-plaintext highlighter-rouge">DeepCrawlStrategy</code>, manage <code class="language-plaintext highlighter-rouge">CacheMode</code>, and apply <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> before finally returning a <code class="language-plaintext highlighter-rouge">CrawlResult</code> containing all the gathered data.</p>
+
+<pre><code class="language-mermaid">flowchart TD
+    A0["AsyncWebCrawler"]
+    A1["CrawlerRunConfig"]
+    A2["AsyncCrawlerStrategy"]
+    A3["ContentScrapingStrategy"]
+    A4["ExtractionStrategy"]
+    A5["CrawlResult"]
+    A6["BaseDispatcher"]
+    A7["DeepCrawlStrategy"]
+    A8["CacheContext / CacheMode"]
+    A9["RelevantContentFilter"]
+    A0 -- "Configured by" --&gt; A1
+    A0 -- "Uses Fetching Strategy" --&gt; A2
+    A0 -- "Uses Scraping Strategy" --&gt; A3
+    A0 -- "Uses Extraction Strategy" --&gt; A4
+    A0 -- "Produces" --&gt; A5
+    A0 -- "Uses Dispatcher for `arun_m..." --&gt; A6
+    A0 -- "Uses Caching Logic" --&gt; A8
+    A6 -- "Calls Crawler's `arun`" --&gt; A0
+    A1 -- "Specifies Deep Crawl Strategy" --&gt; A7
+    A7 -- "Processes Links from" --&gt; A5
+    A3 -- "Provides Cleaned HTML to" --&gt; A9
+    A1 -- "Specifies Content Filter" --&gt; A9
+</code></pre>

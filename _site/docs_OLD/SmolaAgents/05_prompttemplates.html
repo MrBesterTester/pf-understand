@@ -1,0 +1,271 @@
+<h1 id="chapter-5-prompttemplates---crafting-your-agents-script">Chapter 5: PromptTemplates - Crafting Your Agent’s Script</h1>
+
+<p>Welcome back! In <a href="04_agentmemory.md">Chapter 4: AgentMemory</a>, we learned how our agent uses its “logbook” (<code class="language-plaintext highlighter-rouge">AgentMemory</code>) to remember the task, its past actions, and observations. This memory is crucial for deciding the next step.</p>
+
+<p>But how exactly does the agent <em>use</em> this memory to talk to its LLM brain (<a href="02_model_interface.md">Chapter 2: Model Interface</a>)? How does it tell the LLM:</p>
+<ul>
+  <li>“Here’s your overall job…”</li>
+  <li>“Here are the tools (<a href="03_tool.md">Chapter 3: Tool</a>) you can use…”</li>
+  <li>“Here’s the specific task…”</li>
+  <li>“Here’s what happened so far…”</li>
+  <li>“Now, tell me what to do next!”</li>
+</ul>
+
+<p>Simply dumping the raw memory might confuse the LLM. We need a structured way to present this information – like giving someone clear, consistent instructions. This is where <strong>PromptTemplates</strong> come in!</p>
+
+<h2 id="the-problem-giving-clear-instructions-every-time">The Problem: Giving Clear Instructions Every Time</h2>
+
+<p>Imagine you have a very capable assistant, but you need to explain their role and the current task <em>every single time</em> you talk to them. You’d want a standard way to do this, right? You’d probably have a template:</p>
+
+<ul>
+  <li>“Good morning! Remember, your main goal is [Overall Goal].”</li>
+  <li>“For this specific task, [Task Description], you have these resources available: [List of Resources].”</li>
+  <li>“So far, we’ve done [Summary of Progress].”</li>
+  <li>“What should we do next?”</li>
+</ul>
+
+<p>If you just improvised every time, your instructions might be inconsistent, confusing, or miss important details.</p>
+
+<p>Our AI agent faces the same challenge. It needs to send instructions (prompts) to the LLM at various points (like the very beginning, before each step, maybe when planning). These instructions need to include:</p>
+<ul>
+  <li>The agent’s basic persona and rules.</li>
+  <li>Descriptions of the available <a href="03_tool.md">Tools</a>.</li>
+  <li>The current <code class="language-plaintext highlighter-rouge">task</code>.</li>
+  <li>Relevant parts of the <a href="04_agentmemory.md">AgentMemory</a>.</li>
+</ul>
+
+<p>How can we manage these instructions effectively and dynamically include the specific details for the current situation?</p>
+
+<h2 id="the-solution-mad-libs-for-agents-prompttemplates">The Solution: Mad Libs for Agents! (<code class="language-plaintext highlighter-rouge">PromptTemplates</code>)</h2>
+
+<p>Remember Mad Libs? The game where you have a story template with blanks like <code class="language-plaintext highlighter-rouge">[NOUN]</code>, <code class="language-plaintext highlighter-rouge">[VERB]</code>, <code class="language-plaintext highlighter-rouge">[ADJECTIVE]</code>, and you fill them in to create a funny story?</p>
+
+<p><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Mad_Libs_logo.svg/320px-Mad_Libs_logo.svg.png" alt="Mad Libs Example" /></p>
+
+<p><strong>PromptTemplates</strong> in <code class="language-plaintext highlighter-rouge">SmolaAgents</code> work a lot like that!</p>
+
+<ul>
+  <li>They are a collection of <strong>pre-written instruction templates</strong>.</li>
+  <li>These templates have <strong>placeholders</strong> (like <code class="language-plaintext highlighter-rouge">or</code>) for information that changes with each run or step.</li>
+  <li>They use a powerful templating engine called <strong>Jinja2</strong> (common in web development) to fill in these blanks.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> automatically picks the right template, fills in the blanks with current data (like the task description, tool list from <a href="03_tool.md">Chapter 3: Tool</a>, or memory summary from <a href="04_agentmemory.md">Chapter 4: AgentMemory</a>), and sends the final, complete prompt to the LLM.</li>
+</ul>
+
+<p>This ensures the LLM gets clear, consistent, and context-rich instructions every time.</p>
+
+<h2 id="whats-inside-the-prompttemplates-collection">What’s Inside the <code class="language-plaintext highlighter-rouge">PromptTemplates</code> Collection?</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">PromptTemplates</code> object is essentially a structured dictionary holding different template strings for different situations. The main ones are:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">system_prompt</code></strong>: This is the <strong>master instruction manual</strong> given to the LLM at the very beginning of the conversation. It tells the LLM:
+    <ul>
+      <li>Its overall role or personality (e.g., “You are a helpful assistant that uses tools…”).</li>
+      <li>The rules it must follow (e.g., “Always think step-by-step,” “Use the <code class="language-plaintext highlighter-rouge">final_answer</code> tool when done.”).</li>
+      <li><strong>Crucially, the descriptions of the available <code class="language-plaintext highlighter-rouge">and</code> (if any).</strong> This is how the LLM learns what capabilities the agent has!</li>
+      <li>The format it should use for its response (e.g., “Provide your reasoning in a ‘Thought:’ section and the action in a ‘Code:’ section”).</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">planning</code></strong>: This group contains templates used only if the agent’s planning feature is turned on (often for more complex tasks). It includes templates for:
+    <ul>
+      <li>Generating an initial plan based on the <code class="language-plaintext highlighter-rouge">and</code>.</li>
+      <li>Updating the plan based on progress stored in memory.
+<em>(Planning is a bit more advanced, so we won’t focus heavily on these templates here).</em></li>
+    </ul>
+  </li>
+  <li>
+    <p><strong><code class="language-plaintext highlighter-rouge">final_answer</code></strong>: These templates are used in specific scenarios, like when the agent hits its maximum step limit (<code class="language-plaintext highlighter-rouge">max_steps</code>) and needs the LLM to try and generate a final answer based on the conversation history (``, memory).</p>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">managed_agent</code></strong>: If you build agents that can call <em>other</em> agents (like team members), these templates define how the calling agent instructs the “managed” agent (<code class="language-plaintext highlighter-rouge">,</code>) and how the result (``) is reported back.</li>
+</ol>
+
+<p>The most important one for understanding basic agent behavior is the <strong><code class="language-plaintext highlighter-rouge">system_prompt</code></strong>. It sets the stage for the entire interaction.</p>
+
+<h2 id="how-it-works-filling-in-the-blanks-with-jinja2">How It Works: Filling in the Blanks with Jinja2</h2>
+
+<p>Let’s imagine a simplified <code class="language-plaintext highlighter-rouge">system_prompt</code> template:</p>
+
+<div class="language-jinja highlighter-rouge"><div class="highlight"><pre class="highlight"><code>You are a helpful assistant.
+Your task is to achieve the goal described by the user.
+You have access to the following tools:
+
+
+Think step-by-step and then choose a tool to use or use the final_answer tool.
+</code></pre></div></div>
+
+<p>Now, let’s say our agent is created with a <code class="language-plaintext highlighter-rouge">SearchTool</code> and our <code class="language-plaintext highlighter-rouge">GreetingTool</code> from <a href="03_tool.md">Chapter 3: Tool</a>.</p>
+
+<ol>
+  <li><strong>Agent Starts:</strong> The <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> needs to prepare the initial message for the LLM.</li>
+  <li><strong>Get Template:</strong> It retrieves the <code class="language-plaintext highlighter-rouge">system_prompt</code> template string.</li>
+  <li><strong>Get Data:</strong> It gets the list of actual tool instances (<code class="language-plaintext highlighter-rouge">[SearchTool(...), GreetingTool(...)]</code>). It formats their names and descriptions into a string. Let’s say this formatted string is:
+```
+    <ul>
+      <li>web_search: Searches the web…</li>
+      <li>greet_person: Greets a person by name…</li>
+      <li>final_answer: Use this when you have the final answer…
+```</li>
+    </ul>
+  </li>
+  <li><strong>Fill Blanks (Render):</strong> It uses the Jinja2 engine to replace `` in the template with the formatted tool descriptions.</li>
+  <li>
+    <p><strong>Final Prompt:</strong> The resulting prompt sent to the LLM would be:</p>
+
+    <div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>You are a helpful assistant.
+Your task is to achieve the goal described by the user.
+You have access to the following tools:
+- web_search: Searches the web...
+- greet_person: Greets a person by name...
+- final_answer: Use this when you have the final answer...
+
+Think step-by-step and then choose a tool to use or use the final_answer tool.
+</code></pre></div>    </div>
+  </li>
+</ol>
+
+<p>This final, complete prompt gives the LLM all the context it needs to start working on the user’s task.</p>
+
+<p>Here’s a diagram of the process:</p>
+
+<pre><code class="language-mermaid">graph LR
+    A["Prompt Template String&lt;br/&gt;System Prompt with \{\{ tools \}\}"] --&gt; C{Jinja2 Engine};
+    B["Agent Data&lt;br/&gt;(Formatted Tool Descriptions)"] --&gt; C;
+    C --&gt; D["Final Prompt String&lt;br/&gt;(System Prompt with actual tools listed)"];
+    D --&gt; E["LLM Brain"];
+</code></pre>
+
+<p>The agent uses similar logic for other templates, inserting ``, snippets from <a href="04_agentmemory.md">AgentMemory</a>, etc., as needed.</p>
+
+<h2 id="using-prompttemplates-in-smolaagents">Using <code class="language-plaintext highlighter-rouge">PromptTemplates</code> in <code class="language-plaintext highlighter-rouge">SmolaAgents</code></h2>
+
+<p>The good news is that <code class="language-plaintext highlighter-rouge">SmolaAgents</code> handles most of this automatically!</p>
+
+<ul>
+  <li>
+    <p><strong>Defaults:</strong> When you create an agent like <code class="language-plaintext highlighter-rouge">CodeAgent</code> or <code class="language-plaintext highlighter-rouge">ToolCallingAgent</code>, it comes pre-loaded with sophisticated default <code class="language-plaintext highlighter-rouge">PromptTemplates</code> tailored for that agent type. These defaults live in YAML files within the <code class="language-plaintext highlighter-rouge">SmolaAgents</code> library (e.g., <code class="language-plaintext highlighter-rouge">prompts/code_agent.yaml</code>, <code class="language-plaintext highlighter-rouge">prompts/toolcalling_agent.yaml</code>). These files define the <code class="language-plaintext highlighter-rouge">system_prompt</code>, <code class="language-plaintext highlighter-rouge">planning</code> prompts, etc., with all the necessary placeholders.</p>
+  </li>
+  <li>
+    <p><strong>Automatic Loading:</strong> The agent’s <code class="language-plaintext highlighter-rouge">__init__</code> method loads these default templates unless you explicitly provide your own.</p>
+  </li>
+</ul>
+
+<p>Let’s look at a simplified snippet from <code class="language-plaintext highlighter-rouge">agents.py</code> showing how a <code class="language-plaintext highlighter-rouge">CodeAgent</code> might initialize its system prompt:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agents.py (Simplified CodeAgent __init__ and initialize_system_prompt) ---
+</span><span class="kn">import</span> <span class="nn">yaml</span>
+<span class="kn">import</span> <span class="nn">importlib.resources</span>
+<span class="kn">from</span> <span class="nn">.tools</span> <span class="kn">import</span> <span class="n">Tool</span> <span class="c1"># From Chapter 3
+</span><span class="kn">from</span> <span class="nn">.agents</span> <span class="kn">import</span> <span class="n">MultiStepAgent</span><span class="p">,</span> <span class="n">populate_template</span><span class="p">,</span> <span class="n">PromptTemplates</span> <span class="c1"># Helper function
+</span>
+<span class="k">class</span> <span class="nc">CodeAgent</span><span class="p">(</span><span class="n">MultiStepAgent</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">tools</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Tool</span><span class="p">],</span>
+        <span class="n">model</span><span class="p">:</span> <span class="nb">callable</span><span class="p">,</span>
+        <span class="n">prompt_templates</span><span class="p">:</span> <span class="n">PromptTemplates</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="c1"># Allow custom templates
+</span>        <span class="c1"># ... other parameters ...
+</span>    <span class="p">):</span>
+        <span class="c1"># 1. Load default templates if none provided
+</span>        <span class="k">if</span> <span class="n">prompt_templates</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c1"># Find the default 'code_agent.yaml' file
+</span>            <span class="n">default_yaml_path</span> <span class="o">=</span> <span class="n">importlib</span><span class="p">.</span><span class="n">resources</span><span class="p">.</span><span class="n">files</span><span class="p">(</span><span class="s">"smolagents.prompts"</span><span class="p">).</span><span class="n">joinpath</span><span class="p">(</span><span class="s">"code_agent.yaml"</span><span class="p">)</span>
+            <span class="c1"># Load the templates from the YAML file
+</span>            <span class="n">prompt_templates</span> <span class="o">=</span> <span class="n">yaml</span><span class="p">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">default_yaml_path</span><span class="p">.</span><span class="n">read_text</span><span class="p">())</span>
+
+        <span class="c1"># 2. Call the parent class init, passing the templates along
+</span>        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">(</span>
+            <span class="n">tools</span><span class="o">=</span><span class="n">tools</span><span class="p">,</span>
+            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+            <span class="n">prompt_templates</span><span class="o">=</span><span class="n">prompt_templates</span><span class="p">,</span> <span class="c1"># Use loaded or provided templates
+</span>            <span class="c1"># ... other parameters ...
+</span>        <span class="p">)</span>
+        <span class="c1"># ... rest of CodeAgent setup ...
+</span>        <span class="c1"># self.system_prompt is set later using initialize_system_prompt
+</span>
+    <span class="k">def</span> <span class="nf">initialize_system_prompt</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="s">"""Creates the final system prompt string by filling the template."""</span>
+        <span class="c1"># 3. Get necessary data (tools, managed agents, authorized imports)
+</span>        <span class="n">formatted_tools</span> <span class="o">=</span> <span class="c1"># ... format self.tools for the template ...
+</span>        <span class="n">formatted_managed_agents</span> <span class="o">=</span> <span class="c1"># ... format self.managed_agents ...
+</span>        <span class="n">authorized_imports</span> <span class="o">=</span> <span class="c1"># ... get list of allowed imports for CodeAgent ...
+</span>
+        <span class="c1"># 4. Use the populate_template helper to fill in the blanks
+</span>        <span class="n">system_prompt_string</span> <span class="o">=</span> <span class="n">populate_template</span><span class="p">(</span>
+            <span class="n">template</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">prompt_templates</span><span class="p">[</span><span class="s">"system_prompt"</span><span class="p">],</span> <span class="c1"># Get the template string
+</span>            <span class="n">variables</span><span class="o">=</span><span class="p">{</span> <span class="c1"># Provide the data for the placeholders
+</span>                <span class="s">"tools"</span><span class="p">:</span> <span class="n">formatted_tools</span><span class="p">,</span>
+                <span class="s">"managed_agents"</span><span class="p">:</span> <span class="n">formatted_managed_agents</span><span class="p">,</span>
+                <span class="s">"authorized_imports"</span><span class="p">:</span> <span class="n">authorized_imports</span><span class="p">,</span>
+                <span class="c1"># ... other potential variables ...
+</span>            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">system_prompt_string</span>
+
+    <span class="c1"># ... other CodeAgent methods ...
+</span>
+<span class="c1"># --- Helper function used internally (Simplified from agents.py) ---
+</span><span class="kn">from</span> <span class="nn">jinja2</span> <span class="kn">import</span> <span class="n">Template</span><span class="p">,</span> <span class="n">StrictUndefined</span>
+
+<span class="k">def</span> <span class="nf">populate_template</span><span class="p">(</span><span class="n">template</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">variables</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="s">"""Renders a Jinja2 template string with given variables."""</span>
+    <span class="n">compiled_template</span> <span class="o">=</span> <span class="n">Template</span><span class="p">(</span><span class="n">template</span><span class="p">,</span> <span class="n">undefined</span><span class="o">=</span><span class="n">StrictUndefined</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># This does the magic of replacing  with actual values
+</span>        <span class="k">return</span> <span class="n">compiled_template</span><span class="p">.</span><span class="n">render</span><span class="p">(</span><span class="o">**</span><span class="n">variables</span><span class="p">)</span>
+    <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="nb">Exception</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error rendering Jinja template: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Load Defaults:</strong> If the user doesn’t provide custom <code class="language-plaintext highlighter-rouge">prompt_templates</code> when creating a <code class="language-plaintext highlighter-rouge">CodeAgent</code>, it loads the defaults from the <code class="language-plaintext highlighter-rouge">code_agent.yaml</code> file.</li>
+  <li><strong>Store Templates:</strong> The loaded templates (either default or custom) are stored within the agent instance (via the <code class="language-plaintext highlighter-rouge">super().__init__</code> call).</li>
+  <li><strong>Get Data:</strong> When the agent needs the final system prompt (e.g., during <code class="language-plaintext highlighter-rouge">run</code>), the <code class="language-plaintext highlighter-rouge">initialize_system_prompt</code> method gathers the current list of tools, managed agents, etc.</li>
+  <li><strong>Render Template:</strong> It calls the <code class="language-plaintext highlighter-rouge">populate_template</code> helper function. This function uses Jinja2’s <code class="language-plaintext highlighter-rouge">Template(...).render(...)</code> to take the <code class="language-plaintext highlighter-rouge">system_prompt</code> template string and the collected <code class="language-plaintext highlighter-rouge">variables</code> (tools, etc.) and produces the final, ready-to-use prompt string.</li>
+</ol>
+
+<p><em>For beginners, you usually don’t need to write your own templates. The defaults are designed to work well.</em> However, understanding that these templates exist and how they work helps you understand <em>why</em> the agent behaves the way it does and how it knows about its tools.</p>
+
+<p>If you <em>do</em> want to see what these templates look like, you can inspect the <code class="language-plaintext highlighter-rouge">.yaml</code> files inside the <code class="language-plaintext highlighter-rouge">smolagents/prompts/</code> directory in the library’s source code. For example, here’s a small part of a typical <code class="language-plaintext highlighter-rouge">system_prompt</code> for a <code class="language-plaintext highlighter-rouge">CodeAgent</code>:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Snippet from prompts/code_agent.yaml ---</span>
+<span class="na">system_prompt</span><span class="pi">:</span> <span class="pi">|-</span>
+  <span class="s">You are an expert assistant who can solve any task using code blobs.</span>
+  <span class="s"># ... (lots of instructions and examples) ...</span>
+
+  <span class="s">You only have access to these tools:</span>
+
+  <span class="s">Here are the rules you should always follow:</span>
+  <span class="s"># ... (more rules) ...</span>
+  <span class="s">You can use imports in your code, but only from the following list of modules: </span>
+  <span class="s"># ... (rest of the prompt) ...</span>
+</code></pre></div></div>
+
+<p>You can see the <code class="language-plaintext highlighter-rouge">{{ tools }}</code>, <code class="language-plaintext highlighter-rouge">{{ managed_agents }}</code>, and <code class="language-plaintext highlighter-rouge">{{ authorized_imports }}</code> placeholders ready to be filled in. The <code class="language-plaintext highlighter-rouge">{%- for ... %}</code> syntax is Jinja2’s way of looping through lists (like the list of tools).</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p><code class="language-plaintext highlighter-rouge">PromptTemplates</code> are the unsung heroes that shape the conversation between the agent and its LLM brain. They act like customizable scripts or Mad Libs templates, ensuring the LLM receives clear, consistent instructions filled with the specific details it needs (like the task, available tools, and memory context).</p>
+
+<p>You’ve learned:</p>
+
+<ul>
+  <li>Why structured prompts are necessary for guiding LLMs effectively.</li>
+  <li>The “Mad Libs” analogy for <code class="language-plaintext highlighter-rouge">PromptTemplates</code>.</li>
+  <li>How Jinja2 is used to fill placeholders like <code class="language-plaintext highlighter-rouge">{{ task }}</code> and <code class="language-plaintext highlighter-rouge">{{ tools }}</code>.</li>
+  <li>The main types of prompts stored (<code class="language-plaintext highlighter-rouge">system_prompt</code>, <code class="language-plaintext highlighter-rouge">planning</code>, <code class="language-plaintext highlighter-rouge">final_answer</code>).</li>
+  <li>That <code class="language-plaintext highlighter-rouge">SmolaAgents</code> provides sensible default templates, especially the crucial <code class="language-plaintext highlighter-rouge">system_prompt</code>.</li>
+  <li>How the agent automatically renders these templates with current data before sending them to the LLM.</li>
+</ul>
+
+<p>Understanding <code class="language-plaintext highlighter-rouge">PromptTemplates</code> helps you grasp how the agent frames its requests to the LLM. While you might stick to the defaults initially, knowing this mechanism exists opens the door to customizing agent behavior later on.</p>
+
+<p>One of the most powerful tools often described in these prompts, especially for <code class="language-plaintext highlighter-rouge">CodeAgent</code>, is the ability to execute Python code. How is that done safely? Let’s find out!</p>
+
+<p><strong>Next Chapter:</strong> <a href="06_pythonexecutor.md">Chapter 6: PythonExecutor</a> - Running Code Safely.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

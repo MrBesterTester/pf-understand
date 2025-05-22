@@ -1,0 +1,258 @@
+<h1 id="chapter-4-predict---the-basic-lm-caller">Chapter 4: Predict - The Basic LM Caller</h1>
+
+<p>In <a href="03_example.md">Chapter 3: Example</a>, we learned how to create <code class="language-plaintext highlighter-rouge">dspy.Example</code> objects to represent our data points – like flashcards holding an input and its corresponding desired output. We also saw in <a href="02_signature.md">Chapter 2: Signature</a> how to define the <em>task</em> itself using <code class="language-plaintext highlighter-rouge">dspy.Signature</code>.</p>
+
+<p>Now, we have the recipe (<code class="language-plaintext highlighter-rouge">Signature</code>) and some sample dishes (<code class="language-plaintext highlighter-rouge">Example</code>s). How do we actually get the chef (our Language Model or LM) to cook? How do we combine the instructions from the <code class="language-plaintext highlighter-rouge">Signature</code> and maybe some <code class="language-plaintext highlighter-rouge">Example</code>s to prompt the LM and get a result back?</p>
+
+<p>This is where <strong><code class="language-plaintext highlighter-rouge">dspy.Predict</code></strong> comes in! It’s the most fundamental way in DSPy to make a single call to a Language Model.</p>
+
+<p>Think of <code class="language-plaintext highlighter-rouge">dspy.Predict</code> as:</p>
+
+<ul>
+  <li><strong>A Basic Request:</strong> Like asking the LM to do <em>one specific thing</em> based on instructions.</li>
+  <li><strong>The Workhorse:</strong> It handles formatting the input, calling the LM, and extracting the answer.</li>
+  <li><strong>A Single Lego Brick:</strong> It’s the simplest “thinking” block in DSPy, directly using the LM’s power.</li>
+</ul>
+
+<p>In this chapter, we’ll learn:</p>
+
+<ul>
+  <li>What <code class="language-plaintext highlighter-rouge">dspy.Predict</code> does.</li>
+  <li>How to use it with a <code class="language-plaintext highlighter-rouge">Signature</code>.</li>
+  <li>How it turns your instructions and data into an LM call.</li>
+  <li>How to get the generated output.</li>
+</ul>
+
+<p>Let’s make our first LM call!</p>
+
+<h2 id="what-is-dspypredict">What is <code class="language-plaintext highlighter-rouge">dspy.Predict</code>?</h2>
+
+<p><code class="language-plaintext highlighter-rouge">dspy.Predict</code> is a DSPy <a href="01_module___program.md">Module</a>. Its job is simple but essential:</p>
+
+<ol>
+  <li><strong>Takes a <code class="language-plaintext highlighter-rouge">Signature</code>:</strong> When you create a <code class="language-plaintext highlighter-rouge">dspy.Predict</code> module, you tell it which <code class="language-plaintext highlighter-rouge">Signature</code> to use. This tells <code class="language-plaintext highlighter-rouge">Predict</code> what inputs to expect, what outputs to produce, and the instructions for the LM.</li>
+  <li><strong>Receives Inputs:</strong> When you call the <code class="language-plaintext highlighter-rouge">Predict</code> module, you provide the input data (matching the <code class="language-plaintext highlighter-rouge">Signature</code>’s input fields).</li>
+  <li><strong>Formats a Prompt:</strong> It combines the <code class="language-plaintext highlighter-rouge">Signature</code>’s instructions, the input data you provided, and potentially some <code class="language-plaintext highlighter-rouge">Example</code>s (called demonstrations or “demos”) into a text prompt suitable for an LM.</li>
+  <li><strong>Calls the LM:</strong> It sends this carefully crafted prompt to the configured Language Model (<a href="05_lm__language_model_client_.md">Chapter 5: LM (Language Model Client)</a>).</li>
+  <li><strong>Parses the Output:</strong> It takes the LM’s generated text response and tries to extract the specific pieces of information defined by the <code class="language-plaintext highlighter-rouge">Signature</code>’s output fields.</li>
+  <li><strong>Returns a <code class="language-plaintext highlighter-rouge">Prediction</code>:</strong> It gives you back a structured object (a <code class="language-plaintext highlighter-rouge">dspy.Prediction</code>) containing the extracted output fields.</li>
+</ol>
+
+<p>It’s the core mechanism for executing a single, defined prediction task using an LM.</p>
+
+<h2 id="using-dspypredict">Using <code class="language-plaintext highlighter-rouge">dspy.Predict</code></h2>
+
+<p>Let’s use our <code class="language-plaintext highlighter-rouge">TranslateToFrench</code> signature from Chapter 2 to see <code class="language-plaintext highlighter-rouge">dspy.Predict</code> in action.</p>
+
+<p><strong>1. Define the Signature (Recap):</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">dspy</span>
+<span class="kn">from</span> <span class="nn">dspy.signatures.field</span> <span class="kn">import</span> <span class="n">InputField</span><span class="p">,</span> <span class="n">OutputField</span>
+
+<span class="k">class</span> <span class="nc">TranslateToFrench</span><span class="p">(</span><span class="n">dspy</span><span class="p">.</span><span class="n">Signature</span><span class="p">):</span>
+    <span class="s">"""Translates English text to French."""</span>
+    <span class="n">english_sentence</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">InputField</span><span class="p">(</span><span class="n">desc</span><span class="o">=</span><span class="s">"The original sentence in English"</span><span class="p">)</span>
+    <span class="n">french_sentence</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">OutputField</span><span class="p">(</span><span class="n">desc</span><span class="o">=</span><span class="s">"The translated sentence in French"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This signature tells our module it needs <code class="language-plaintext highlighter-rouge">english_sentence</code> and should produce <code class="language-plaintext highlighter-rouge">french_sentence</code>, following the instruction “Translates English text to French.”</p>
+
+<p><strong>2. Configure the Language Model (A Sneak Peek):</strong></p>
+
+<p>Before using <code class="language-plaintext highlighter-rouge">Predict</code>, DSPy needs to know <em>which</em> LM to talk to (like OpenAI’s GPT-3.5, a local model, etc.). We’ll cover this fully in <a href="05_lm__language_model_client_.md">Chapter 5: LM (Language Model Client)</a>, but here’s a quick example:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Assume you have an OpenAI API key configured
+# We'll explain this properly in the next chapter!
+</span><span class="n">gpt3_turbo</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">OpenAI</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s">'gpt-3.5-turbo'</span><span class="p">)</span>
+<span class="n">dspy</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">configure</span><span class="p">(</span><span class="n">lm</span><span class="o">=</span><span class="n">gpt3_turbo</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This tells DSPy to use the <code class="language-plaintext highlighter-rouge">gpt-3.5-turbo</code> model for any LM calls.</p>
+
+<p><strong>3. Create and Use <code class="language-plaintext highlighter-rouge">dspy.Predict</code>:</strong></p>
+
+<p>Now we can create our translator module using <code class="language-plaintext highlighter-rouge">dspy.Predict</code> and our signature.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Create a Predict module using our signature
+</span><span class="n">translator</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Predict</span><span class="p">(</span><span class="n">TranslateToFrench</span><span class="p">)</span>
+
+<span class="c1"># Prepare the input data
+</span><span class="n">english_input</span> <span class="o">=</span> <span class="s">"Hello, how are you?"</span>
+
+<span class="c1"># Call the predictor with the input field name from the signature
+</span><span class="n">result</span> <span class="o">=</span> <span class="n">translator</span><span class="p">(</span><span class="n">english_sentence</span><span class="o">=</span><span class="n">english_input</span><span class="p">)</span>
+
+<span class="c1"># Access the output field name from the signature
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"English: </span><span class="si">{</span><span class="n">english_input</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"French: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">french_sentence</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>What happens here?</strong></p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">translator = dspy.Predict(TranslateToFrench)</code>: We create an instance of <code class="language-plaintext highlighter-rouge">Predict</code>, telling it to use the <code class="language-plaintext highlighter-rouge">TranslateToFrench</code> signature.</li>
+  <li><code class="language-plaintext highlighter-rouge">result = translator(english_sentence=english_input)</code>: We <em>call</em> the <code class="language-plaintext highlighter-rouge">translator</code> module like a function. We pass the input using the keyword argument <code class="language-plaintext highlighter-rouge">english_sentence</code>, which matches the <code class="language-plaintext highlighter-rouge">InputField</code> name in our signature.</li>
+  <li><code class="language-plaintext highlighter-rouge">result.french_sentence</code>: <code class="language-plaintext highlighter-rouge">Predict</code> works its magic! It builds a prompt (using the signature’s instructions and the input), sends it to GPT-3.5 Turbo, gets the French translation back, parses it, and stores it in the <code class="language-plaintext highlighter-rouge">result</code> object. We access the translation using the <code class="language-plaintext highlighter-rouge">OutputField</code> name, <code class="language-plaintext highlighter-rouge">french_sentence</code>.</li>
+</ol>
+
+<p><strong>Expected Output (might vary slightly based on the LM):</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>English: Hello, how are you?
+French: Bonjour, comment ça va?
+</code></pre></div></div>
+
+<p>It worked! <code class="language-plaintext highlighter-rouge">dspy.Predict</code> successfully used the LM to perform the translation task defined by our signature.</p>
+
+<h2 id="giving-examples-few-shot-learning">Giving Examples (Few-Shot Learning)</h2>
+
+<p>Sometimes, just instructions aren’t enough for the LM to understand the <em>exact format</em> or style you want. You can provide a few examples (<code class="language-plaintext highlighter-rouge">dspy.Example</code> objects from <a href="03_example.md">Chapter 3: Example</a>) to guide it better. This is called “few-shot learning”.</p>
+
+<p>You pass these examples using the <code class="language-plaintext highlighter-rouge">demos</code> argument when calling the <code class="language-plaintext highlighter-rouge">Predict</code> module.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Create some example translations (from Chapter 3)
+</span><span class="n">demo1</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Example</span><span class="p">(</span><span class="n">english_sentence</span><span class="o">=</span><span class="s">"Good morning!"</span><span class="p">,</span> <span class="n">french_sentence</span><span class="o">=</span><span class="s">"Bonjour!"</span><span class="p">)</span>
+<span class="n">demo2</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Example</span><span class="p">(</span><span class="n">english_sentence</span><span class="o">=</span><span class="s">"Thank you."</span><span class="p">,</span> <span class="n">french_sentence</span><span class="o">=</span><span class="s">"Merci."</span><span class="p">)</span>
+
+<span class="c1"># Our translator module (same as before)
+</span><span class="n">translator</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Predict</span><span class="p">(</span><span class="n">TranslateToFrench</span><span class="p">)</span>
+
+<span class="c1"># Input we want to translate
+</span><span class="n">english_input</span> <span class="o">=</span> <span class="s">"See you later."</span>
+
+<span class="c1"># Call the predictor, this time providing demos
+</span><span class="n">result_with_demos</span> <span class="o">=</span> <span class="n">translator</span><span class="p">(</span>
+    <span class="n">english_sentence</span><span class="o">=</span><span class="n">english_input</span><span class="p">,</span>
+    <span class="n">demos</span><span class="o">=</span><span class="p">[</span><span class="n">demo1</span><span class="p">,</span> <span class="n">demo2</span><span class="p">]</span> <span class="c1"># Pass our examples here!
+</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"English: </span><span class="si">{</span><span class="n">english_input</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"French (with demos): </span><span class="si">{</span><span class="n">result_with_demos</span><span class="p">.</span><span class="n">french_sentence</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>What’s different?</strong></p>
+
+<ul>
+  <li>We created <code class="language-plaintext highlighter-rouge">demo1</code> and <code class="language-plaintext highlighter-rouge">demo2</code>, which are <code class="language-plaintext highlighter-rouge">dspy.Example</code> objects containing both the English and French sentences.</li>
+  <li>We passed <code class="language-plaintext highlighter-rouge">demos=[demo1, demo2]</code> when calling <code class="language-plaintext highlighter-rouge">translator</code>.</li>
+</ul>
+
+<p>Now, <code class="language-plaintext highlighter-rouge">dspy.Predict</code> will format the prompt to include these examples <em>before</em> asking the LM to translate the new input. This often leads to more accurate or better-formatted results, especially for complex tasks.</p>
+
+<p><strong>Expected Output (likely similar, but potentially more consistent):</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>English: See you later.
+French (with demos): À plus tard.
+</code></pre></div></div>
+
+<h2 id="how-it-works-under-the-hood">How It Works Under the Hood</h2>
+
+<p>What actually happens when you call <code class="language-plaintext highlighter-rouge">translator(english_sentence=...)</code>?</p>
+
+<ol>
+  <li><strong>Gather Information:</strong> The <code class="language-plaintext highlighter-rouge">Predict</code> module (<code class="language-plaintext highlighter-rouge">translator</code>) gets the input value (<code class="language-plaintext highlighter-rouge">"Hello, how are you?"</code>) and any <code class="language-plaintext highlighter-rouge">demos</code> provided. It already knows its <code class="language-plaintext highlighter-rouge">Signature</code> (<code class="language-plaintext highlighter-rouge">TranslateToFrench</code>).</li>
+  <li><strong>Format Prompt:</strong> It constructs a text prompt for the LM. This prompt usually includes:
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">Signature</code>’s instructions (<code class="language-plaintext highlighter-rouge">"Translates English text to French."</code>).</li>
+      <li>The <code class="language-plaintext highlighter-rouge">demos</code> (if provided), formatted clearly (e.g., “English: Good morning!\nFrench: Bonjour!\n—\nEnglish: Thank you.\nFrench: Merci.\n—”).</li>
+      <li>The current input, labeled according to the <code class="language-plaintext highlighter-rouge">Signature</code> (<code class="language-plaintext highlighter-rouge">"English: Hello, how are you?"</code>).</li>
+      <li>A label indicating where the LM should put its answer (<code class="language-plaintext highlighter-rouge">"French:"</code>).</li>
+    </ul>
+  </li>
+  <li><strong>LM Call:</strong> The <code class="language-plaintext highlighter-rouge">Predict</code> module sends this complete prompt string to the configured <a href="05_lm__language_model_client_.md">LM</a> (e.g., GPT-3.5 Turbo).</li>
+  <li><strong>Receive Completion:</strong> The LM generates text based on the prompt (e.g., it might return <code class="language-plaintext highlighter-rouge">"Bonjour, comment ça va?"</code>).</li>
+  <li><strong>Parse Output:</strong> <code class="language-plaintext highlighter-rouge">Predict</code> looks at the <code class="language-plaintext highlighter-rouge">Signature</code>’s <code class="language-plaintext highlighter-rouge">OutputField</code>s (<code class="language-plaintext highlighter-rouge">french_sentence</code>). It parses the LM’s completion to extract the value corresponding to <code class="language-plaintext highlighter-rouge">french_sentence</code>.</li>
+  <li><strong>Return Prediction:</strong> It bundles the extracted output(s) into a <code class="language-plaintext highlighter-rouge">dspy.Prediction</code> object and returns it. You can then access the results like <code class="language-plaintext highlighter-rouge">result.french_sentence</code>.</li>
+</ol>
+
+<p>Let’s visualize this flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant PredictModule as translator (Predict)
+    participant Signature as TranslateToFrench
+    participant LM as Language Model Client
+
+    User-&gt;&gt;PredictModule: Call with english_sentence="Hello", demos=[...]
+    PredictModule-&gt;&gt;Signature: Get Instructions, Input/Output Fields
+    Signature--&gt;&gt;PredictModule: Return structure ("Translate...", "english_sentence", "french_sentence")
+    PredictModule-&gt;&gt;PredictModule: Format prompt (Instructions + Demos + Input + Output Label)
+    PredictModule-&gt;&gt;LM: Send formatted prompt ("Translate...\nEnglish: ...\nFrench: ...\n---\nEnglish: Hello\nFrench:")
+    LM--&gt;&gt;PredictModule: Return completion text ("Bonjour, comment ça va?")
+    PredictModule-&gt;&gt;Signature: Parse completion for 'french_sentence'
+    Signature--&gt;&gt;PredictModule: Return parsed value {"french_sentence": "Bonjour, comment ça va?"}
+    PredictModule--&gt;&gt;User: Return Prediction object (result)
+</code></pre>
+
+<p>The core logic resides in <code class="language-plaintext highlighter-rouge">dspy/predict/predict.py</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from dspy/predict/predict.py
+</span>
+<span class="kn">from</span> <span class="nn">dspy.primitives.program</span> <span class="kn">import</span> <span class="n">Module</span>
+<span class="kn">from</span> <span class="nn">dspy.primitives.prediction</span> <span class="kn">import</span> <span class="n">Prediction</span>
+<span class="kn">from</span> <span class="nn">dspy.signatures.signature</span> <span class="kn">import</span> <span class="n">ensure_signature</span>
+<span class="kn">from</span> <span class="nn">dspy.dsp.utils</span> <span class="kn">import</span> <span class="n">settings</span> <span class="c1"># To get the configured LM
+</span>
+<span class="k">class</span> <span class="nc">Predict</span><span class="p">(</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">signature</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="c1"># Store the signature and any extra configuration
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">signature</span> <span class="o">=</span> <span class="n">ensure_signature</span><span class="p">(</span><span class="n">signature</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span>
+        <span class="c1"># Other initializations (demos, etc.)
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">demos</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">lm</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># LM will be set later or taken from settings
+</span>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># Get signature, demos, and LM (either passed in or from settings)
+</span>        <span class="n">signature</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">signature</span> <span class="c1"># Use the stored signature
+</span>        <span class="n">demos</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">.</span><span class="n">pop</span><span class="p">(</span><span class="s">"demos"</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">demos</span><span class="p">)</span> <span class="c1"># Get demos if provided
+</span>        <span class="n">lm</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">.</span><span class="n">pop</span><span class="p">(</span><span class="s">"lm"</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">lm</span><span class="p">)</span> <span class="ow">or</span> <span class="n">settings</span><span class="p">.</span><span class="n">lm</span> <span class="c1"># Find the LM to use
+</span>
+        <span class="c1"># Prepare inputs for the LM call
+</span>        <span class="n">inputs</span> <span class="o">=</span> <span class="n">kwargs</span> <span class="c1"># Remaining kwargs are the inputs
+</span>
+        <span class="c1"># --- This is where the magic happens ---
+</span>        <span class="c1"># 1. Format the prompt using signature, demos, inputs
+</span>        <span class="c1">#    (Simplified - actual formatting is more complex)
+</span>        <span class="n">prompt</span> <span class="o">=</span> <span class="n">format_prompt</span><span class="p">(</span><span class="n">signature</span><span class="p">,</span> <span class="n">demos</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span>
+
+        <span class="c1"># 2. Call the Language Model
+</span>        <span class="c1">#    (Simplified - handles retries, multiple generations etc.)
+</span>        <span class="n">lm_output_text</span> <span class="o">=</span> <span class="n">lm</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="p">.</span><span class="n">config</span><span class="p">)</span>
+
+        <span class="c1"># 3. Parse the LM's output text based on the signature's output fields
+</span>        <span class="c1">#    (Simplified - extracts fields like 'french_sentence')
+</span>        <span class="n">parsed_output</span> <span class="o">=</span> <span class="n">parse_output</span><span class="p">(</span><span class="n">signature</span><span class="p">,</span> <span class="n">lm_output_text</span><span class="p">)</span>
+        <span class="c1"># --- End Magic ---
+</span>
+        <span class="c1"># 4. Create and return a Prediction object
+</span>        <span class="n">prediction</span> <span class="o">=</span> <span class="n">Prediction</span><span class="p">(</span><span class="n">signature</span><span class="o">=</span><span class="n">signature</span><span class="p">,</span> <span class="o">**</span><span class="n">parsed_output</span><span class="p">)</span>
+        <span class="c1"># (Optionally trace the call)
+</span>        <span class="c1"># settings.trace.append(...)
+</span>
+        <span class="k">return</span> <span class="n">prediction</span>
+
+<span class="c1"># (Helper functions format_prompt and parse_output would exist elsewhere)
+</span></code></pre></div></div>
+
+<p>This simplified code shows the key steps: initialize with a signature, and in the <code class="language-plaintext highlighter-rouge">forward</code> method, use the signature, demos, and inputs to format a prompt, call the LM, parse the output, and return a <code class="language-plaintext highlighter-rouge">Prediction</code>. The <code class="language-plaintext highlighter-rouge">dspy.Prediction</code> object itself (defined in <code class="language-plaintext highlighter-rouge">dspy/primitives/prediction.py</code>) is essentially a specialized container holding the results corresponding to the signature’s output fields.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now learned about <code class="language-plaintext highlighter-rouge">dspy.Predict</code>, the fundamental building block in DSPy for making a single call to a Language Model!</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">dspy.Predict</code> takes a <code class="language-plaintext highlighter-rouge">Signature</code> to understand the task (inputs, outputs, instructions).</li>
+  <li>It formats a prompt, calls the LM, and parses the response.</li>
+  <li>You call it like a function, passing inputs that match the <code class="language-plaintext highlighter-rouge">Signature</code>’s <code class="language-plaintext highlighter-rouge">InputField</code>s.</li>
+  <li>It returns a <code class="language-plaintext highlighter-rouge">dspy.Prediction</code> object containing the results, accessible via the <code class="language-plaintext highlighter-rouge">Signature</code>’s <code class="language-plaintext highlighter-rouge">OutputField</code> names.</li>
+  <li>You can provide few-shot <code class="language-plaintext highlighter-rouge">Example</code>s via the <code class="language-plaintext highlighter-rouge">demos</code> argument to guide the LM.</li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">Predict</code> is the simplest way to leverage an LM in DSPy. But how do we actually connect DSPy to different LMs like those from OpenAI, Anthropic, Cohere, or even models running on your own machine? That’s what we’ll explore next!</p>
+
+<p><strong>Next:</strong> <a href="05_lm__language_model_client_.md">Chapter 5: LM (Language Model Client)</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

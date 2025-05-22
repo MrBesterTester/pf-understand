@@ -1,0 +1,347 @@
+<h1 id="chapter-5-dependency-injection">Chapter 5: Dependency Injection</h1>
+
+<p>Welcome back! In <a href="04_openapi___automatic_docs.md">Chapter 4: OpenAPI &amp; Automatic Docs</a>, we saw how FastAPI automatically generates interactive documentation for our API, making it easy for others (and ourselves!) to understand and use. This works because FastAPI understands the structure of our paths, parameters, and Pydantic models.</p>
+
+<p>Now, let’s explore another powerful feature that helps us write cleaner, more reusable, and better-organized code: <strong>Dependency Injection</strong>.</p>
+
+<h2 id="what-problem-does-this-solve">What Problem Does This Solve?</h2>
+
+<p>Imagine you’re building several API endpoints, and many of them need the same piece of information or the same setup step performed before they can do their main job. For example:</p>
+
+<ul>
+  <li><strong>Database Connection:</strong> Many endpoints might need to talk to a database. You need to get a database “session” or connection first.</li>
+  <li><strong>User Authentication:</strong> Many endpoints might require the user to be logged in. You need to check their credentials (like a token in a header) and fetch their user details.</li>
+  <li><strong>Common Parameters:</strong> Maybe several endpoints share common query parameters like <code class="language-plaintext highlighter-rouge">skip</code> and <code class="language-plaintext highlighter-rouge">limit</code> for pagination.</li>
+</ul>
+
+<p>You <em>could</em> write the code to get the database session, check the user, or parse the pagination parameters inside <em>each</em> path operation function. But that would be very repetitive (violating the DRY - Don’t Repeat Yourself - principle) and hard to maintain. If you need to change how you get a database session, you’d have to update it in many places!</p>
+
+<p>FastAPI’s <strong>Dependency Injection (DI)</strong> system provides an elegant solution to this. It allows you to define these common pieces of logic (like getting a user or a DB session) as separate, reusable functions called “dependencies”. Then, you simply “declare” that your path operation function needs the result of that dependency, and FastAPI automatically takes care of running the dependency and providing (“injecting”) the result into your function.</p>
+
+<p><strong>Our Goal Today:</strong> Learn how to use FastAPI’s <code class="language-plaintext highlighter-rouge">Depends</code> function to manage dependencies, reuse code, and make our API logic cleaner and more modular.</p>
+
+<p><strong>Analogy:</strong> Think of your path operation function as the main chef preparing a dish (handling the request). Before the chef can cook, they might need specific ingredients prepared or tools set up. Dependency Injection is like having specialized assistants (dependencies):</p>
+<ul>
+  <li>One assistant fetches fresh vegetables (e.g., gets common query parameters).</li>
+  <li>Another assistant prepares the cooking station (e.g., gets a database session).</li>
+  <li>Another assistant checks the order ticket to see who the dish is for (e.g., authenticates the user).</li>
+</ul>
+
+<p>The chef simply tells the head waiter (<code class="language-plaintext highlighter-rouge">Depends</code>) what they need (“I need prepared vegetables”, “I need the cooking station ready”), and the assistants automatically provide them just in time. The chef doesn’t need to know the details of <em>how</em> the vegetables were fetched or the station prepared; they just get the result.</p>
+
+<h2 id="key-concepts">Key Concepts</h2>
+
+<ol>
+  <li><strong>Dependency:</strong> A function (or other callable) that provides some value needed by your path operation function (or even by another dependency). Examples: a function to get the current user, a function to connect to the database, a function to parse common query parameters.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Depends</code>:</strong> A special function imported from <code class="language-plaintext highlighter-rouge">fastapi</code> (<code class="language-plaintext highlighter-rouge">from fastapi import Depends</code>) that you use in the parameters of your path operation function to signal that it requires a dependency. You use it like this: <code class="language-plaintext highlighter-rouge">parameter_name: Annotated[ReturnType, Depends(dependency_function)]</code>.</li>
+  <li><strong>Injection:</strong> FastAPI “injects” the <em>result</em> returned by the dependency function into the parameter of your path operation function. If <code class="language-plaintext highlighter-rouge">dependency_function()</code> returns the value <code class="language-plaintext highlighter-rouge">10</code>, then <code class="language-plaintext highlighter-rouge">parameter_name</code> will be <code class="language-plaintext highlighter-rouge">10</code> inside your path function.</li>
+  <li><strong>Automatic Execution:</strong> FastAPI automatically figures out which dependencies are needed for a given request, calls them in the correct order (if dependencies depend on others), and manages their results.</li>
+  <li><strong>Reusability:</strong> Define a dependency once, and use <code class="language-plaintext highlighter-rouge">Depends(your_dependency)</code> in multiple path operations.</li>
+  <li><strong>Caching (Per Request):</strong> By default, if a dependency is declared multiple times for the <em>same request</em> (e.g., if multiple path operation parameters need it, or if other dependencies need it), FastAPI will only run the dependency function <em>once</em> per request and reuse the result. This is efficient, especially for things like database connections or fetching user data. You can disable this cache if needed.</li>
+  <li><strong>Hierarchy:</strong> Dependencies can depend on other dependencies using <code class="language-plaintext highlighter-rouge">Depends</code> in their own parameters, forming a chain or tree of dependencies. FastAPI resolves this entire structure.</li>
+</ol>
+
+<h2 id="using-dependencies-a-simple-example">Using Dependencies: A Simple Example</h2>
+
+<p>Let’s start with a very common scenario: having shared query parameters for pagination.</p>
+
+<ol>
+  <li>
+    <p><strong>Define the Dependency Function:</strong> Create a regular Python function that takes the parameters you want to share.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># common_dependencies.py (or within your router file)
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Annotated</span>
+<span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">Query</span>
+
+<span class="c1"># This is our dependency function
+# It takes the common query parameters
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">common_parameters</span><span class="p">(</span>
+    <span class="n">q</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="bp">None</span><span class="p">,</span> <span class="n">Query</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"Optional query string"</span><span class="p">)]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+    <span class="n">skip</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Query</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"Items to skip"</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">limit</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Query</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"Max items to return"</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">100</span><span class="p">)]</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="c1"># It simply returns a dictionary containing these parameters
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"q"</span><span class="p">:</span> <span class="n">q</span><span class="p">,</span> <span class="s">"skip"</span><span class="p">:</span> <span class="n">skip</span><span class="p">,</span> <span class="s">"limit"</span><span class="p">:</span> <span class="n">limit</span><span class="p">}</span>
+
+</code></pre></div>    </div>
+
+    <p><strong>Explanation:</strong></p>
+    <ul>
+      <li>This looks like a normal function that could handle path operation parameters.</li>
+      <li>It takes <code class="language-plaintext highlighter-rouge">q</code>, <code class="language-plaintext highlighter-rouge">skip</code>, and <code class="language-plaintext highlighter-rouge">limit</code> as arguments, using <code class="language-plaintext highlighter-rouge">Query</code> for validation and documentation just like we learned in <a href="02_path_operations___parameter_declaration.md">Chapter 2: Path Operations &amp; Parameter Declaration</a>.</li>
+      <li>It returns a dictionary containing the values it received. This dictionary will be the “result” injected into our path functions.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Use <code class="language-plaintext highlighter-rouge">Depends</code> in Path Operations:</strong> Now, import <code class="language-plaintext highlighter-rouge">Depends</code> and your dependency function, and use it in your path operation parameters.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># routers/items.py (example)
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Annotated</span>
+<span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">Depends</span>
+<span class="c1"># Assume common_parameters is defined in common_dependencies.py
+</span><span class="kn">from</span> <span class="nn">..common_dependencies</span> <span class="kn">import</span> <span class="n">common_parameters</span>
+
+<span class="n">router</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">()</span>
+
+<span class="c1"># Fake data for demonstration
+</span><span class="n">fake_items</span> <span class="o">=</span> <span class="p">[{</span><span class="s">"item_name"</span><span class="p">:</span> <span class="s">"Foo"</span><span class="p">},</span> <span class="p">{</span><span class="s">"item_name"</span><span class="p">:</span> <span class="s">"Bar"</span><span class="p">},</span> <span class="p">{</span><span class="s">"item_name"</span><span class="p">:</span> <span class="s">"Baz"</span><span class="p">}]</span>
+
+<span class="o">@</span><span class="n">router</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"/items/"</span><span class="p">)</span>
+<span class="c1"># Here's the magic! Declare 'commons' parameter using Depends
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">read_items</span><span class="p">(</span>
+    <span class="n">commons</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="n">Depends</span><span class="p">(</span><span class="n">common_parameters</span><span class="p">)]</span> <span class="c1"># Dependency Injection!
+</span><span class="p">):</span>
+    <span class="c1"># Inside this function, 'commons' will be the dictionary returned
+</span>    <span class="c1"># by common_parameters after FastAPI calls it with the query params.
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Received common parameters: </span><span class="si">{</span><span class="n">commons</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+    <span class="c1"># Use the values from the dependency
+</span>    <span class="n">q</span> <span class="o">=</span> <span class="n">commons</span><span class="p">[</span><span class="s">"q"</span><span class="p">]</span>
+    <span class="n">skip</span> <span class="o">=</span> <span class="n">commons</span><span class="p">[</span><span class="s">"skip"</span><span class="p">]</span>
+    <span class="n">limit</span> <span class="o">=</span> <span class="n">commons</span><span class="p">[</span><span class="s">"limit"</span><span class="p">]</span>
+
+    <span class="n">response_items</span> <span class="o">=</span> <span class="n">fake_items</span><span class="p">[</span><span class="n">skip</span> <span class="p">:</span> <span class="n">skip</span> <span class="o">+</span> <span class="n">limit</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">q</span><span class="p">:</span>
+        <span class="n">response_items</span> <span class="o">=</span> <span class="p">[</span><span class="n">item</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">response_items</span> <span class="k">if</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">item</span><span class="p">[</span><span class="s">"item_name"</span><span class="p">]]</span>
+    <span class="k">return</span> <span class="n">response_items</span>
+
+<span class="o">@</span><span class="n">router</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"/users/"</span><span class="p">)</span>
+<span class="c1"># We can reuse the SAME dependency here!
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">read_users</span><span class="p">(</span>
+    <span class="n">commons</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="n">Depends</span><span class="p">(</span><span class="n">common_parameters</span><span class="p">)]</span> <span class="c1"># Reusing the dependency
+</span><span class="p">):</span>
+    <span class="c1"># 'commons' will again be the dict returned by common_parameters
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Received common parameters for users: </span><span class="si">{</span><span class="n">commons</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Imagine fetching users using commons['skip'], commons['limit']...
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"message"</span><span class="p">:</span> <span class="s">"Users endpoint"</span><span class="p">,</span> <span class="s">"params"</span><span class="p">:</span> <span class="n">commons</span><span class="p">}</span>
+
+</code></pre></div>    </div>
+
+    <p><strong>Explanation:</strong></p>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">from fastapi import Depends</code>: We import <code class="language-plaintext highlighter-rouge">Depends</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">from ..common_dependencies import common_parameters</code>: We import our dependency function.</li>
+      <li><code class="language-plaintext highlighter-rouge">commons: Annotated[dict, Depends(common_parameters)]</code>: This is the key part!
+        <ul>
+          <li>We declare a parameter named <code class="language-plaintext highlighter-rouge">commons</code>.</li>
+          <li>Its type hint is <code class="language-plaintext highlighter-rouge">dict</code> (because our dependency returns a dictionary). <em>Technically, FastAPI infers the type from the dependency function’s return type hint if available, but explicitly adding <code class="language-plaintext highlighter-rouge">dict</code> here helps clarity.</em> For more complex types, use the exact return type.</li>
+          <li>We wrap the type hint and <code class="language-plaintext highlighter-rouge">Depends(common_parameters)</code> in <code class="language-plaintext highlighter-rouge">Annotated</code>. This is the standard way to use <code class="language-plaintext highlighter-rouge">Depends</code>.</li>
+          <li><code class="language-plaintext highlighter-rouge">Depends(common_parameters)</code> tells FastAPI: “Before running <code class="language-plaintext highlighter-rouge">read_items</code>, call the <code class="language-plaintext highlighter-rouge">common_parameters</code> function. Take the query parameters <code class="language-plaintext highlighter-rouge">q</code>, <code class="language-plaintext highlighter-rouge">skip</code>, <code class="language-plaintext highlighter-rouge">limit</code> from the incoming request, pass them to <code class="language-plaintext highlighter-rouge">common_parameters</code>, get its return value, and assign it to the <code class="language-plaintext highlighter-rouge">commons</code> variable.”</li>
+        </ul>
+      </li>
+      <li><strong>Reusability:</strong> Notice how <code class="language-plaintext highlighter-rouge">read_users</code> uses the <em>exact same</em> dependency declaration <code class="language-plaintext highlighter-rouge">Annotated[dict, Depends(common_parameters)]</code>. We didn’t have to repeat the <code class="language-plaintext highlighter-rouge">q</code>, <code class="language-plaintext highlighter-rouge">skip</code>, <code class="language-plaintext highlighter-rouge">limit</code> definitions.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><strong>How it Behaves:</strong></p>
+
+<ol>
+  <li>Run your app (<code class="language-plaintext highlighter-rouge">uvicorn main:app --reload</code>, assuming <code class="language-plaintext highlighter-rouge">main.py</code> includes this router).</li>
+  <li>Visit <code class="language-plaintext highlighter-rouge">http://127.0.0.1:8000/items/?skip=1&amp;limit=1</code>.
+    <ul>
+      <li>FastAPI sees <code class="language-plaintext highlighter-rouge">Depends(common_parameters)</code>.</li>
+      <li>It extracts <code class="language-plaintext highlighter-rouge">skip=1</code> and <code class="language-plaintext highlighter-rouge">limit=1</code> (and <code class="language-plaintext highlighter-rouge">q=None</code>) from the query string.</li>
+      <li>It calls <code class="language-plaintext highlighter-rouge">common_parameters(q=None, skip=1, limit=1)</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">common_parameters</code> returns <code class="language-plaintext highlighter-rouge">{"q": None, "skip": 1, "limit": 1}</code>.</li>
+      <li>FastAPI calls <code class="language-plaintext highlighter-rouge">read_items(commons={"q": None, "skip": 1, "limit": 1})</code>.</li>
+      <li>You see the print statement and get the response <code class="language-plaintext highlighter-rouge">[{"item_name":"Bar"}]</code>.</li>
+    </ul>
+  </li>
+  <li>Visit <code class="language-plaintext highlighter-rouge">http://127.0.0.1:8000/users/?q=test</code>.
+    <ul>
+      <li>FastAPI calls <code class="language-plaintext highlighter-rouge">common_parameters(q="test", skip=0, limit=100)</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">common_parameters</code> returns <code class="language-plaintext highlighter-rouge">{"q": "test", "skip": 0, "limit": 100}</code>.</li>
+      <li>FastAPI calls <code class="language-plaintext highlighter-rouge">read_users(commons={"q": "test", "skip": 0, "limit": 100})</code>.</li>
+      <li>You see the print statement and get the JSON response.</li>
+    </ul>
+  </li>
+</ol>
+
+<h2 id="dependencies-can-depend-on-other-dependencies">Dependencies Can Depend on Other Dependencies</h2>
+
+<p>The real power comes when dependencies themselves need other dependencies. Let’s sketch a simplified example for getting an item from a fake database.</p>
+
+<ol>
+  <li>
+    <p><strong>Define a “DB Session” Dependency:</strong> (This will be fake, just returning a string).</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># common_dependencies.py
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">get_db_session</span><span class="p">():</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Getting DB Session"</span><span class="p">)</span>
+    <span class="c1"># In reality, this would connect to a DB and yield/return a session object
+</span>    <span class="n">session</span> <span class="o">=</span> <span class="s">"fake_db_session_123"</span>
+    <span class="c1"># You might use 'yield' here for setup/teardown (see FastAPI docs)
+</span>    <span class="k">return</span> <span class="n">session</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Define a Dependency that Uses the DB Session:</strong></p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># common_dependencies.py
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Annotated</span>
+<span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">Depends</span><span class="p">,</span> <span class="n">HTTPException</span>
+
+<span class="c1"># Import the DB session dependency
+</span><span class="kn">from</span> <span class="nn">.common_dependencies</span> <span class="kn">import</span> <span class="n">get_db_session</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">get_item_from_db</span><span class="p">(</span>
+    <span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="c1"># Takes a regular path parameter
+</span>    <span class="n">db</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Depends</span><span class="p">(</span><span class="n">get_db_session</span><span class="p">)]</span> <span class="c1"># Depends on get_db_session!
+</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Getting item </span><span class="si">{</span><span class="n">item_id</span><span class="si">}</span><span class="s"> using DB session: </span><span class="si">{</span><span class="n">db</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Fake database interaction
+</span>    <span class="n">fake_db</span> <span class="o">=</span> <span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="s">"Item One"</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="s">"Item Two"</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">item_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fake_db</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s">"Item not found in DB"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fake_db</span><span class="p">[</span><span class="n">item_id</span><span class="p">]</span>
+</code></pre></div>    </div>
+
+    <p><strong>Explanation:</strong></p>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">get_item_from_db</code> takes a regular <code class="language-plaintext highlighter-rouge">item_id</code> (which FastAPI will get from the path).</li>
+      <li>It <em>also</em> takes <code class="language-plaintext highlighter-rouge">db: Annotated[str, Depends(get_db_session)]</code>. It declares its <em>own</em> dependency on <code class="language-plaintext highlighter-rouge">get_db_session</code>.</li>
+      <li>When FastAPI needs to run <code class="language-plaintext highlighter-rouge">get_item_from_db</code>, it first sees the <code class="language-plaintext highlighter-rouge">Depends(get_db_session)</code>. It runs <code class="language-plaintext highlighter-rouge">get_db_session</code>, gets <code class="language-plaintext highlighter-rouge">"fake_db_session_123"</code>, and then calls <code class="language-plaintext highlighter-rouge">get_item_from_db(item_id=..., db="fake_db_session_123")</code>.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Use the High-Level Dependency in a Path Operation:</strong></p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># routers/items.py
+# ... other imports ...
+</span><span class="kn">from</span> <span class="nn">..common_dependencies</span> <span class="kn">import</span> <span class="n">get_item_from_db</span>
+
+<span class="o">@</span><span class="n">router</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"/db_items/{item_id}"</span><span class="p">)</span>
+<span class="c1"># This endpoint depends on get_item_from_db
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">read_db_item</span><span class="p">(</span>
+    <span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="c1"># Path parameter for get_item_from_db
+</span>    <span class="n">item_name</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Depends</span><span class="p">(</span><span class="n">get_item_from_db</span><span class="p">)]</span> <span class="c1"># Inject result here!
+</span><span class="p">):</span>
+    <span class="c1"># 'item_name' will be the string returned by get_item_from_db
+</span>    <span class="c1"># after it used the result from get_db_session.
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"item_id"</span><span class="p">:</span> <span class="n">item_id</span><span class="p">,</span> <span class="s">"name_from_db"</span><span class="p">:</span> <span class="n">item_name</span><span class="p">}</span>
+</code></pre></div>    </div>
+
+    <p><strong>Explanation:</strong></p>
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">read_db_item</code> function only needs to declare <code class="language-plaintext highlighter-rouge">Depends(get_item_from_db)</code>.</li>
+      <li>FastAPI automatically handles the whole chain: <code class="language-plaintext highlighter-rouge">read_db_item</code> -&gt; <code class="language-plaintext highlighter-rouge">get_item_from_db</code> -&gt; <code class="language-plaintext highlighter-rouge">get_db_session</code>.</li>
+      <li>Notice the <code class="language-plaintext highlighter-rouge">item_id: int</code> path parameter is declared in <em>both</em> <code class="language-plaintext highlighter-rouge">read_db_item</code> and <code class="language-plaintext highlighter-rouge">get_item_from_db</code>. FastAPI is smart enough to pass the path parameter value to the dependency that needs it.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><strong>Caching in Action:</strong></p>
+
+<p>If <code class="language-plaintext highlighter-rouge">get_db_session</code> was also needed directly by <code class="language-plaintext highlighter-rouge">read_db_item</code> (e.g., <code class="language-plaintext highlighter-rouge">db_session: Annotated[str, Depends(get_db_session)]</code>), FastAPI would <em>still</em> only call <code class="language-plaintext highlighter-rouge">get_db_session</code> <strong>once</strong> for the entire request to <code class="language-plaintext highlighter-rouge">/db_items/{item_id}</code> because of the default caching (<code class="language-plaintext highlighter-rouge">use_cache=True</code> in <code class="language-plaintext highlighter-rouge">Depends</code>). The result <code class="language-plaintext highlighter-rouge">"fake_db_session_123"</code> would be shared.</p>
+
+<h2 id="how-it-works-under-the-hood-simplified">How it Works Under the Hood (Simplified)</h2>
+
+<p>Let’s trace a request to <code class="language-plaintext highlighter-rouge">/db_items/2</code> using the example above:</p>
+
+<ol>
+  <li><strong>Request:</strong> Client sends <code class="language-plaintext highlighter-rouge">GET /db_items/2</code>.</li>
+  <li><strong>Routing:</strong> FastAPI matches the request to the <code class="language-plaintext highlighter-rouge">read_db_item</code> path operation function.</li>
+  <li><strong>Dependency Analysis:</strong> FastAPI inspects the signature of <code class="language-plaintext highlighter-rouge">read_db_item</code>:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">item_id: int</code> -&gt; Needs value from path. Value is <code class="language-plaintext highlighter-rouge">2</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">item_name: Annotated[str, Depends(get_item_from_db)]</code> -&gt; Needs the result of <code class="language-plaintext highlighter-rouge">get_item_from_db</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Solving <code class="language-plaintext highlighter-rouge">get_item_from_db</code>:</strong> FastAPI inspects <code class="language-plaintext highlighter-rouge">get_item_from_db</code>:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">item_id: int</code> -&gt; Needs a value. FastAPI sees <code class="language-plaintext highlighter-rouge">item_id</code> is also needed by the parent (<code class="language-plaintext highlighter-rouge">read_db_item</code>) and comes from the path. Value is <code class="language-plaintext highlighter-rouge">2</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">db: Annotated[str, Depends(get_db_session)]</code> -&gt; Needs the result of <code class="language-plaintext highlighter-rouge">get_db_session</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Solving <code class="language-plaintext highlighter-rouge">get_db_session</code>:</strong> FastAPI inspects <code class="language-plaintext highlighter-rouge">get_db_session</code>:
+    <ul>
+      <li>It has no parameters.</li>
+      <li>Checks cache: Has <code class="language-plaintext highlighter-rouge">get_db_session</code> run for this request? No.</li>
+      <li>Calls <code class="language-plaintext highlighter-rouge">get_db_session()</code>. It prints “Getting DB Session” and returns <code class="language-plaintext highlighter-rouge">"fake_db_session_123"</code>.</li>
+      <li>Stores <code class="language-plaintext highlighter-rouge">get_db_session</code> -&gt; <code class="language-plaintext highlighter-rouge">"fake_db_session_123"</code> in the request cache.</li>
+    </ul>
+  </li>
+  <li><strong>Calling <code class="language-plaintext highlighter-rouge">get_item_from_db</code>:</strong> FastAPI now has the dependencies for <code class="language-plaintext highlighter-rouge">get_item_from_db</code>:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">item_id</code> = <code class="language-plaintext highlighter-rouge">2</code> (from path)</li>
+      <li><code class="language-plaintext highlighter-rouge">db</code> = <code class="language-plaintext highlighter-rouge">"fake_db_session_123"</code> (from <code class="language-plaintext highlighter-rouge">get_db_session</code> result)</li>
+      <li>Calls <code class="language-plaintext highlighter-rouge">get_item_from_db(item_id=2, db="fake_db_session_123")</code>.</li>
+      <li>It prints “Getting item 2 using DB session: fake_db_session_123”, looks up <code class="language-plaintext highlighter-rouge">2</code> in its fake DB, and returns <code class="language-plaintext highlighter-rouge">"Item Two"</code>.</li>
+      <li>Stores <code class="language-plaintext highlighter-rouge">get_item_from_db</code> -&gt; <code class="language-plaintext highlighter-rouge">"Item Two"</code> in the request cache.</li>
+    </ul>
+  </li>
+  <li><strong>Calling <code class="language-plaintext highlighter-rouge">read_db_item</code>:</strong> FastAPI now has the dependencies for <code class="language-plaintext highlighter-rouge">read_db_item</code>:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">item_id</code> = <code class="language-plaintext highlighter-rouge">2</code> (from path)</li>
+      <li><code class="language-plaintext highlighter-rouge">item_name</code> = <code class="language-plaintext highlighter-rouge">"Item Two"</code> (from <code class="language-plaintext highlighter-rouge">get_item_from_db</code> result)</li>
+      <li>Calls <code class="language-plaintext highlighter-rouge">read_db_item(item_id=2, item_name="Item Two")</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Response:</strong> The function returns <code class="language-plaintext highlighter-rouge">{"item_id": 2, "name_from_db": "Item Two"}</code>, which FastAPI sends back to the client as JSON.</li>
+</ol>
+
+<p>Here’s a simplified sequence diagram:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Client
+    participant FastAPIApp as FastAPI App
+    participant DepSolver as Dependency Solver
+    participant GetItemFunc as get_item_from_db
+    participant GetDBFunc as get_db_session
+    participant PathOpFunc as read_db_item
+
+    Client-&gt;&gt;+FastAPIApp: GET /db_items/2
+    FastAPIApp-&gt;&gt;+DepSolver: Solve dependencies for read_db_item(item_id, Depends(get_item_from_db))
+    DepSolver-&gt;&gt;DepSolver: Need path param 'item_id' (value=2)
+    DepSolver-&gt;&gt;DepSolver: Need result of get_item_from_db
+    DepSolver-&gt;&gt;+DepSolver: Solve dependencies for get_item_from_db(item_id, Depends(get_db_session))
+    DepSolver-&gt;&gt;DepSolver: Need 'item_id' (value=2, from path)
+    DepSolver-&gt;&gt;DepSolver: Need result of get_db_session
+    DepSolver-&gt;&gt;DepSolver: Check cache for get_db_session: Miss
+    DepSolver-&gt;&gt;+GetDBFunc: Call get_db_session()
+    GetDBFunc--&gt;&gt;-DepSolver: Return "fake_db_session_123"
+    DepSolver-&gt;&gt;DepSolver: Cache: get_db_session -&gt; "fake_db_session_123"
+    DepSolver--&gt;&gt;-DepSolver: Dependencies for get_item_from_db ready
+    DepSolver-&gt;&gt;+GetItemFunc: Call get_item_from_db(item_id=2, db="fake_db_session_123")
+    GetItemFunc--&gt;&gt;-DepSolver: Return "Item Two"
+    DepSolver-&gt;&gt;DepSolver: Cache: get_item_from_db -&gt; "Item Two"
+    DepSolver--&gt;&gt;-FastAPIApp: Dependencies for read_db_item ready
+    FastAPIApp-&gt;&gt;+PathOpFunc: Call read_db_item(item_id=2, item_name="Item Two")
+    PathOpFunc--&gt;&gt;-FastAPIApp: Return {"item_id": 2, "name_from_db": "Item Two"}
+    FastAPIApp--&gt;&gt;-Client: Send JSON Response
+</code></pre>
+
+<h3 id="code-connections">Code Connections</h3>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">fastapi.Depends</code></strong> (<code class="language-plaintext highlighter-rouge">fastapi/param_functions.py</code>): This class is mostly a marker. When FastAPI analyzes function parameters, it looks for instances of <code class="language-plaintext highlighter-rouge">Depends</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">fastapi.dependencies.utils.get_dependant</code></strong>: This crucial function takes a callable (like your path operation function or another dependency) and inspects its signature. It identifies which parameters are path/query/body parameters and which are dependencies (marked with <code class="language-plaintext highlighter-rouge">Depends</code>). It builds a <code class="language-plaintext highlighter-rouge">Dependant</code> object representing this.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">fastapi.dependencies.models.Dependant</code></strong>: A data structure (dataclass) that holds information about a callable: its name, the callable itself, its path/query/header/cookie/body parameters, and importantly, a list of <em>other</em> <code class="language-plaintext highlighter-rouge">Dependant</code> objects for its sub-dependencies. This creates the dependency tree/graph.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">fastapi.dependencies.utils.solve_dependencies</code></strong>: This is the engine that recursively traverses the <code class="language-plaintext highlighter-rouge">Dependant</code> graph for a given request. It figures out the order, checks the cache (<code class="language-plaintext highlighter-rouge">dependency_cache</code>), calls the dependency functions (using <code class="language-plaintext highlighter-rouge">run_in_threadpool</code> for sync functions or awaiting async ones), handles results from generators (<code class="language-plaintext highlighter-rouge">yield</code>), and gathers all the computed values needed to finally call the target path operation function.</li>
+</ul>
+
+<p>FastAPI intelligently combines Python’s introspection capabilities with this structured dependency resolution system.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about FastAPI’s powerful Dependency Injection system!</p>
+
+<ul>
+  <li>You saw how to define reusable logic in <strong>dependency functions</strong>.</li>
+  <li>You learned to use <strong><code class="language-plaintext highlighter-rouge">Depends</code></strong> in your path operation function parameters to tell FastAPI what dependencies are needed.</li>
+  <li>You understood that FastAPI automatically <strong>calls</strong> dependencies and <strong>injects</strong> their results into your function.</li>
+  <li>You saw how dependencies can <strong>depend on other dependencies</strong>, creating manageable hierarchies.</li>
+  <li>You learned that results are <strong>cached per request</strong> by default for efficiency.</li>
+  <li>You grasped the core idea: separating concerns and promoting <strong>reusable code</strong>.</li>
+</ul>
+
+<p>Dependency Injection is fundamental to building complex, maintainable applications in FastAPI. It’s used extensively for things like database connections, authentication, authorization, and processing complex parameter sets.</p>
+
+<p>While dependencies help manage complexity, sometimes things inevitably go wrong – a database might be unavailable, validation might fail within a dependency, or unexpected errors might occur. How should our API handle these situations gracefully? That’s what we’ll cover next.</p>
+
+<p>Ready to handle errors like a pro? Let’s move on to <a href="06_error_handling.md">Chapter 6: Error Handling</a>!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

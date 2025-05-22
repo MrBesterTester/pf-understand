@@ -1,0 +1,185 @@
+<h1 id="chapter-2-agent---your-specialized-ai-worker">Chapter 2: Agent - Your Specialized AI Worker</h1>
+
+<p>In <a href="01_crew.md">Chapter 1</a>, we learned about the <code class="language-plaintext highlighter-rouge">Crew</code> – the manager that organizes our AI team. But a manager needs a team to manage! That’s where <code class="language-plaintext highlighter-rouge">Agent</code>s come in.</p>
+
+<h2 id="why-do-we-need-agents">Why Do We Need Agents?</h2>
+
+<p>Imagine our trip planning <code class="language-plaintext highlighter-rouge">Crew</code> again. The <code class="language-plaintext highlighter-rouge">Crew</code> knows the overall goal (plan a surprise trip), but it doesn’t <em>do</em> the research or the planning itself. It needs specialists.</p>
+
+<ul>
+  <li>One specialist could be excellent at researching travel destinations.</li>
+  <li>Another could be fantastic at creating detailed itineraries.</li>
+</ul>
+
+<p>In CrewAI, these specialists are called <strong><code class="language-plaintext highlighter-rouge">Agent</code>s</strong>. Instead of having one super-smart AI try to juggle everything, we create multiple <code class="language-plaintext highlighter-rouge">Agent</code>s, each with its own focus and expertise. This makes complex tasks more manageable and often leads to better results.</p>
+
+<p><strong>Problem Solved:</strong> <code class="language-plaintext highlighter-rouge">Agent</code>s allow you to break down a large task into smaller pieces and assign each piece to an AI worker specifically designed for it.</p>
+
+<h2 id="what-is-an-agent">What is an Agent?</h2>
+
+<p>Think of an <code class="language-plaintext highlighter-rouge">Agent</code> as a <strong>dedicated AI worker</strong> on your <code class="language-plaintext highlighter-rouge">Crew</code>. Each <code class="language-plaintext highlighter-rouge">Agent</code> has a unique profile that defines who they are and what they do:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">role</code></strong>: This is the Agent’s job title. What function do they perform in the team? Examples: ‘Travel Researcher’, ‘Marketing Analyst’, ‘Code Reviewer’, ‘Blog Post Writer’.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">goal</code></strong>: This is the Agent’s primary objective. What specific outcome are they trying to achieve within their role? Examples: ‘Find the top 3 family-friendly European destinations’, ‘Analyze competitor website traffic’, ‘Identify bugs in Python code’, ‘Draft an engaging blog post about AI’.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">backstory</code></strong>: This is the Agent’s personality, skills, and history. It tells the AI <em>how</em> to behave and what expertise it possesses. It adds flavour and context. Examples: ‘An expert travel agent with 20 years of experience in European travel.’, ‘A data-driven market analyst known for spotting emerging trends.’, ‘A meticulous senior software engineer obsessed with code quality.’, ‘A witty content creator known for simplifying complex topics.’</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">llm</code></strong> (Optional): This is the Agent’s “brain” – the specific Large Language Model (like GPT-4, Gemini, etc.) it uses to think, communicate, and execute tasks. We’ll cover this more in the <a href="06_llm.md">LLM chapter</a>. If not specified, it usually inherits the <code class="language-plaintext highlighter-rouge">Crew</code>’s default LLM.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">tools</code></strong> (Optional): These are special capabilities the Agent can use, like searching the web, using a calculator, or reading files. Think of them as the Agent’s equipment. We’ll explore these in the <a href="04_tool.md">Tool chapter</a>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">allow_delegation</code></strong> (Optional, default <code class="language-plaintext highlighter-rouge">False</code>): Can this Agent ask other Agents in the <code class="language-plaintext highlighter-rouge">Crew</code> for help with a sub-task? If <code class="language-plaintext highlighter-rouge">True</code>, it enables collaboration.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">verbose</code></strong> (Optional, default <code class="language-plaintext highlighter-rouge">False</code>): If <code class="language-plaintext highlighter-rouge">True</code>, the Agent will print out its thought process as it works, which is great for debugging and understanding what’s happening.</li>
+</ol>
+
+<p>An Agent takes the <a href="03_task.md">Tasks</a> assigned to it by the <code class="language-plaintext highlighter-rouge">Crew</code> and uses its <code class="language-plaintext highlighter-rouge">role</code>, <code class="language-plaintext highlighter-rouge">goal</code>, <code class="language-plaintext highlighter-rouge">backstory</code>, <code class="language-plaintext highlighter-rouge">llm</code>, and <code class="language-plaintext highlighter-rouge">tools</code> to complete them.</p>
+
+<h2 id="lets-define-an-agent">Let’s Define an Agent!</h2>
+
+<p>Let’s revisit the <code class="language-plaintext highlighter-rouge">researcher</code> Agent from Chapter 1 and look closely at how it’s defined.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Make sure you have crewai installed
+# pip install crewai
+</span>
+<span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Agent</span>
+
+<span class="c1"># Define our researcher agent
+</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+  <span class="n">role</span><span class="o">=</span><span class="s">'Expert Travel Researcher'</span><span class="p">,</span>
+  <span class="n">goal</span><span class="o">=</span><span class="s">'Find the most exciting and sunny European cities for a birthday trip in late May.'</span><span class="p">,</span>
+  <span class="n">backstory</span><span class="o">=</span><span class="p">(</span>
+      <span class="s">"You are a world-class travel researcher with deep knowledge of "</span>
+      <span class="s">"European destinations. You excel at finding hidden gems and understanding "</span>
+      <span class="s">"weather patterns. Your recommendations are always insightful and tailored."</span>
+  <span class="p">),</span>
+  <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="c1"># We want to see the agent's thinking process
+</span>  <span class="n">allow_delegation</span><span class="o">=</span><span class="bp">False</span> <span class="c1"># This agent focuses on its own research
+</span>  <span class="c1"># tools=[...] # We'll add tools later!
+</span>  <span class="c1"># llm=your_llm # We'll cover LLMs later!
+</span><span class="p">)</span>
+
+<span class="c1"># (You would typically define other agents, tasks, and a crew here)
+# print(researcher) # Just to see the object
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">from crewai import Agent</code>: We import the necessary <code class="language-plaintext highlighter-rouge">Agent</code> class.</li>
+  <li><code class="language-plaintext highlighter-rouge">role='Expert Travel Researcher'</code>: We clearly define the agent’s job title. This tells the LLM its primary function.</li>
+  <li><code class="language-plaintext highlighter-rouge">goal='Find the most exciting...'</code>: We give it a specific, measurable objective. This guides its actions.</li>
+  <li><code class="language-plaintext highlighter-rouge">backstory='You are a world-class...'</code>: We provide context and personality. This influences the <em>style</em> and <em>quality</em> of its output. Notice the detailed description – this helps the LLM adopt the persona.</li>
+  <li><code class="language-plaintext highlighter-rouge">verbose=True</code>: We’ll see detailed logs of this agent’s thoughts and actions when it runs.</li>
+  <li><code class="language-plaintext highlighter-rouge">allow_delegation=False</code>: This researcher won’t ask other agents for help; it will complete its task independently.</li>
+</ul>
+
+<p>Running this code snippet creates an <code class="language-plaintext highlighter-rouge">Agent</code> object in Python. This object is now ready to be added to a <a href="01_crew.md">Crew</a> and assigned <a href="03_task.md">Tasks</a>.</p>
+
+<h2 id="how-agents-work-under-the-hood">How Agents Work “Under the Hood”</h2>
+
+<p>So, what happens when an <code class="language-plaintext highlighter-rouge">Agent</code> is given a task by the <code class="language-plaintext highlighter-rouge">Crew</code>?</p>
+
+<ol>
+  <li><strong>Receive Task &amp; Context:</strong> The <code class="language-plaintext highlighter-rouge">Agent</code> gets the task description (e.g., “Find 3 sunny cities”) and potentially some context from previous tasks (e.g., “The user prefers coastal cities”).</li>
+  <li><strong>Consult Profile:</strong> It looks at its own <code class="language-plaintext highlighter-rouge">role</code>, <code class="language-plaintext highlighter-rouge">goal</code>, and <code class="language-plaintext highlighter-rouge">backstory</code>. This helps it frame <em>how</em> to tackle the task. Our ‘Expert Travel Researcher’ will approach this differently than a ‘Budget Backpacker Blogger’.</li>
+  <li><strong>Think &amp; Plan (Using LLM):</strong> The <code class="language-plaintext highlighter-rouge">Agent</code> uses its assigned <code class="language-plaintext highlighter-rouge">llm</code> (its brain) to think. It breaks down the task, formulates a plan, and decides what information it needs. This often involves an internal “monologue” (which you can see if <code class="language-plaintext highlighter-rouge">verbose=True</code>).</li>
+  <li><strong>Use Tools (If Necessary):</strong> If the plan requires external information or actions (like searching the web for current weather or calculating travel times), and the agent <em>has</em> the right <a href="04_tool.md">Tools</a>, it will use them.</li>
+  <li><strong>Delegate (If Allowed &amp; Necessary):</strong> If <code class="language-plaintext highlighter-rouge">allow_delegation=True</code> and the <code class="language-plaintext highlighter-rouge">Agent</code> decides a sub-part of the task is better handled by another specialist <code class="language-plaintext highlighter-rouge">Agent</code> in the <code class="language-plaintext highlighter-rouge">Crew</code>, it can ask the <code class="language-plaintext highlighter-rouge">Crew</code> to delegate that part.</li>
+  <li><strong>Generate Output (Using LLM):</strong> Based on its thinking, tool results, and potentially delegated results, the <code class="language-plaintext highlighter-rouge">Agent</code> uses its <code class="language-plaintext highlighter-rouge">llm</code> again to formulate the final response or output for the task.</li>
+  <li><strong>Return Result:</strong> The <code class="language-plaintext highlighter-rouge">Agent</code> passes its completed work back to the <code class="language-plaintext highlighter-rouge">Crew</code>.</li>
+</ol>
+
+<p>Let’s visualize this simplified flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant C as Crew
+    participant MyAgent as Agent (Researcher)
+    participant LLM as Agent's Brain
+    participant SearchTool as Tool
+
+    C-&gt;&gt;MyAgent: Execute Task ("Find sunny cities in May")
+    MyAgent-&gt;&gt;MyAgent: Consult profile (Role, Goal, Backstory)
+    MyAgent-&gt;&gt;LLM: Formulate plan &amp; Ask: "Best way to find sunny cities?"
+    LLM--&gt;&gt;MyAgent: Suggestion: "Search web for 'Europe weather May'"
+    MyAgent-&gt;&gt;SearchTool: Use Tool(query="Europe weather May sunny cities")
+    SearchTool--&gt;&gt;MyAgent: Web search results (e.g., Lisbon, Seville, Malta)
+    MyAgent-&gt;&gt;LLM: Consolidate results &amp; Ask: "Format these 3 cities nicely"
+    LLM--&gt;&gt;MyAgent: Formatted list: "1. Lisbon..."
+    MyAgent--&gt;&gt;C: Task Result ("Here are 3 sunny cities: Lisbon...")
+
+</code></pre>
+
+<p><strong>Diving into the Code (<code class="language-plaintext highlighter-rouge">agent.py</code>)</strong></p>
+
+<p>The core logic for the <code class="language-plaintext highlighter-rouge">Agent</code> resides in the <code class="language-plaintext highlighter-rouge">crewai/agent.py</code> file.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">Agent</code> class itself inherits from <code class="language-plaintext highlighter-rouge">BaseAgent</code> (<code class="language-plaintext highlighter-rouge">crewai/agents/agent_builder/base_agent.py</code>) and primarily stores the configuration you provide:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from crewai/agent.py
+</span><span class="kn">from</span> <span class="nn">crewai.agents.agent_builder.base_agent</span> <span class="kn">import</span> <span class="n">BaseAgent</span>
+<span class="c1"># ... other imports
+</span>
+<span class="k">class</span> <span class="nc">Agent</span><span class="p">(</span><span class="n">BaseAgent</span><span class="p">):</span>
+    <span class="n">role</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"Role of the agent"</span><span class="p">)</span>
+    <span class="n">goal</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"Objective of the agent"</span><span class="p">)</span>
+    <span class="n">backstory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"Backstory of the agent"</span><span class="p">)</span>
+    <span class="n">llm</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">"LLM instance"</span><span class="p">)</span>
+    <span class="n">tools</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">BaseTool</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">allow_delegation</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="c1"># ... other fields like memory, max_iter, etc.
+</span>
+    <span class="k">def</span> <span class="nf">execute_task</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">task</span><span class="p">:</span> <span class="n">Task</span><span class="p">,</span>
+        <span class="n">context</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+        <span class="n">tools</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">BaseTool</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="c1"># ... (steps 1 &amp; 2: Prepare task prompt with context, memory, knowledge) ...
+</span>
+        <span class="n">task_prompt</span> <span class="o">=</span> <span class="n">task</span><span class="p">.</span><span class="n">prompt</span><span class="p">()</span> <span class="c1"># Get base task description
+</span>        <span class="k">if</span> <span class="n">context</span><span class="p">:</span>
+            <span class="n">task_prompt</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">task_prompt</span><span class="si">}</span><span class="se">\n</span><span class="s">Context:</span><span class="se">\n</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s">"</span>
+        <span class="c1"># Add memory, knowledge, tool descriptions etc. to the prompt...
+</span>
+        <span class="c1"># ... (Internal setup: Create AgentExecutor if needed) ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">create_agent_executor</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="n">tools</span> <span class="ow">or</span> <span class="bp">self</span><span class="p">.</span><span class="n">tools</span><span class="p">)</span>
+
+        <span class="c1"># ... (Step 3-7: Run the execution loop via AgentExecutor) ...
+</span>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">agent_executor</span><span class="p">.</span><span class="n">invoke</span><span class="p">({</span>
+            <span class="s">"input"</span><span class="p">:</span> <span class="n">task_prompt</span><span class="p">,</span>
+            <span class="s">"tool_names"</span><span class="p">:</span> <span class="bp">self</span><span class="p">.</span><span class="n">_get_tool_names</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">agent_executor</span><span class="p">.</span><span class="n">tools</span><span class="p">),</span>
+            <span class="s">"tools"</span><span class="p">:</span> <span class="bp">self</span><span class="p">.</span><span class="n">_get_tool_descriptions</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">agent_executor</span><span class="p">.</span><span class="n">tools</span><span class="p">),</span>
+            <span class="c1"># ... other inputs for the executor ...
+</span>        <span class="p">})[</span><span class="s">"output"</span><span class="p">]</span> <span class="c1"># Extract the final string output
+</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="k">def</span> <span class="nf">create_agent_executor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tools</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">BaseTool</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="c1"># Sets up the internal CrewAgentExecutor which handles the actual
+</span>        <span class="c1"># interaction loop with the LLM and tools.
+</span>        <span class="c1"># It uses the agent's profile (role, goal, backstory) to build the main prompt.
+</span>        <span class="k">pass</span>
+
+    <span class="c1"># ... other helper methods ...
+</span></code></pre></div></div>
+
+<p>Key takeaways from the code:</p>
+
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">Agent</code> class mainly holds the configuration (<code class="language-plaintext highlighter-rouge">role</code>, <code class="language-plaintext highlighter-rouge">goal</code>, <code class="language-plaintext highlighter-rouge">backstory</code>, <code class="language-plaintext highlighter-rouge">llm</code>, <code class="language-plaintext highlighter-rouge">tools</code>, etc.).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">execute_task</code> method is called by the <code class="language-plaintext highlighter-rouge">Crew</code> when it’s the agent’s turn.</li>
+  <li>It prepares a detailed prompt for the underlying LLM, incorporating the task, context, the agent’s profile, and available tools.</li>
+  <li>It uses an internal object called <code class="language-plaintext highlighter-rouge">agent_executor</code> (specifically <code class="language-plaintext highlighter-rouge">CrewAgentExecutor</code> from <code class="language-plaintext highlighter-rouge">crewai/agents/crew_agent_executor.py</code>) to manage the actual step-by-step thinking, tool use, and response generation loop with the LLM.</li>
+</ul>
+
+<p>You don’t need to understand the <code class="language-plaintext highlighter-rouge">agent_executor</code> in detail right now, just know that it’s the engine that drives the agent’s execution based on the profile and task you provide.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now met the core members of your AI team: the <code class="language-plaintext highlighter-rouge">Agent</code>s! You learned that each <code class="language-plaintext highlighter-rouge">Agent</code> is a specialized worker defined by its <code class="language-plaintext highlighter-rouge">role</code>, <code class="language-plaintext highlighter-rouge">goal</code>, and <code class="language-plaintext highlighter-rouge">backstory</code>. They use an <a href="06_llm.md">LLM</a> as their brain and can be equipped with <a href="04_tool.md">Tools</a> to perform specific actions.</p>
+
+<p>We saw how to define an agent in code and got a glimpse into how they process information and execute the work assigned by the <a href="01_crew.md">Crew</a>.</p>
+
+<p>But defining an <code class="language-plaintext highlighter-rouge">Agent</code> is only half the story. What specific work should they <em>do</em>? How do we describe the individual steps needed to achieve the <code class="language-plaintext highlighter-rouge">Crew</code>’s overall objective? That’s where the next concept comes in: the <a href="03_task.md">Task</a>. Let’s dive into defining the actual work!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

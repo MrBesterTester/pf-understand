@@ -1,0 +1,398 @@
+<h1 id="chapter-6-checkpointer-basecheckpointsaver---saving-your-progress">Chapter 6: Checkpointer (<code class="language-plaintext highlighter-rouge">BaseCheckpointSaver</code>) - Saving Your Progress</h1>
+
+<p>In <a href="05_pregel_execution_engine.md">Chapter 5: Pregel Execution Engine</a>, we saw how the engine runs our graph step-by-step. But what happens if a graph takes hours to run, or if it needs to pause and wait for a human? If the program crashes or we need to stop it, do we lose all the progress?</p>
+
+<p>That’s where <strong>Checkpointers</strong> come to the rescue!</p>
+
+<h2 id="what-problem-do-checkpointers-solve">What Problem Do Checkpointers Solve?</h2>
+
+<p>Imagine you’re playing a long video game. You wouldn’t want to start from the very beginning every time you stop playing, right? Games have save points or checkpoints that record your progress.</p>
+
+<p>LangGraph’s <strong>Checkpointer</strong> does the same thing for your graph execution. It automatically saves the graph’s state at certain points, usually after each step completed by the <a href="05_pregel_execution_engine.md">Pregel Execution Engine</a>.</p>
+
+<p>This is incredibly useful for:</p>
+
+<ol>
+  <li><strong>Long-Running Processes:</strong> If your graph involves many steps or calls to slow tools/LLMs, you can stop it and resume later without losing work.</li>
+  <li><strong>Resilience:</strong> If your program crashes unexpectedly, you can restart it from the last saved checkpoint.</li>
+  <li><strong>Human-in-the-Loop (HITL):</strong> As we saw with <code class="language-plaintext highlighter-rouge">Interrupt</code> in <a href="04_control_flow_primitives___branch____send____interrupt__.md">Chapter 4: Control Flow Primitives</a>, pausing the graph requires saving its state so it can be perfectly restored when the human provides input. Checkpointers are essential for this.</li>
+</ol>
+
+<p><strong>Analogy:</strong> Think of a checkpointer as an automatic “Save” button for your graph’s progress. It takes snapshots of the shared “whiteboard” (<a href="03_channels.md">Channels</a>) so you can always pick up where you left off.</p>
+
+<h2 id="key-concepts">Key Concepts</h2>
+
+<ol>
+  <li><strong>What is Saved?</strong> The checkpointer saves the current value and version of every <a href="03_channels.md">Channel</a> in your graph’s state. It also keeps track of which step the graph was on and any pending tasks (like those created by <code class="language-plaintext highlighter-rouge">Send</code>).</li>
+  <li><strong>When is it Saved?</strong> The <a href="05_pregel_execution_engine.md">Pregel Execution Engine</a> typically triggers the checkpointer to save after each “superstep” (a round of node executions and state updates).</li>
+  <li><strong>Where is it Saved?</strong> This depends on the specific checkpointer implementation you choose. LangGraph provides several:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">MemorySaver</code>: Stores checkpoints in your computer’s RAM. Simple for testing, but <strong>lost when your script ends</strong>.</li>
+      <li><code class="language-plaintext highlighter-rouge">SqliteSaver</code>: Stores checkpoints in a local SQLite database file, making them persistent across script runs.</li>
+      <li>Other savers might store checkpoints in cloud databases or other persistent storage.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">thread_id</code> (The Save Slot Name):</strong> To save and load progress correctly, you need a way to identify <em>which</em> specific run of the graph you want to work with. Think of this like naming your save file in a game. In LangGraph, this identifier is called the <code class="language-plaintext highlighter-rouge">thread_id</code>. You provide it in the <code class="language-plaintext highlighter-rouge">config</code> when you run the graph. Each unique <code class="language-plaintext highlighter-rouge">thread_id</code> represents an independent “conversation” or execution history.</li>
+</ol>
+
+<h2 id="how-to-use-a-checkpointer">How to Use a Checkpointer</h2>
+
+<p>Using a checkpointer is straightforward. You just need to tell LangGraph <em>which</em> checkpointer to use when you compile your graph.</p>
+
+<p><strong>Step 1: Import a Checkpointer</strong></p>
+
+<p>Let’s start with the simplest one, <code class="language-plaintext highlighter-rouge">MemorySaver</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Import the simplest checkpointer
+</span><span class="kn">from</span> <span class="nn">langgraph.checkpoint.memory</span> <span class="kn">import</span> <span class="n">MemorySaver</span>
+</code></pre></div></div>
+
+<p><strong>Step 2: Instantiate the Checkpointer</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Create an instance of the memory checkpointer
+</span><span class="n">memory_saver</span> <span class="o">=</span> <span class="n">MemorySaver</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p><strong>Step 3: Compile Your Graph with the Checkpointer</strong></p>
+
+<p>Let’s reuse our simple <code class="language-plaintext highlighter-rouge">adder -&gt; multiplier</code> graph. The graph definition itself doesn’t change.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Define State and Nodes (same as Chapter 1) ---
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TypedDict</span>
+<span class="kn">from</span> <span class="nn">langgraph.graph</span> <span class="kn">import</span> <span class="n">StateGraph</span><span class="p">,</span> <span class="n">END</span><span class="p">,</span> <span class="n">START</span>
+
+<span class="k">class</span> <span class="nc">MyState</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
+    <span class="n">value</span><span class="p">:</span> <span class="nb">int</span>
+
+<span class="k">def</span> <span class="nf">add_one</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">MyState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Adder: Adding 1 to </span><span class="si">{</span><span class="n">state</span><span class="p">[</span><span class="s">'value'</span><span class="p">]</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s">"value"</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="s">'value'</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">}</span>
+
+<span class="k">def</span> <span class="nf">multiply_by_two</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">MyState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Multiplier: Doubling </span><span class="si">{</span><span class="n">state</span><span class="p">[</span><span class="s">'value'</span><span class="p">]</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s">"value"</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="s">'value'</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">}</span>
+
+<span class="c1"># --- Build the Graph (same as Chapter 1) ---
+</span><span class="n">workflow</span> <span class="o">=</span> <span class="n">StateGraph</span><span class="p">(</span><span class="n">MyState</span><span class="p">)</span>
+<span class="n">workflow</span><span class="p">.</span><span class="n">add_node</span><span class="p">(</span><span class="s">"adder"</span><span class="p">,</span> <span class="n">add_one</span><span class="p">)</span>
+<span class="n">workflow</span><span class="p">.</span><span class="n">add_node</span><span class="p">(</span><span class="s">"multiplier"</span><span class="p">,</span> <span class="n">multiply_by_two</span><span class="p">)</span>
+<span class="n">workflow</span><span class="p">.</span><span class="n">set_entry_point</span><span class="p">(</span><span class="s">"adder"</span><span class="p">)</span>
+<span class="n">workflow</span><span class="p">.</span><span class="n">add_edge</span><span class="p">(</span><span class="s">"adder"</span><span class="p">,</span> <span class="s">"multiplier"</span><span class="p">)</span>
+<span class="n">workflow</span><span class="p">.</span><span class="n">add_edge</span><span class="p">(</span><span class="s">"multiplier"</span><span class="p">,</span> <span class="n">END</span><span class="p">)</span>
+
+<span class="c1"># --- Compile WITH the checkpointer ---
+# Pass the checkpointer instance to the compile method
+</span><span class="n">app</span> <span class="o">=</span> <span class="n">workflow</span><span class="p">.</span><span class="nb">compile</span><span class="p">(</span><span class="n">checkpointer</span><span class="o">=</span><span class="n">memory_saver</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>That’s it! By passing <code class="language-plaintext highlighter-rouge">checkpointer=memory_saver</code> to <code class="language-plaintext highlighter-rouge">compile()</code>, you’ve enabled automatic checkpointing for this graph.</p>
+
+<p><strong>Step 4: Run with a <code class="language-plaintext highlighter-rouge">thread_id</code></strong></p>
+
+<p>To use the checkpointer, you need to provide a configuration dictionary (<code class="language-plaintext highlighter-rouge">config</code>) containing a unique identifier for this specific execution thread.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">uuid</span>
+
+<span class="c1"># Create a unique ID for this run
+</span><span class="n">thread_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="p">.</span><span class="n">uuid4</span><span class="p">())</span>
+<span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s">"configurable"</span><span class="p">:</span> <span class="p">{</span><span class="s">"thread_id"</span><span class="p">:</span> <span class="n">thread_id</span><span class="p">}}</span>
+
+<span class="c1"># Define the initial state
+</span><span class="n">initial_state</span> <span class="o">=</span> <span class="p">{</span><span class="s">"value"</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"--- Running Graph (First Time) ---"</span><span class="p">)</span>
+<span class="c1"># Run the graph with the config
+</span><span class="n">final_state</span> <span class="o">=</span> <span class="n">app</span><span class="p">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">initial_state</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">--- Final State (First Run) ---"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">final_state</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Expected Output (First Run):</strong></p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--- Running Graph (First Time) ---
+Adder: Adding 1 to 5
+Multiplier: Doubling 6
+
+--- Final State (First Run) ---
+{'value': 12}
+</code></pre></div></div>
+
+<p>Behind the scenes, <code class="language-plaintext highlighter-rouge">MemorySaver</code> saved the state after the <code class="language-plaintext highlighter-rouge">adder</code> step and after the <code class="language-plaintext highlighter-rouge">multiplier</code> step, associating it with the <code class="language-plaintext highlighter-rouge">thread_id</code> you provided.</p>
+
+<p><strong>Step 5: Resume the Graph</strong></p>
+
+<p>Now, let’s imagine we stopped the process. If we run the <em>same graph</em> with the <em>same <code class="language-plaintext highlighter-rouge">thread_id</code></em>, the checkpointer allows the <a href="05_pregel_execution_engine.md">Pregel Execution Engine</a> to load the last saved state and continue. Since the first run finished completely, running <code class="language-plaintext highlighter-rouge">invoke</code> again will just load the final state.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">--- Running Graph Again with SAME thread_id ---"</span><span class="p">)</span>
+<span class="c1"># Use the SAME config (containing the same thread_id)
+# Provide NO initial state, as it will be loaded from the checkpoint
+</span><span class="n">resumed_state</span> <span class="o">=</span> <span class="n">app</span><span class="p">.</span><span class="n">invoke</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">--- Final State (Resumed Run) ---"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">resumed_state</span><span class="p">)</span>
+
+<span class="c1"># Let's check the saved states using the checkpointer directly
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">--- Checkpoints Saved ---"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">checkpoint</span> <span class="ow">in</span> <span class="n">memory_saver</span><span class="p">.</span><span class="nb">list</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">checkpoint</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Expected Output (Second Run):</strong></p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--- Running Graph Again with SAME thread_id ---
+# Notice: No node printouts because the graph already finished!
+# It just loads the final saved state.
+
+--- Final State (Resumed Run) ---
+{'value': 12}
+
+--- Checkpoints Saved ---
+# You'll see checkpoint objects representing saved states
+CheckpointTuple(config={'configurable': {'thread_id': '...'}}, checkpoint={'v': 1, 'ts': '...', 'id': '...', 'channel_values': {'value': 6}, 'channel_versions': {'adder': 1}, 'versions_seen': {'adder': {}}}, metadata={'source': 'loop', 'step': 1, ...}, ...)
+CheckpointTuple(config={'configurable': {'thread_id': '...'}}, checkpoint={'v': 1, 'ts': '...', 'id': '...', 'channel_values': {'value': 12}, 'channel_versions': {'adder': 1, 'multiplier': 2}, 'versions_seen': {'adder': {}, 'multiplier': {'adder': 1}}}, metadata={'source': 'loop', 'step': 2, ...}, ...)
+CheckpointTuple(config={'configurable': {'thread_id': '...'}}, checkpoint={'v': 1, 'ts': '...', 'id': '...', 'channel_values': {'value': 12}, 'channel_versions': {'adder': 1, 'multiplier': 2}, 'versions_seen': {'adder': {}, 'multiplier': {'adder': 1}}}, metadata={'source': 'loop', 'step': 3, ...}, ...)
+</code></pre></div></div>
+
+<p>The checkpointer successfully loaded the final state (<code class="language-plaintext highlighter-rouge">{'value': 12}</code>) associated with that <code class="language-plaintext highlighter-rouge">thread_id</code>.</p>
+
+<p><strong>Checkpointers and <code class="language-plaintext highlighter-rouge">Interrupt</code> (Human-in-the-Loop)</strong></p>
+
+<p>Remember the <code class="language-plaintext highlighter-rouge">Interrupt</code> example from <a href="04_control_flow_primitives___branch____send____interrupt__.md">Chapter 4</a>?</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># (Simplified HITL example from Chapter 4)
+</span><span class="kn">from</span> <span class="nn">langgraph.types</span> <span class="kn">import</span> <span class="n">interrupt</span><span class="p">,</span> <span class="n">Command</span>
+<span class="c1"># ... (State, Nodes: create_plan, request_approval, execute_plan) ...
+</span>
+<span class="c1"># Compile WITH checkpointer (REQUIRED for interrupt)
+</span><span class="n">memory_saver_hitl</span> <span class="o">=</span> <span class="n">MemorySaver</span><span class="p">()</span>
+<span class="n">app_hitl</span> <span class="o">=</span> <span class="n">workflow</span><span class="p">.</span><span class="nb">compile</span><span class="p">(</span><span class="n">checkpointer</span><span class="o">=</span><span class="n">memory_saver_hitl</span><span class="p">)</span>
+
+<span class="c1"># Run, get interrupted
+</span><span class="n">config_hitl</span> <span class="o">=</span> <span class="p">{</span><span class="s">"configurable"</span><span class="p">:</span> <span class="p">{</span><span class="s">"thread_id"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="p">.</span><span class="n">uuid4</span><span class="p">())}}</span>
+<span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">app_hitl</span><span class="p">.</span><span class="n">stream</span><span class="p">({</span><span class="s">"plan"</span><span class="p">:</span> <span class="s">""</span><span class="p">},</span> <span class="n">config</span><span class="o">=</span><span class="n">config_hitl</span><span class="p">):</span>
+    <span class="c1"># ... (detect interrupt) ...
+</span>    <span class="k">print</span><span class="p">(</span><span class="s">"Graph interrupted!"</span><span class="p">)</span>
+    <span class="k">break</span>
+
+<span class="c1"># Resume after human decision
+</span><span class="n">human_decision</span> <span class="o">=</span> <span class="s">"Approved"</span>
+<span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">app_hitl</span><span class="p">.</span><span class="n">stream</span><span class="p">(</span><span class="n">Command</span><span class="p">(</span><span class="n">resume</span><span class="o">=</span><span class="n">human_decision</span><span class="p">),</span> <span class="n">config</span><span class="o">=</span><span class="n">config_hitl</span><span class="p">):</span>
+     <span class="c1"># ... (process remaining steps) ...
+</span>     <span class="k">print</span><span class="p">(</span><span class="s">"Graph resumed and finished!"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>When <code class="language-plaintext highlighter-rouge">interrupt()</code> was called inside the <code class="language-plaintext highlighter-rouge">request_approval</code> node, the <a href="05_pregel_execution_engine.md">Pregel Execution Engine</a> automatically used the <code class="language-plaintext highlighter-rouge">memory_saver_hitl</code> checkpointer to save the <em>exact state</em> of the graph at that moment (including the plan). When we called <code class="language-plaintext highlighter-rouge">stream</code> again with <code class="language-plaintext highlighter-rouge">Command(resume=...)</code> and the <em>same</em> <code class="language-plaintext highlighter-rouge">config_hitl</code>, the engine loaded that saved state using the checkpointer, allowing the graph to continue exactly where it left off, now with the human’s feedback.</p>
+
+<p><strong>Without a checkpointer, <code class="language-plaintext highlighter-rouge">Interrupt</code> cannot work.</strong></p>
+
+<h2 id="how-checkpointing-works-internally">How Checkpointing Works Internally</h2>
+
+<p>What happens behind the scenes when a checkpointer is configured?</p>
+
+<p><strong>Saving:</strong></p>
+
+<ol>
+  <li><strong>Step Complete:</strong> The <a href="05_pregel_execution_engine.md">Pregel Execution Engine</a> finishes a step (e.g., after running the <code class="language-plaintext highlighter-rouge">adder</code> node and updating the state).</li>
+  <li><strong>Signal Checkpointer:</strong> The engine tells the configured checkpointer (<code class="language-plaintext highlighter-rouge">MemorySaver</code> in our example) that it’s time to save.</li>
+  <li><strong>Gather State:</strong> The checkpointer (or the engine on its behalf) accesses all the active <a href="03_channels.md">Channels</a>.</li>
+  <li><strong>Serialize State:</strong> For each channel, it calls the channel’s internal <code class="language-plaintext highlighter-rouge">checkpoint()</code> method to get a serializable representation of its current value (e.g., the number <code class="language-plaintext highlighter-rouge">6</code> for the <code class="language-plaintext highlighter-rouge">"value"</code> channel).</li>
+  <li><strong>Store Checkpoint:</strong> The checkpointer bundles the serialized channel values, their versions, the current step number, and other metadata into a <code class="language-plaintext highlighter-rouge">Checkpoint</code> object. It then stores this <code class="language-plaintext highlighter-rouge">Checkpoint</code> associated with the current <code class="language-plaintext highlighter-rouge">thread_id</code> provided in the <code class="language-plaintext highlighter-rouge">config</code>. <code class="language-plaintext highlighter-rouge">MemorySaver</code> stores it in a dictionary in RAM; <code class="language-plaintext highlighter-rouge">SqliteSaver</code> writes it to a database table.</li>
+</ol>
+
+<p><strong>Loading (Resuming):</strong></p>
+
+<ol>
+  <li><strong>Invoke with <code class="language-plaintext highlighter-rouge">thread_id</code>:</strong> You call <code class="language-plaintext highlighter-rouge">app.invoke(None, config=config)</code> where <code class="language-plaintext highlighter-rouge">config</code> contains a <code class="language-plaintext highlighter-rouge">thread_id</code> that has been previously saved.</li>
+  <li><strong>Request Checkpoint:</strong> The <a href="05_pregel_execution_engine.md">Pregel Execution Engine</a> asks the checkpointer to load the latest checkpoint for the given <code class="language-plaintext highlighter-rouge">thread_id</code>.</li>
+  <li><strong>Retrieve Checkpoint:</strong> The checkpointer retrieves the saved <code class="language-plaintext highlighter-rouge">Checkpoint</code> object (e.g., from its memory dictionary or the database).</li>
+  <li><strong>Restore State:</strong> The engine takes the saved channel values from the checkpoint. For each channel, it calls the channel’s <code class="language-plaintext highlighter-rouge">from_checkpoint()</code> method (or similar internal logic) to restore its state. The “whiteboard” (<a href="03_channels.md">Channels</a>) is now exactly as it was when the checkpoint was saved.</li>
+  <li><strong>Continue Execution:</strong> The engine looks at the saved step number and metadata to figure out where to resume execution, typically by preparing the tasks for the <em>next</em> step.</li>
+</ol>
+
+<p>Here’s a simplified view of the interaction:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant App as CompiledGraph
+    participant Engine as Pregel Engine
+    participant Saver as Checkpointer (e.g., MemorySaver)
+    participant Storage as Underlying Storage (RAM, DB)
+
+    %% Saving %%
+    Engine-&gt;&gt;Engine: Finishes Step N
+    Engine-&gt;&gt;Saver: Save checkpoint for config (thread_id)
+    Saver-&gt;&gt;Engine: Request current channel states &amp; versions
+    Engine--&gt;&gt;Saver: Provides states &amp; versions
+    Saver-&gt;&gt;Storage: Store Checkpoint(Step N, states, versions) linked to thread_id
+    Storage--&gt;&gt;Saver: Acknowledge Save
+    Saver--&gt;&gt;Engine: Save Complete
+
+    %% Loading %%
+    User-&gt;&gt;App: invoke(None, config with thread_id)
+    App-&gt;&gt;Engine: Start/Resume Execution
+    Engine-&gt;&gt;Saver: Get latest checkpoint for config (thread_id)
+    Saver-&gt;&gt;Storage: Retrieve Checkpoint linked to thread_id
+    Storage--&gt;&gt;Saver: Returns Checkpoint(Step N, states, versions)
+    Saver--&gt;&gt;Engine: Provides Checkpoint
+    Engine-&gt;&gt;Engine: Restore channel states from checkpoint
+    Engine-&gt;&gt;Engine: Prepare tasks for Step N+1
+    Engine-&gt;&gt;App: Continue execution...
+</code></pre>
+
+<h2 id="a-peek-at-the-code-checkpointbasepy-checkpointmemorypy-pregellooppy">A Peek at the Code (<code class="language-plaintext highlighter-rouge">checkpoint/base.py</code>, <code class="language-plaintext highlighter-rouge">checkpoint/memory.py</code>, <code class="language-plaintext highlighter-rouge">pregel/loop.py</code>)</h2>
+
+<p>Let’s look at the core components:</p>
+
+<ul>
+  <li>
+    <p><strong><code class="language-plaintext highlighter-rouge">BaseCheckpointSaver</code> (<code class="language-plaintext highlighter-rouge">checkpoint/base.py</code>)</strong>: This is the abstract base class (like a template) that all checkpointers must implement. It defines the essential methods the engine needs.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># checkpoint/base.py (Highly Simplified)
+</span><span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">TypedDict</span>
+
+<span class="c1"># Represents a saved checkpoint
+</span><span class="k">class</span> <span class="nc">Checkpoint</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
+    <span class="n">channel_values</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="c1"># Saved state of channels
+</span>    <span class="n">channel_versions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="c1"># Internal versions
+</span>    <span class="n">versions_seen</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="c1"># Tracking for node execution
+</span>    <span class="c1"># ... other metadata like v, ts, id, pending_sends ...
+</span>
+<span class="c1"># Represents the checkpoint tuple retrieved from storage
+</span><span class="k">class</span> <span class="nc">CheckpointTuple</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
+    <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span> <span class="c1"># The config used (includes thread_id)
+</span>    <span class="n">checkpoint</span><span class="p">:</span> <span class="n">Checkpoint</span>
+    <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span>
+    <span class="c1"># ... other fields like parent_config, pending_writes ...
+</span>
+<span class="k">class</span> <span class="nc">BaseCheckpointSaver</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="c1"># --- Sync Methods ---
+</span>    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">def</span> <span class="nf">get_tuple</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">CheckpointTuple</span><span class="p">]:</span>
+        <span class="s">"""Load the checkpoint tuple for the given config."""</span>
+        <span class="p">...</span>
+
+    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">def</span> <span class="nf">put</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">checkpoint</span><span class="p">:</span> <span class="n">Checkpoint</span><span class="p">,</span> <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="s">"""Save a checkpoint."""</span>
+        <span class="p">...</span>
+
+    <span class="c1"># --- Async Methods (similar structure) ---
+</span>    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">aget_tuple</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">CheckpointTuple</span><span class="p">]:</span>
+        <span class="s">"""Async load the checkpoint tuple."""</span>
+        <span class="p">...</span>
+
+    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">aput</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">checkpoint</span><span class="p">:</span> <span class="n">Checkpoint</span><span class="p">,</span> <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="s">"""Async save a checkpoint."""</span>
+        <span class="p">...</span>
+
+    <span class="c1"># --- Other methods (list, put_writes) omitted for brevity ---
+</span></code></pre></div>    </div>
+    <p>The key methods are <code class="language-plaintext highlighter-rouge">get_tuple</code> (to load) and <code class="language-plaintext highlighter-rouge">put</code> (to save), along with their async counterparts (<code class="language-plaintext highlighter-rouge">aget_tuple</code>, <code class="language-plaintext highlighter-rouge">aput</code>). Any specific checkpointer (like <code class="language-plaintext highlighter-rouge">MemorySaver</code>, <code class="language-plaintext highlighter-rouge">SqliteSaver</code>) must provide concrete implementations for these methods.</p>
+  </li>
+  <li>
+    <p><strong><code class="language-plaintext highlighter-rouge">MemorySaver</code> (<code class="language-plaintext highlighter-rouge">checkpoint/memory.py</code>)</strong>: A simple implementation that uses an in-memory dictionary.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># checkpoint/memory.py (Highly Simplified)
+</span><span class="kn">import</span> <span class="nn">threading</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+
+<span class="k">class</span> <span class="nc">MemorySaver</span><span class="p">(</span><span class="n">BaseCheckpointSaver</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Use a dictionary to store checkpoints in RAM
+</span>        <span class="c1"># Key: thread_id, Value: List of CheckpointTuples
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_checkpoints</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">CheckpointTuple</span><span class="p">]]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="p">.</span><span class="n">RLock</span><span class="p">()</span> <span class="c1"># To handle multiple threads safely
+</span>
+    <span class="k">def</span> <span class="nf">get_tuple</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">CheckpointTuple</span><span class="p">]:</span>
+        <span class="n">thread_id</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s">"configurable"</span><span class="p">][</span><span class="s">"thread_id"</span><span class="p">]</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="p">.</span><span class="n">_lock</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">checkpoints</span> <span class="p">:</span><span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_checkpoints</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">thread_id</span><span class="p">):</span>
+                <span class="c1"># Return the latest checkpoint for this thread_id
+</span>                <span class="k">return</span> <span class="n">checkpoints</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">put</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">checkpoint</span><span class="p">:</span> <span class="n">Checkpoint</span><span class="p">,</span> <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="n">thread_id</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s">"configurable"</span><span class="p">][</span><span class="s">"thread_id"</span><span class="p">]</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="p">.</span><span class="n">_lock</span><span class="p">:</span>
+            <span class="c1"># Append the new checkpoint to the list for this thread_id
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">_checkpoints</span><span class="p">[</span><span class="n">thread_id</span><span class="p">].</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">CheckpointTuple</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">checkpoint</span><span class="p">,</span> <span class="n">metadata</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s">"configurable"</span><span class="p">:</span> <span class="p">{</span><span class="s">"thread_id"</span><span class="p">:</span> <span class="n">thread_id</span><span class="p">}}</span>
+
+    <span class="c1"># ... async methods (aget_tuple, aput) are similar using the same dict ...
+</span>    <span class="c1"># ... list method iterates through the dictionary ...
+</span></code></pre></div>    </div>
+    <p>As you can see, <code class="language-plaintext highlighter-rouge">MemorySaver</code> just uses a standard Python dictionary (<code class="language-plaintext highlighter-rouge">self._checkpoints</code>) to store the <code class="language-plaintext highlighter-rouge">CheckpointTuple</code> for each <code class="language-plaintext highlighter-rouge">thread_id</code>. This is simple but not persistent.</p>
+  </li>
+  <li>
+    <p><strong>Integration (<code class="language-plaintext highlighter-rouge">pregel/loop.py</code>)</strong>: The <a href="05_pregel_execution_engine.md">Pregel Execution Engine</a> (<code class="language-plaintext highlighter-rouge">PregelLoop</code> classes) interacts with the checkpointer during its execution cycle.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># pregel/loop.py (Conceptual Snippets)
+</span>
+<span class="k">class</span> <span class="nc">PregelLoop</span><span class="p">:</span> <span class="c1"># Base class for Sync/Async loops
+</span>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="p">...,</span> <span class="n">checkpointer</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BaseCheckpointSaver</span><span class="p">],</span> <span class="p">...):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">checkpointer</span> <span class="o">=</span> <span class="n">checkpointer</span>
+        <span class="c1"># ... other init ...
+</span>
+    <span class="k">def</span> <span class="nf">_put_checkpoint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">metadata</span><span class="p">:</span> <span class="n">CheckpointMetadata</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="c1"># Called by the loop after a step or input processing
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">checkpointer</span><span class="p">:</span>
+            <span class="c1"># 1. Create the Checkpoint object from current channels/state
+</span>            <span class="n">checkpoint_data</span> <span class="o">=</span> <span class="n">create_checkpoint</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">checkpoint</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">channels</span><span class="p">,</span> <span class="p">...)</span>
+
+            <span class="c1"># 2. Call the checkpointer's put method (sync or async)
+</span>            <span class="c1">#    (Uses self.submit to potentially run in background)
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">submit</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">checkpointer</span><span class="p">.</span><span class="n">put</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">checkpoint_config</span><span class="p">,</span> <span class="n">checkpoint_data</span><span class="p">,</span> <span class="n">metadata</span><span class="p">)</span>
+
+            <span class="c1"># 3. Update internal config with the new checkpoint ID
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">checkpoint_config</span> <span class="o">=</span> <span class="p">{</span><span class="s">"configurable"</span><span class="p">:</span> <span class="p">{</span><span class="s">"thread_id"</span><span class="p">:</span> <span class="p">...,</span> <span class="s">"checkpoint_id"</span><span class="p">:</span> <span class="n">checkpoint_data</span><span class="p">[</span><span class="s">"id"</span><span class="p">]}}</span>
+
+    <span class="k">def</span> <span class="nf">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="c1"># Or __aenter__ for async
+</span>        <span class="c1"># Called when the loop starts
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">checkpointer</span><span class="p">:</span>
+            <span class="c1"># 1. Try to load an existing checkpoint tuple
+</span>            <span class="n">saved</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">checkpointer</span><span class="p">.</span><span class="n">get_tuple</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">checkpoint_config</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">saved</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="k">if</span> <span class="n">saved</span><span class="p">:</span>
+            <span class="c1"># 2. Restore state from the loaded checkpoint
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">checkpoint</span> <span class="o">=</span> <span class="n">saved</span><span class="p">.</span><span class="n">checkpoint</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">checkpoint_config</span> <span class="o">=</span> <span class="n">saved</span><span class="p">.</span><span class="n">config</span>
+            <span class="c1"># ... restore channels from saved.checkpoint['channel_values'] ...
+</span>        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Initialize with an empty checkpoint
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">checkpoint</span> <span class="o">=</span> <span class="n">empty_checkpoint</span><span class="p">()</span>
+
+        <span class="c1"># ... setup channels based on restored or empty checkpoint ...
+</span>        <span class="k">return</span> <span class="bp">self</span>
+</code></pre></div>    </div>
+    <p>The <code class="language-plaintext highlighter-rouge">PregelLoop</code> uses the checkpointer’s <code class="language-plaintext highlighter-rouge">get_tuple</code> method when it starts (in <code class="language-plaintext highlighter-rouge">__enter__</code> or <code class="language-plaintext highlighter-rouge">__aenter__</code>) to load any existing state. It uses the <code class="language-plaintext highlighter-rouge">put</code> method (inside <code class="language-plaintext highlighter-rouge">_put_checkpoint</code>) during execution to save progress.</p>
+  </li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about <strong>Checkpointers (<code class="language-plaintext highlighter-rouge">BaseCheckpointSaver</code>)</strong>, the mechanism that gives your LangGraph applications memory and resilience.</p>
+
+<ul>
+  <li>Checkpointers <strong>save</strong> the state of your graph’s <a href="03_channels.md">Channels</a> periodically.</li>
+  <li>They <strong>load</strong> saved states to resume execution.</li>
+  <li>This is crucial for <strong>long-running graphs</strong>, <strong>human-in-the-loop</strong> workflows (using <code class="language-plaintext highlighter-rouge">Interrupt</code>), and <strong>recovering from failures</strong>.</li>
+  <li>You enable checkpointing by passing a <code class="language-plaintext highlighter-rouge">checkpointer</code> instance (like <code class="language-plaintext highlighter-rouge">MemorySaver</code> or <code class="language-plaintext highlighter-rouge">SqliteSaver</code>) to <code class="language-plaintext highlighter-rouge">graph.compile()</code>.</li>
+  <li>You manage different execution histories using a unique <code class="language-plaintext highlighter-rouge">thread_id</code> in the <code class="language-plaintext highlighter-rouge">config</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">MemorySaver</code> is simple for testing but lost when the script ends; use database savers (like <code class="language-plaintext highlighter-rouge">SqliteSaver</code>) for true persistence.</li>
+</ul>
+
+<p>This chapter concludes our tour of the core concepts in LangGraph! You now understand the fundamental building blocks: the blueprint (<a href="01_graph___stategraph.md"><code class="language-plaintext highlighter-rouge">StateGraph</code></a>), the workers (<a href="02_nodes___pregelnode__.md"><code class="language-plaintext highlighter-rouge">Nodes</code></a>), the communication system (<a href="03_channels.md"><code class="language-plaintext highlighter-rouge">Channels</code></a>), the traffic signals (<a href="04_control_flow_primitives___branch____send____interrupt__.md">Control Flow Primitives</a>), the engine room (<a href="05_pregel_execution_engine.md">Pregel Execution Engine</a>), and the save system (<a href="06_checkpointer___basecheckpointsaver__.md">Checkpointer</a>).</p>
+
+<p>With these concepts, you’re well-equipped to start building your own sophisticated, stateful applications with LangGraph! Explore the documentation for more examples, advanced patterns, and different checkpointer implementations. Happy building!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

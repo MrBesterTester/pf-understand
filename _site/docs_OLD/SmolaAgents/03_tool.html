@@ -1,0 +1,305 @@
+<h1 id="chapter-3-tool---giving-your-agent-superpowers">Chapter 3: Tool - Giving Your Agent Superpowers</h1>
+
+<p>Welcome back! In <a href="02_model_interface.md">Chapter 2: Model Interface</a>, we learned how our <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> uses a “universal remote” (the Model Interface) to talk to its LLM “brain”. The LLM thinks and suggests what the agent should do next.</p>
+
+<p>But how does the agent actually <em>do</em> things? If the LLM suggests “Search the web for the capital of France,” how does the agent perform the search? It can’t just magically type into Google!</p>
+
+<p>This is where <strong>Tools</strong> come in. They are the agent’s hands and specialized equipment, allowing it to interact with the world beyond just generating text.</p>
+
+<h2 id="the-problem-an-agent-trapped-in-its-mind">The Problem: An Agent Trapped in its Mind</h2>
+
+<p>Imagine a brilliant chef who only knows recipes but is locked in an empty room. They can tell you exactly how to make a perfect soufflé, step-by-step, but they can’t actually <em>do</em> any of it. They have no ingredients, no oven, no whisk, no bowls. They’re stuck!</p>
+
+<p><img src="https://img.icons8.com/ios/50/000000/cook-male--v1.png" alt="Chef Thinking" /> 🤔 -&gt; 📝 Recipe (Think)</p>
+
+<p>An agent without tools is like that chef. The LLM brain can reason and plan (“I need to search the web”), but the agent itself has no way to execute that plan (“How do I <em>actually</em> search?”).</p>
+
+<h2 id="the-solution-the-agents-toolbox">The Solution: The Agent’s Toolbox</h2>
+
+<p>Tools are specific capabilities we give to our agent. Think of them like the utensils and appliances in a kitchen drawer:</p>
+
+<ul>
+  <li><strong>Peeler:</strong> Used for peeling vegetables.</li>
+  <li><strong>Whisk:</strong> Used for mixing ingredients.</li>
+  <li><strong>Oven:</strong> Used for baking.</li>
+  <li><strong>Search Engine Tool:</strong> Used for searching the web.</li>
+  <li><strong>Calculator Tool:</strong> Used for performing calculations.</li>
+  <li><strong>Code Execution Tool:</strong> Used for running computer code.</li>
+</ul>
+
+<p><img src="https://img.icons8.com/plasticine/100/toolbox.png" alt="Toolbox" /> -&gt; 🔎 Search, 💻 Code Runner, ☁️ Weather API</p>
+
+<p>Each tool is a reusable function that the agent can call upon to perform a specific action. The agent acts like the chef, looking at the next step in the recipe (the LLM’s suggestion) and picking the right tool from its toolbox.</p>
+
+<h2 id="what-makes-a-tool">What Makes a Tool?</h2>
+
+<p>Every tool in <code class="language-plaintext highlighter-rouge">SmolaAgents</code> needs a few key pieces of information so the agent (and the LLM helping it) can understand it:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">name</code></strong>: A short, descriptive name for the tool (e.g., <code class="language-plaintext highlighter-rouge">web_search</code>, <code class="language-plaintext highlighter-rouge">calculator</code>). This is how the agent identifies which tool to use.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">description</code></strong>: A clear explanation of what the tool does, what it’s good for, and what information it needs. This helps the LLM decide <em>when</em> to suggest using this tool. Example: <em>“Performs a web search using DuckDuckGo and returns the top results.”</em></li>
+  <li><strong><code class="language-plaintext highlighter-rouge">inputs</code></strong>: Defines what information the tool needs to do its job. This is like specifying that a peeler needs a vegetable, or a calculator needs numbers and an operation. It’s defined as a dictionary where keys are argument names and values describe the type and purpose. Example: <code class="language-plaintext highlighter-rouge">{"query": {"type": "string", "description": "The search query"}}</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">output_type</code></strong>: Describes the type of result the tool will return (e.g., <code class="language-plaintext highlighter-rouge">string</code>, <code class="language-plaintext highlighter-rouge">number</code>, <code class="language-plaintext highlighter-rouge">image</code>).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">forward</code> method</strong>: This is the actual Python code that gets executed when the tool is used. It takes the defined <code class="language-plaintext highlighter-rouge">inputs</code> as arguments and performs the tool’s action, returning the result.</li>
+</ol>
+
+<h2 id="creating-your-first-tool-the-greetingtool">Creating Your First Tool: The <code class="language-plaintext highlighter-rouge">GreetingTool</code></h2>
+
+<p>Let’s build a very simple tool. Imagine we want our agent to be able to greet someone by name.</p>
+
+<p>We’ll create a <code class="language-plaintext highlighter-rouge">GreetingTool</code> by inheriting from the base <code class="language-plaintext highlighter-rouge">Tool</code> class provided by <code class="language-plaintext highlighter-rouge">SmolaAgents</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: simple_tools.py ---
+</span><span class="kn">from</span> <span class="nn">smolagents</span> <span class="kn">import</span> <span class="n">Tool</span> <span class="c1"># Import the base class
+</span>
+<span class="k">class</span> <span class="nc">GreetingTool</span><span class="p">(</span><span class="n">Tool</span><span class="p">):</span>
+    <span class="s">"""A simple tool that generates a greeting."""</span>
+
+    <span class="c1"># 1. Give it a unique name
+</span>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"greet_person"</span>
+
+    <span class="c1"># 2. Describe what it does clearly
+</span>    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"Greets a person by their name."</span>
+
+    <span class="c1"># 3. Define the inputs it needs
+</span>    <span class="c1"># It needs one input: the 'name' of the person, which should be a string.
+</span>    <span class="n">inputs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s">"name"</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s">"type"</span><span class="p">:</span> <span class="s">"string"</span><span class="p">,</span>
+            <span class="s">"description"</span><span class="p">:</span> <span class="s">"The name of the person to greet."</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="c1"># 4. Specify the type of the output
+</span>    <span class="c1"># It will return the greeting as a string.
+</span>    <span class="n">output_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"string"</span>
+
+    <span class="c1"># 5. Implement the action in the 'forward' method
+</span>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="s">"""The actual code that runs when the tool is called."""</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"--- GreetingTool activated with name: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s"> ---"</span><span class="p">)</span>
+        <span class="n">greeting</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Hello, </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">! Nice to meet you."</span>
+        <span class="k">return</span> <span class="n">greeting</span>
+
+<span class="c1"># Let's test it quickly (outside the agent context)
+</span><span class="n">greeter</span> <span class="o">=</span> <span class="n">GreetingTool</span><span class="p">()</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">greeter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"Alice"</span><span class="p">)</span> <span class="c1"># Calling the tool instance
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Tool returned: '</span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s">'"</span><span class="p">)</span>
+
+<span class="c1"># Expected Output:
+# --- GreetingTool activated with name: Alice ---
+# Tool returned: 'Hello, Alice! Nice to meet you.'
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Import:</strong> We import the base <code class="language-plaintext highlighter-rouge">Tool</code> class.</li>
+  <li><strong>Class Definition:</strong> We define <code class="language-plaintext highlighter-rouge">GreetingTool</code> inheriting from <code class="language-plaintext highlighter-rouge">Tool</code>.</li>
+  <li><strong>Attributes:</strong> We set the required class attributes: <code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">description</code>, <code class="language-plaintext highlighter-rouge">inputs</code>, and <code class="language-plaintext highlighter-rouge">output_type</code>. These tell the agent everything it needs to know <em>about</em> the tool without running it.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">forward</code> Method:</strong> This method contains the core logic. It takes the <code class="language-plaintext highlighter-rouge">name</code> (defined in <code class="language-plaintext highlighter-rouge">inputs</code>) as an argument and returns the greeting string. We added a <code class="language-plaintext highlighter-rouge">print</code> statement just to see when it runs.</li>
+  <li><strong>Testing:</strong> We create an instance <code class="language-plaintext highlighter-rouge">greeter</code> and call it like a function, passing the required argument <code class="language-plaintext highlighter-rouge">name="Alice"</code>. It executes the <code class="language-plaintext highlighter-rouge">forward</code> method and returns the result.</li>
+</ol>
+
+<p>This <code class="language-plaintext highlighter-rouge">GreetingTool</code> is now ready to be added to an agent’s toolbox!</p>
+
+<h2 id="adding-the-tool-to-your-agent">Adding the Tool to Your Agent</h2>
+
+<p>Remember how we created our <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> in <a href="01_multistepagent.md">Chapter 1</a>? We gave it a model and a list of tools. Let’s add our new <code class="language-plaintext highlighter-rouge">GreetingTool</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agent_with_greeting.py ---
+# (Assuming GreetingTool is defined as above or imported)
+# from simple_tools import GreetingTool
+</span><span class="kn">from</span> <span class="nn">smolagents</span> <span class="kn">import</span> <span class="n">MultiStepAgent</span>
+<span class="kn">from</span> <span class="nn">smolagents.models</span> <span class="kn">import</span> <span class="n">LiteLLMModel</span> <span class="c1"># From Chapter 2
+# Potentially other tools like SearchTool etc.
+</span>
+<span class="c1"># 1. Create an instance of our new tool
+</span><span class="n">greeting_tool</span> <span class="o">=</span> <span class="n">GreetingTool</span><span class="p">()</span>
+
+<span class="c1"># 2. Create instances of any other tools the agent might need
+# search_tool = SearchTool() # Example from Chapter 1
+</span>
+<span class="c1"># 3. Choose a language model (the "brain")
+</span><span class="n">llm</span> <span class="o">=</span> <span class="n">LiteLLMModel</span><span class="p">(</span><span class="n">model_id</span><span class="o">=</span><span class="s">"gpt-3.5-turbo"</span><span class="p">)</span> <span class="c1"># Needs API key setup
+</span>
+<span class="c1"># 4. Create the MultiStepAgent, passing the tool(s) in a list
+</span><span class="n">agent</span> <span class="o">=</span> <span class="n">MultiStepAgent</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">greeting_tool</span><span class="p">]</span> <span class="c1"># Add our tool here! Maybe add search_tool too?
+</span>    <span class="c1"># tools=[greeting_tool, search_tool]
+</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"Agent created with GreetingTool!"</span><span class="p">)</span>
+
+<span class="c1"># 5. Give the agent a task that might use the tool
+</span><span class="n">task</span> <span class="o">=</span> <span class="s">"Greet the user named Bob."</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Running agent with task: '</span><span class="si">{</span><span class="n">task</span><span class="si">}</span><span class="s">'"</span><span class="p">)</span>
+
+<span class="c1"># The agent will now start its Think-Act-Observe cycle...
+</span><span class="n">final_answer</span> <span class="o">=</span> <span class="n">agent</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"-"</span> <span class="o">*</span> <span class="mi">20</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Final Answer received: </span><span class="si">{</span><span class="n">final_answer</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># --- Expected Interaction (Simplified) ---
+# Agent (thinks): The task is to greet Bob. I have a 'greet_person' tool.
+# Agent (acts): Use tool 'greet_person' with input name="Bob".
+# --- GreetingTool activated with name: Bob --- (Our print statement)
+# Agent (observes): Tool returned "Hello, Bob! Nice to meet you."
+# Agent (thinks): I have the greeting. That completes the task.
+# Agent (acts): Use 'final_answer' tool with "Hello, Bob! Nice to meet you."
+# --------------------
+# Final Answer received: Hello, Bob! Nice to meet you.
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>We create an instance of <code class="language-plaintext highlighter-rouge">GreetingTool</code>.</li>
+  <li>We put this instance into the <code class="language-plaintext highlighter-rouge">tools</code> list when initializing <code class="language-plaintext highlighter-rouge">MultiStepAgent</code>.</li>
+  <li>The agent now “knows” about the <code class="language-plaintext highlighter-rouge">greet_person</code> tool, its description, and how to use it (via its <code class="language-plaintext highlighter-rouge">name</code> and <code class="language-plaintext highlighter-rouge">inputs</code>).</li>
+  <li>When we run the <code class="language-plaintext highlighter-rouge">agent</code> with the task “Greet the user named Bob,” the LLM (using the tool descriptions provided in the prompt) will likely recognize that the <code class="language-plaintext highlighter-rouge">greet_person</code> tool is perfect for this.</li>
+  <li>The agent will then execute the <code class="language-plaintext highlighter-rouge">greeting_tool.forward(name="Bob")</code> method during its “Act” phase.</li>
+</ol>
+
+<h2 id="how-the-agent-uses-tools-under-the-hood">How the Agent Uses Tools: Under the Hood</h2>
+
+<p>Let’s revisit the <strong>Think -&gt; Act -&gt; Observe</strong> cycle from <a href="01_multistepagent.md">Chapter 1</a> and see exactly where tools fit in.</p>
+
+<ol>
+  <li><strong>Think:</strong> The agent gathers its history (<a href="04_agentmemory.md">AgentMemory</a>) and the available tool descriptions. It sends this to the LLM via the <a href="02_model_interface.md">Model Interface</a> asking, “What should I do next to accomplish the task ‘Greet Bob’?” The LLM, seeing the <code class="language-plaintext highlighter-rouge">greet_person</code> tool description, might respond with something like:
+    <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"thought"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The user wants me to greet Bob. I should use the 'greet_person' tool."</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"greet_person"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"action_input"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Bob"</span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div>    </div>
+    <p><em>(Note: The exact format depends on the agent type and model. Some models use explicit tool-calling formats like the one shown in Chapter 2’s <code class="language-plaintext highlighter-rouge">ToolCallingAgent</code> example output).</em></p>
+  </li>
+  <li><strong>Act:</strong> The <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> receives this response.
+    <ul>
+      <li>It parses the response to identify the intended <code class="language-plaintext highlighter-rouge">action</code> (<code class="language-plaintext highlighter-rouge">greet_person</code>) and the <code class="language-plaintext highlighter-rouge">action_input</code> (<code class="language-plaintext highlighter-rouge">{"name": "Bob"}</code>).</li>
+      <li>It looks up the tool named <code class="language-plaintext highlighter-rouge">greet_person</code> in its <code class="language-plaintext highlighter-rouge">self.tools</code> dictionary.</li>
+      <li>It calls the <code class="language-plaintext highlighter-rouge">forward</code> method of that tool instance, passing the arguments from <code class="language-plaintext highlighter-rouge">action_input</code>. In our case: <code class="language-plaintext highlighter-rouge">greeting_tool.forward(name="Bob")</code>.</li>
+      <li>This executes our Python code inside the <code class="language-plaintext highlighter-rouge">forward</code> method.</li>
+    </ul>
+  </li>
+  <li><strong>Observe:</strong> The agent captures the return value from the <code class="language-plaintext highlighter-rouge">forward</code> method (e.g., <code class="language-plaintext highlighter-rouge">"Hello, Bob! Nice to meet you."</code>). This becomes the “observation” for this step.
+    <ul>
+      <li>This observation is stored in the <a href="04_agentmemory.md">AgentMemory</a>.</li>
+      <li>The cycle repeats: The agent thinks again, now considering the result of the greeting tool. It likely decides the task is complete and uses the built-in <code class="language-plaintext highlighter-rouge">final_answer</code> tool.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Here’s a simplified diagram:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent as MultiStepAgent
+    participant LLM as LLM Brain
+    participant GreetTool as GreetingTool
+
+    Agent-&gt;&gt;LLM: Task: Greet Bob. Tools: [greet_person]. What next?
+    LLM--&gt;&gt;Agent: Use tool 'greet_person' with name='Bob'
+    Agent-&gt;&gt;GreetTool: forward(name="Bob")
+    GreetTool--&gt;&gt;Agent: "Hello, Bob! Nice to meet you." (Observation)
+    Agent-&gt;&gt;LLM: Observation: "Hello, Bob!..." Task done?
+    LLM--&gt;&gt;Agent: Use tool 'final_answer' with "Hello, Bob!..."
+    Agent--&gt;&gt;User: "Hello, Bob! Nice to meet you."
+</code></pre>
+
+<p><strong>Code Glimpse (Simplified <code class="language-plaintext highlighter-rouge">execute_tool_call</code>):</strong></p>
+
+<p>Inside the <code class="language-plaintext highlighter-rouge">agents.py</code> file (specifically within agent types like <code class="language-plaintext highlighter-rouge">ToolCallingAgent</code>), there’s logic similar to this (heavily simplified):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Simplified concept from agents.py ---
+</span><span class="k">class</span> <span class="nc">SomeAgentType</span><span class="p">(</span><span class="n">MultiStepAgent</span><span class="p">):</span>
+    <span class="c1"># ... other methods ...
+</span>
+    <span class="k">def</span> <span class="nf">execute_tool_call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">arguments</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="c1"># Find the tool in the agent's toolbox
+</span>        <span class="k">if</span> <span class="n">tool_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">tools</span><span class="p">:</span>
+            <span class="n">tool_instance</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">tools</span><span class="p">[</span><span class="n">tool_name</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Call the tool's forward method with the arguments!
+</span>                <span class="c1"># This is where GreetingTool.forward(name="Bob") happens.
+</span>                <span class="n">result</span> <span class="o">=</span> <span class="n">tool_instance</span><span class="p">(</span><span class="o">**</span><span class="n">arguments</span><span class="p">)</span> <span class="c1"># Uses ** to unpack the dict
+</span>                <span class="k">return</span> <span class="n">result</span>
+            <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="c1"># Handle errors if the tool fails
+</span>                <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error executing tool </span><span class="si">{</span><span class="n">tool_name</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+                <span class="k">return</span> <span class="sa">f</span><span class="s">"Error: Tool </span><span class="si">{</span><span class="n">tool_name</span><span class="si">}</span><span class="s"> failed."</span>
+        <span class="c1"># ... handle case where tool_name is not found ...
+</span>        <span class="k">elif</span> <span class="n">tool_name</span> <span class="o">==</span> <span class="s">"final_answer"</span><span class="p">:</span>
+             <span class="c1"># Special handling for the final answer
+</span>             <span class="k">return</span> <span class="n">arguments</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"answer"</span><span class="p">,</span> <span class="n">arguments</span><span class="p">)</span> <span class="c1"># Return the final answer content
+</span>        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s">"Error: Unknown tool </span><span class="si">{</span><span class="n">tool_name</span><span class="si">}</span><span class="s">."</span>
+
+    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">memory_step</span><span class="p">:</span> <span class="n">ActionStep</span><span class="p">):</span>
+        <span class="c1"># ... (Agent thinks and gets LLM response) ...
+</span>        <span class="n">llm_response</span> <span class="o">=</span> <span class="c1"># ... result from self.model(...) ...
+</span>
+        <span class="k">if</span> <span class="n">llm_response</span> <span class="n">suggests</span> <span class="n">a</span> <span class="n">tool</span> <span class="n">call</span><span class="p">:</span>
+             <span class="n">tool_name</span> <span class="o">=</span> <span class="c1"># ... parse tool name from response ...
+</span>             <span class="n">arguments</span> <span class="o">=</span> <span class="c1"># ... parse arguments from response ...
+</span>
+             <span class="c1"># === ACT ===
+</span>             <span class="n">observation</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">execute_tool_call</span><span class="p">(</span><span class="n">tool_name</span><span class="p">,</span> <span class="n">arguments</span><span class="p">)</span>
+             <span class="n">memory_step</span><span class="p">.</span><span class="n">observations</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span> <span class="c1"># Store observation
+</span>
+             <span class="k">if</span> <span class="n">tool_name</span> <span class="o">==</span> <span class="s">"final_answer"</span><span class="p">:</span>
+                 <span class="k">return</span> <span class="n">observation</span> <span class="c1"># Signal that this is the final answer
+</span>        <span class="c1"># ... (handle cases where LLM gives text instead of tool call) ...
+</span>        <span class="k">return</span> <span class="bp">None</span> <span class="c1"># Not the final answer yet
+</span></code></pre></div></div>
+
+<p>This shows the core idea: the agent gets the <code class="language-plaintext highlighter-rouge">tool_name</code> and <code class="language-plaintext highlighter-rouge">arguments</code> from the LLM, finds the corresponding <code class="language-plaintext highlighter-rouge">Tool</code> object, and calls its <code class="language-plaintext highlighter-rouge">forward</code> method using the arguments.</p>
+
+<h2 id="common-built-in-tools">Common Built-in Tools</h2>
+
+<p><code class="language-plaintext highlighter-rouge">SmolaAgents</code> comes with several useful tools ready to use (found in <code class="language-plaintext highlighter-rouge">default_tools.py</code>):</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">DuckDuckGoSearchTool</code> (<code class="language-plaintext highlighter-rouge">web_search</code>)</strong>: Searches the web using DuckDuckGo.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">PythonInterpreterTool</code> (<code class="language-plaintext highlighter-rouge">python_interpreter</code>)</strong>: Executes Python code snippets safely. Very powerful for calculations, data manipulation, etc. (Used primarily by <code class="language-plaintext highlighter-rouge">CodeAgent</code>, see <a href="06_pythonexecutor.md">Chapter 6: PythonExecutor</a>).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">VisitWebpageTool</code> (<code class="language-plaintext highlighter-rouge">visit_webpage</code>)</strong>: Fetches the content of a webpage URL.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">FinalAnswerTool</code> (<code class="language-plaintext highlighter-rouge">final_answer</code>)</strong>: A special, essential tool. The agent uses this <em>only</em> when it believes it has completed the task and has the final result. Calling this tool usually ends the agent’s run. It’s automatically added to every agent.</li>
+</ul>
+
+<p>You can import and use these just like we used our <code class="language-plaintext highlighter-rouge">GreetingTool</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">smolagents.tools</span> <span class="kn">import</span> <span class="n">DuckDuckGoSearchTool</span><span class="p">,</span> <span class="n">FinalAnswerTool</span> <span class="c1"># FinalAnswerTool is usually added automatically
+</span>
+<span class="n">search_tool</span> <span class="o">=</span> <span class="n">DuckDuckGoSearchTool</span><span class="p">()</span>
+<span class="c1"># calculator_tool = PythonInterpreterTool() # Often used internally by CodeAgent
+</span>
+<span class="n">agent</span> <span class="o">=</span> <span class="n">MultiStepAgent</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">search_tool</span><span class="p">]</span> <span class="c1"># Agent can now search!
+</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Tools are the bridge between an agent’s reasoning and the real world (or specific functionalities like code execution). They are reusable capabilities defined by their <code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">description</code>, <code class="language-plaintext highlighter-rouge">inputs</code>, <code class="language-plaintext highlighter-rouge">output_type</code>, and the core logic in their <code class="language-plaintext highlighter-rouge">forward</code> method.</p>
+
+<p>You’ve learned:</p>
+
+<ul>
+  <li>Why agents need tools (like a chef needs utensils).</li>
+  <li>The essential components of a <code class="language-plaintext highlighter-rouge">Tool</code> in <code class="language-plaintext highlighter-rouge">SmolaAgents</code>.</li>
+  <li>How to create a simple custom tool (<code class="language-plaintext highlighter-rouge">GreetingTool</code>).</li>
+  <li>How to give tools to your <code class="language-plaintext highlighter-rouge">MultiStepAgent</code>.</li>
+  <li>How the agent uses the LLM’s suggestions to select and execute the correct tool during the “Act” phase.</li>
+  <li>About some common built-in tools.</li>
+</ul>
+
+<p>By equipping your agent with the right set of tools, you dramatically expand the range of tasks it can accomplish! But as the agent takes multiple steps, using tools and getting results, how does it keep track of everything that has happened? That’s where memory comes in.</p>
+
+<p><strong>Next Chapter:</strong> <a href="04_agentmemory.md">Chapter 4: AgentMemory</a> - The Agent’s Notepad.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

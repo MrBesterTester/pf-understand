@@ -1,0 +1,280 @@
+<h1 id="chapter-2-node-basenode-node-asyncnode">Chapter 2: Node (<code class="language-plaintext highlighter-rouge">BaseNode</code>, <code class="language-plaintext highlighter-rouge">Node</code>, <code class="language-plaintext highlighter-rouge">AsyncNode</code>)</h1>
+
+<p>In <a href="01_shared_state___shared__dictionary__.md">Chapter 1: Shared State (<code class="language-plaintext highlighter-rouge">shared</code> dictionary)</a>, we learned how different parts of a PocketFlow workflow can communicate using the <code class="language-plaintext highlighter-rouge">shared</code> dictionary. Now, let’s meet the actual “workers” that perform the tasks and use this shared information: <strong>Nodes</strong>.</p>
+
+<h2 id="what-are-nodes-and-why-do-we-need-them">What are Nodes and Why Do We Need Them?</h2>
+
+<p>Imagine you’re building an AI that helps you write a story. This process might involve several steps:</p>
+<ol>
+  <li>Generate a story idea.</li>
+  <li>Write an outline based on the idea.</li>
+  <li>Write the first draft of a chapter using the outline.</li>
+  <li>Review and edit the chapter.</li>
+</ol>
+
+<p>Each of these steps is a distinct task. In PocketFlow, each such task would be handled by a <strong>Node</strong>.</p>
+
+<p>A <strong>Node</strong> is the fundamental building block in PocketFlow. It represents a single, atomic step in your workflow. Think of it as a highly specialized worker on an assembly line, responsible for one specific job. This job could be:</p>
+<ul>
+  <li>Calling a Large Language Model (LLM) to generate text.</li>
+  <li>Searching the web for information.</li>
+  <li>Making a decision based on some data.</li>
+  <li>Reading user input.</li>
+  <li>Saving results to a file.</li>
+</ul>
+
+<p>By breaking down a complex process into a series of Nodes, we make our AI applications:</p>
+<ul>
+  <li><strong>Modular:</strong> Each Node focuses on one thing, making it easier to develop, test, and understand.</li>
+  <li><strong>Reusable:</strong> A Node designed for web search can be used in many different AI applications.</li>
+  <li><strong>Manageable:</strong> It’s easier to build and debug a sequence of simple steps than one giant, monolithic piece of code.</li>
+</ul>
+
+<h2 id="the-anatomy-of-a-node-prep-exec-and-post">The Anatomy of a Node: <code class="language-plaintext highlighter-rouge">prep</code>, <code class="language-plaintext highlighter-rouge">exec</code>, and <code class="language-plaintext highlighter-rouge">post</code></h2>
+
+<p>Most Nodes in PocketFlow have a similar structure, typically involving three key methods:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">prep(self, shared)</code> (Prepare):</strong>
+    <ul>
+      <li><strong>Purpose:</strong> This method is called <em>before</em> the Node does its main work. Its job is to get any necessary input data from the <a href="01_shared_state___shared__dictionary__.md">shared dictionary</a>.</li>
+      <li><strong>Analogy:</strong> An assembly line worker picking up the necessary parts from a shared bin before starting their task.</li>
+      <li><strong>Input:</strong> It receives the <code class="language-plaintext highlighter-rouge">shared</code> dictionary.</li>
+      <li><strong>Output:</strong> It usually returns the specific data the Node needs for its core logic.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">exec(self, prep_res)</code> (Execute):</strong>
+    <ul>
+      <li><strong>Purpose:</strong> This is where the Node performs its core task. This is the “brain” or “muscle” of the Node.</li>
+      <li><strong>Analogy:</strong> The assembly line worker actually assembling the parts or performing their specialized action.</li>
+      <li><strong>Input:</strong> It receives the result from the <code class="language-plaintext highlighter-rouge">prep</code> method (<code class="language-plaintext highlighter-rouge">prep_res</code>).</li>
+      <li><strong>Output:</strong> It returns the result of its execution (e.g., a summary, search results, a decision).</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">post(self, shared, prep_res, exec_res)</code> (Post-process):</strong>
+    <ul>
+      <li><strong>Purpose:</strong> This method is called <em>after</em> the Node has finished its main work. Its jobs are:
+        <ul>
+          <li>To process the results from <code class="language-plaintext highlighter-rouge">exec</code>.</li>
+          <li>To update the <a href="01_shared_state___shared__dictionary__.md">shared dictionary</a> with these results or any other new information.</li>
+          <li>To decide what should happen next in the workflow (this is crucial for <a href="03_actions___transitions_.md">Actions / Transitions</a>, which we’ll cover in the next chapter).</li>
+        </ul>
+      </li>
+      <li><strong>Analogy:</strong> The assembly line worker placing the finished component onto the conveyor belt (updating <code class="language-plaintext highlighter-rouge">shared</code>) and signaling if the item needs to go to a different station next (deciding the next action).</li>
+      <li><strong>Input:</strong> It receives the <code class="language-plaintext highlighter-rouge">shared</code> dictionary, the result from <code class="language-plaintext highlighter-rouge">prep</code> (<code class="language-plaintext highlighter-rouge">prep_res</code>), and the result from <code class="language-plaintext highlighter-rouge">exec</code> (<code class="language-plaintext highlighter-rouge">exec_res</code>).</li>
+      <li><strong>Output:</strong> It can return an “action” string that tells the <a href="04_flow___flow____asyncflow__.md">Flow (<code class="language-plaintext highlighter-rouge">Flow</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a> which Node to execute next. If it returns nothing (or <code class="language-plaintext highlighter-rouge">None</code>), a default transition is usually followed.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Let’s make this concrete with a simple example: a <code class="language-plaintext highlighter-rouge">SummarizeNode</code> whose job is to take some text and produce a short summary.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># This is a conceptual Node, actual implementation details might vary slightly
+</span><span class="kn">from</span> <span class="nn">pocketflow</span> <span class="kn">import</span> <span class="n">Node</span> <span class="c1"># We'll import the base class
+</span>
+<span class="k">class</span> <span class="nc">SummarizeNode</span><span class="p">(</span><span class="n">Node</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">prep</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">):</span>
+        <span class="c1"># 1. Prepare: Get the text to summarize from 'shared'
+</span>        <span class="k">print</span><span class="p">(</span><span class="s">"SummarizeNode: Preparing..."</span><span class="p">)</span>
+        <span class="n">text_to_summarize</span> <span class="o">=</span> <span class="n">shared</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"document_text"</span><span class="p">,</span> <span class="s">"No text found."</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">text_to_summarize</span>
+
+    <span class="k">def</span> <span class="nf">exec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text_input</span><span class="p">):</span>
+        <span class="c1"># 2. Execute: Perform the summarization (e.g., call an LLM)
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"SummarizeNode: Executing with text: '</span><span class="si">{</span><span class="n">text_input</span><span class="p">[</span><span class="si">:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s">...'"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">text_input</span> <span class="ow">or</span> <span class="n">text_input</span> <span class="o">==</span> <span class="s">"No text found."</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">"Cannot summarize empty or missing text."</span>
+        <span class="c1"># In a real scenario, this would call an LLM or a summarization library
+</span>        <span class="n">summary</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"This is a summary of: </span><span class="si">{</span><span class="n">text_input</span><span class="p">[</span><span class="si">:</span><span class="mi">20</span><span class="p">]</span><span class="si">}</span><span class="s">..."</span>
+        <span class="k">return</span> <span class="n">summary</span>
+
+    <span class="k">def</span> <span class="nf">post</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">,</span> <span class="n">prep_res</span><span class="p">,</span> <span class="n">exec_res</span><span class="p">):</span>
+        <span class="c1"># 3. Post-process: Store the summary in 'shared'
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"SummarizeNode: Posting summary: '</span><span class="si">{</span><span class="n">exec_res</span><span class="si">}</span><span class="s">'"</span><span class="p">)</span>
+        <span class="n">shared</span><span class="p">[</span><span class="s">"summary_output"</span><span class="p">]</span> <span class="o">=</span> <span class="n">exec_res</span>
+        <span class="c1"># We might decide the next step here, e.g., return "summarization_done"
+</span>        <span class="c1"># For now, we'll just let it end by returning nothing (None)
+</span></code></pre></div></div>
+
+<p>Let’s imagine how this <code class="language-plaintext highlighter-rouge">SummarizeNode</code> would work:</p>
+
+<ol>
+  <li><strong>Initialization:</strong> You’d start with some text in the <code class="language-plaintext highlighter-rouge">shared</code> dictionary.
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">shared_data</span> <span class="o">=</span> <span class="p">{</span><span class="s">"document_text"</span><span class="p">:</span> <span class="s">"PocketFlow is a cool framework for building AI."</span><span class="p">}</span>
+</code></pre></div>    </div>
+  </li>
+  <li><strong>Running the Node (simplified):</strong>
+    <ul>
+      <li><strong><code class="language-plaintext highlighter-rouge">prep(shared_data)</code> is called:</strong> It looks into <code class="language-plaintext highlighter-rouge">shared_data</code> and finds <code class="language-plaintext highlighter-rouge">"PocketFlow is a cool framework for building AI."</code>. It returns this text.</li>
+      <li><strong><code class="language-plaintext highlighter-rouge">exec("PocketFlow is a cool framework...")</code> is called:</strong> It takes the text and (in our simplified example) creates a summary like <code class="language-plaintext highlighter-rouge">"This is a summary of: PocketFlow is a cool..."</code>. It returns this summary.</li>
+      <li><strong><code class="language-plaintext highlighter-rouge">post(shared_data, text_from_prep, summary_from_exec)</code> is called:</strong> It takes the <code class="language-plaintext highlighter-rouge">shared_data</code> and the <code class="language-plaintext highlighter-rouge">summary_from_exec</code>. It then adds a new entry: <code class="language-plaintext highlighter-rouge">shared_data["summary_output"] = "This is a summary of: PocketFlow is a cool..."</code>.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>After the Node runs, <code class="language-plaintext highlighter-rouge">shared_data</code> would look like this:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "document_text": "PocketFlow is a cool framework for building AI.",
+    "summary_output": "This is a summary of: PocketFlow is a cool..."
+}
+</code></pre></div></div>
+<p>The summary is now available in the <code class="language-plaintext highlighter-rouge">shared</code> dictionary for other Nodes or for final output!</p>
+
+<h2 id="types-of-nodes-basenode-node-asyncnode">Types of Nodes: <code class="language-plaintext highlighter-rouge">BaseNode</code>, <code class="language-plaintext highlighter-rouge">Node</code>, <code class="language-plaintext highlighter-rouge">AsyncNode</code></h2>
+
+<p>PocketFlow provides a few variations of Nodes, built on top of each other:</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">BaseNode</code>:</strong>
+    <ul>
+      <li>This is the most fundamental type of Node. It provides the basic structure with <code class="language-plaintext highlighter-rouge">prep</code>, <code class="language-plaintext highlighter-rouge">exec</code>, and <code class="language-plaintext highlighter-rouge">post</code> methods.</li>
+      <li>It’s like the basic blueprint for any worker.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Node</code> (inherits from <code class="language-plaintext highlighter-rouge">BaseNode</code>):</strong>
+    <ul>
+      <li>This is the standard synchronous Node you’ll often use. “Synchronous” means it performs its task and waits for it to complete before anything else happens.</li>
+      <li>It adds helpful features on top of <code class="language-plaintext highlighter-rouge">BaseNode</code>, like automatic <strong>retries</strong> if the <code class="language-plaintext highlighter-rouge">exec</code> method fails (e.g., a network error when calling an LLM) and an <code class="language-plaintext highlighter-rouge">exec_fallback</code> method that can be called if all retries fail.</li>
+      <li>From <code class="language-plaintext highlighter-rouge">cookbook/pocketflow-node/flow.py</code>, our <code class="language-plaintext highlighter-rouge">Summarize</code> Node is an example of <code class="language-plaintext highlighter-rouge">Node</code>:
+  ```python
+  from pocketflow import Node
+  # … other imports …</li>
+    </ul>
+
+    <p>class Summarize(Node): # Inherits from Node
+      # … prep, exec, post methods …
+      def exec_fallback(self, shared, prep_res, exc):
+          “"”Provide a simple fallback instead of crashing.”””
+          return “There was an error processing your request.”
+  ```
+  This <code class="language-plaintext highlighter-rouge">Summarize</code> Node, if its <code class="language-plaintext highlighter-rouge">exec</code> method fails (e.g., <code class="language-plaintext highlighter-rouge">call_llm</code> raises an error), will retry (default is 1 retry, but can be configured like <code class="language-plaintext highlighter-rouge">Summarize(max_retries=3)</code>). If all retries fail, <code class="language-plaintext highlighter-rouge">exec_fallback</code> is called.</p>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">AsyncNode</code> (inherits from <code class="language-plaintext highlighter-rouge">Node</code>):</strong>
+    <ul>
+      <li>This type of Node is for <strong>asynchronous</strong> tasks. Asynchronous tasks are those that might take some time to complete (like waiting for a web request or a user to type something) but don’t need to block the entire program while they wait. They can “pause” and let other things run.</li>
+      <li><code class="language-plaintext highlighter-rouge">AsyncNode</code> uses <code class="language-plaintext highlighter-rouge">async</code> and <code class="language-plaintext highlighter-rouge">await</code> keywords from Python’s <code class="language-plaintext highlighter-rouge">asyncio</code> library.</li>
+      <li>It has asynchronous versions of the core methods: <code class="language-plaintext highlighter-rouge">prep_async</code>, <code class="language-plaintext highlighter-rouge">exec_async</code>, and <code class="language-plaintext highlighter-rouge">post_async</code>.</li>
+      <li>We’ll dive much deeper into asynchronous operations in <a href="05_asynchronous_processing___asyncnode____asyncflow___.md">Chapter 5: Asynchronous Processing (<code class="language-plaintext highlighter-rouge">AsyncNode</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a>. For now, just know it exists for tasks that involve waiting.</li>
+      <li>Example from <code class="language-plaintext highlighter-rouge">cookbook/pocketflow-async-basic/nodes.py</code>:
+  ```python
+  from pocketflow import AsyncNode
+  # … other imports …</li>
+    </ul>
+
+    <p>class FetchRecipes(AsyncNode): # Inherits from AsyncNode
+      async def prep_async(self, shared):
+          # … prepare input asynchronously …
+          ingredient = await get_user_input(“Enter ingredient: “) # get_user_input is async
+          return ingredient</p>
+
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  async def exec_async(self, ingredient):
+      # ... execute task asynchronously ...
+      recipes = await fetch_recipes(ingredient) # fetch_recipes is async
+      return recipes
+
+  async def post_async(self, shared, prep_res, recipes):
+      # ... post-process asynchronously ...
+      shared["recipes"] = recipes
+      return "suggest" # Action for the next step   ```   Notice the `async def` and `await` keywords. This `FetchRecipes` Node can wait for user input and web requests without freezing the application.
+</code></pre></div>    </div>
+  </li>
+</ul>
+
+<h2 id="how-a-node-runs-under-the-hood-simplified">How a Node Runs: Under the Hood (Simplified)</h2>
+
+<p>When PocketFlow decides it’s time for a particular Node to run (as part of a <a href="04_flow___flow____asyncflow__.md">Flow (<code class="language-plaintext highlighter-rouge">Flow</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a>), it essentially orchestrates the calling of its <code class="language-plaintext highlighter-rouge">prep</code>, <code class="language-plaintext highlighter-rouge">exec</code>, and <code class="language-plaintext highlighter-rouge">post</code> methods in sequence.</p>
+
+<p>Here’s a simplified view of what happens when a synchronous <code class="language-plaintext highlighter-rouge">Node</code>’s internal <code class="language-plaintext highlighter-rouge">_run</code> method is invoked:</p>
+
+<ol>
+  <li><strong>Call <code class="language-plaintext highlighter-rouge">prep</code>:</strong> <code class="language-plaintext highlighter-rouge">prep_result = self.prep(shared)</code>
+    <ul>
+      <li>Your Node’s <code class="language-plaintext highlighter-rouge">prep</code> method is called with the current <code class="language-plaintext highlighter-rouge">shared</code> dictionary.</li>
+      <li>Whatever <code class="language-plaintext highlighter-rouge">prep</code> returns is stored.</li>
+    </ul>
+  </li>
+  <li><strong>Call <code class="language-plaintext highlighter-rouge">_exec</code> (which internally calls your <code class="language-plaintext highlighter-rouge">exec</code> with retries):</strong> <code class="language-plaintext highlighter-rouge">exec_result = self._exec(prep_result)</code>
+    <ul>
+      <li>The Node’s <code class="language-plaintext highlighter-rouge">_exec</code> method is called with the <code class="language-plaintext highlighter-rouge">prep_result</code>.</li>
+      <li>This <code class="language-plaintext highlighter-rouge">_exec</code> method in the <code class="language-plaintext highlighter-rouge">Node</code> class handles the retry logic. It will try to call your <code class="language-plaintext highlighter-rouge">exec(prep_result)</code> method.</li>
+      <li>If your <code class="language-plaintext highlighter-rouge">exec</code> succeeds, its result is stored.</li>
+      <li>If your <code class="language-plaintext highlighter-rouge">exec</code> raises an exception, <code class="language-plaintext highlighter-rouge">_exec</code> might wait and try again (up to <code class="language-plaintext highlighter-rouge">max_retries</code>).</li>
+      <li>If all retries fail, <code class="language-plaintext highlighter-rouge">exec_fallback(prep_result, exception)</code> is called, and its result is used as <code class="language-plaintext highlighter-rouge">exec_result</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Call <code class="language-plaintext highlighter-rouge">post</code>:</strong> <code class="language-plaintext highlighter-rouge">action = self.post(shared, prep_result, exec_result)</code>
+    <ul>
+      <li>Your Node’s <code class="language-plaintext highlighter-rouge">post</code> method is called with the <code class="language-plaintext highlighter-rouge">shared</code> dictionary, the <code class="language-plaintext highlighter-rouge">prep_result</code>, and the <code class="language-plaintext highlighter-rouge">exec_result</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">post</code> can modify <code class="language-plaintext highlighter-rouge">shared</code> and returns an action string (or <code class="language-plaintext highlighter-rouge">None</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Return Action:</strong> The <code class="language-plaintext highlighter-rouge">action</code> returned by <code class="language-plaintext highlighter-rouge">post</code> is then used by the <a href="04_flow___flow____asyncflow__.md">Flow (<code class="language-plaintext highlighter-rouge">Flow</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a> to determine the next Node to run.</li>
+</ol>
+
+<p>Let’s visualize this with a sequence diagram:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant FlowEngine as PocketFlow Engine
+    participant YourNode as Your Node Instance
+    participant SharedDict as Shared Dictionary
+
+    FlowEngine-&gt;&gt;YourNode: _run(SharedDict)
+    YourNode-&gt;&gt;YourNode: prep(SharedDict)
+    Note right of YourNode: Reads from SharedDict
+    YourNode--&gt;&gt;SharedDict: Access data (e.g., shared['input'])
+    YourNode-&gt;&gt;YourNode: _exec(prep_result)
+    Note right of YourNode: Calls your exec(), handles retries/fallback
+    YourNode-&gt;&gt;YourNode: post(SharedDict, prep_result, exec_result)
+    Note right of YourNode: Writes to SharedDict, decides next action
+    YourNode--&gt;&gt;SharedDict: Update data (e.g., shared['output'] = ...)
+    YourNode--&gt;&gt;FlowEngine: Returns action string
+</code></pre>
+
+<p><strong>Code Glimpse (from <code class="language-plaintext highlighter-rouge">pocketflow/__init__.py</code>):</strong></p>
+
+<p>The <code class="language-plaintext highlighter-rouge">BaseNode</code> class defines the fundamental execution flow in its <code class="language-plaintext highlighter-rouge">_run</code> method (this is a direct, slightly simplified version):</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside BaseNode class from pocketflow/__init__.py
+</span><span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">):</span>
+    <span class="n">prep_output</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">prep</span><span class="p">(</span><span class="n">shared</span><span class="p">)</span>
+    <span class="n">exec_output</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_exec</span><span class="p">(</span><span class="n">prep_output</span><span class="p">)</span> <span class="c1"># _exec calls self.exec
+</span>    <span class="n">action</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">post</span><span class="p">(</span><span class="n">shared</span><span class="p">,</span> <span class="n">prep_output</span><span class="p">,</span> <span class="n">exec_output</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">action</span>
+</code></pre></div></div>
+<p>This is the core loop for a single Node’s execution.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">Node</code> class (which inherits from <code class="language-plaintext highlighter-rouge">BaseNode</code>) overrides <code class="language-plaintext highlighter-rouge">_exec</code> to add retry and fallback logic:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified concept from Node class in pocketflow/__init__.py
+</span><span class="k">def</span> <span class="nf">_exec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prep_res</span><span class="p">):</span>
+    <span class="k">for</span> <span class="bp">self</span><span class="p">.</span><span class="n">cur_retry</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">max_retries</span><span class="p">):</span> <span class="c1"># Loop for retries
+</span>        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="k">exec</span><span class="p">(</span><span class="n">prep_res</span><span class="p">)</span> <span class="c1"># Call your Node's exec method
+</span>        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">cur_retry</span> <span class="o">==</span> <span class="bp">self</span><span class="p">.</span><span class="n">max_retries</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span> <span class="c1"># If last retry
+</span>                <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">exec_fallback</span><span class="p">(</span><span class="n">prep_res</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span> <span class="c1"># Call fallback
+</span>            <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">wait</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">wait</span><span class="p">)</span> <span class="c1"># Wait before retrying
+</span></code></pre></div></div>
+<p>This shows how <code class="language-plaintext highlighter-rouge">Node</code> makes your worker more robust by automatically handling temporary failures.</p>
+
+<p>For <code class="language-plaintext highlighter-rouge">AsyncNode</code>, the methods are <code class="language-plaintext highlighter-rouge">prep_async</code>, <code class="language-plaintext highlighter-rouge">exec_async</code>, <code class="language-plaintext highlighter-rouge">post_async</code>, and they are <code class="language-plaintext highlighter-rouge">await</code>ed, allowing other tasks to run while waiting for I/O operations. This will be detailed in <a href="05_asynchronous_processing___asyncnode____asyncflow___.md">Chapter 5</a>.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now been introduced to <strong>Nodes</strong>, the workhorses of PocketFlow!</p>
+<ul>
+  <li>They represent <strong>single, atomic steps</strong> in your workflow.</li>
+  <li>They typically follow a <strong><code class="language-plaintext highlighter-rouge">prep</code> -&gt; <code class="language-plaintext highlighter-rouge">exec</code> -&gt; <code class="language-plaintext highlighter-rouge">post</code></strong> lifecycle.</li>
+  <li><code class="language-plaintext highlighter-rouge">prep</code> gets data from the <a href="01_shared_state___shared__dictionary__.md">shared dictionary</a>.</li>
+  <li><code class="language-plaintext highlighter-rouge">exec</code> performs the core logic.</li>
+  <li><code class="language-plaintext highlighter-rouge">post</code> updates the <code class="language-plaintext highlighter-rouge">shared</code> dictionary and can decide what happens next.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Node</code></strong> provides synchronous execution with retries and fallbacks.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">AsyncNode</code></strong> provides asynchronous execution for I/O-bound tasks.</li>
+</ul>
+
+<p>Nodes are the building blocks you’ll use to define the individual capabilities of your AI agents and applications. But how do these Nodes connect to form a sequence or a more complex workflow? And how does the <code class="language-plaintext highlighter-rouge">post</code> method’s return value actually control the flow? That’s where <a href="03_actions___transitions__.md">Actions / Transitions</a> come in, which we’ll explore in the next chapter!</p>
+
+<p>Next up: <a href="03_actions___transitions__.md">Chapter 3: Actions / Transitions</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

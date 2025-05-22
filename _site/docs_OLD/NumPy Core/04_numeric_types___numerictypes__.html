@@ -1,0 +1,251 @@
+<h1 id="chapter-4-numeric-types-numerictypes">Chapter 4: Numeric Types (<code class="language-plaintext highlighter-rouge">numerictypes</code>)</h1>
+
+<p>Hello again! In <a href="03_ufunc__universal_function_.md">Chapter 3: ufunc (Universal Function)</a>, we saw how NumPy uses universal functions (<code class="language-plaintext highlighter-rouge">ufuncs</code>) to perform fast calculations on arrays. We learned that these <code class="language-plaintext highlighter-rouge">ufuncs</code> operate element by element and can handle different data types using optimized C loops.</p>
+
+<p>But what exactly <em>are</em> all the different data types that NumPy knows about? We touched on <code class="language-plaintext highlighter-rouge">dtype</code> objects in <a href="02_dtype__data_type_object_.md">Chapter 2: dtype (Data Type Object)</a>, which <em>describe</em> the type of data in an array (like ‘64-bit integer’ or ‘32-bit float’). Now, we’ll look at the actual <strong>types themselves</strong> – the specific building blocks like <code class="language-plaintext highlighter-rouge">numpy.int32</code>, <code class="language-plaintext highlighter-rouge">numpy.float64</code>, etc., and how they relate to each other. This collection and classification system is handled within the <code class="language-plaintext highlighter-rouge">numerictypes</code> concept in NumPy’s core.</p>
+
+<h2 id="what-problem-do-numerictypes-solve-organizing-the-data-ingredients">What Problem Do <code class="language-plaintext highlighter-rouge">numerictypes</code> Solve? Organizing the Data Ingredients</h2>
+
+<p>Imagine you’re organizing a huge pantry. You have different kinds of items: grains, spices, canned goods, etc. Within grains, you have rice, oats, quinoa. Within rice, you might have basmati, jasmine, brown rice.</p>
+
+<p>NumPy’s data types are similar. It has many specific types of numbers (<code class="language-plaintext highlighter-rouge">int8</code>, <code class="language-plaintext highlighter-rouge">int16</code>, <code class="language-plaintext highlighter-rouge">int32</code>, <code class="language-plaintext highlighter-rouge">int64</code>, <code class="language-plaintext highlighter-rouge">float16</code>, <code class="language-plaintext highlighter-rouge">float32</code>, <code class="language-plaintext highlighter-rouge">float64</code>, etc.) and other kinds of data (<code class="language-plaintext highlighter-rouge">bool</code>, <code class="language-plaintext highlighter-rouge">complex</code>, <code class="language-plaintext highlighter-rouge">datetime</code>). Just having a list of all these types isn’t very organized.</p>
+
+<p>We need a system to:</p>
+<ol>
+  <li><strong>Define</strong> each specific type precisely (e.g., what exactly is <code class="language-plaintext highlighter-rouge">np.int32</code>?).</li>
+  <li><strong>Group</strong> similar types together (e.g., all integers, all floating-point numbers).</li>
+  <li><strong>Establish relationships</strong> between types (e.g., know that an <code class="language-plaintext highlighter-rouge">int32</code> <em>is a kind of</em> <code class="language-plaintext highlighter-rouge">integer</code>, which <em>is a kind of</em> <code class="language-plaintext highlighter-rouge">number</code>).</li>
+  <li>Provide convenient <strong>shortcuts or aliases</strong> (e.g., maybe <code class="language-plaintext highlighter-rouge">np.double</code> is just another name for <code class="language-plaintext highlighter-rouge">np.float64</code>).</li>
+</ol>
+
+<p>The <code class="language-plaintext highlighter-rouge">numerictypes</code> concept in NumPy provides this structured catalog or “family tree” for all its scalar data types. It helps NumPy (and you!) understand how different data types are related, which is crucial for operations like choosing the right <code class="language-plaintext highlighter-rouge">ufunc</code> loop or deciding the output type of a calculation (type promotion).</p>
+
+<h2 id="what-are-numeric-types-numerictypes">What are Numeric Types (<code class="language-plaintext highlighter-rouge">numerictypes</code>)?</h2>
+
+<p>In NumPy, <code class="language-plaintext highlighter-rouge">numerictypes</code> refers to the collection of <strong>scalar type objects</strong> themselves (like the Python classes <code class="language-plaintext highlighter-rouge">numpy.int32</code>, <code class="language-plaintext highlighter-rouge">numpy.float64</code>, <code class="language-plaintext highlighter-rouge">numpy.bool_</code>) and the <strong>hierarchy</strong> that organizes them.</p>
+
+<p>Think back to the <code class="language-plaintext highlighter-rouge">dtype</code> object from Chapter 2. The <code class="language-plaintext highlighter-rouge">dtype</code> object <em>describes</em> the data type of an array. The actual type it’s describing <em>is</em> one of these numeric types (or more accurately, a scalar type, since it includes non-numbers like <code class="language-plaintext highlighter-rouge">bool_</code> and <code class="language-plaintext highlighter-rouge">str_</code>).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="n">np</span>
+
+<span class="c1"># Create an array of 32-bit integers
+</span><span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">array</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">30</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="p">.</span><span class="n">int32</span><span class="p">)</span>
+
+<span class="c1"># The dtype object describes the type
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Array's dtype object: </span><span class="si">{</span><span class="n">arr</span><span class="p">.</span><span class="n">dtype</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: Array's dtype object: int32
+</span>
+<span class="c1"># The actual Python type of elements (if accessed individually)
+# and the type referred to by the dtype object's `.type` attribute
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"The element type class: </span><span class="si">{</span><span class="n">arr</span><span class="p">.</span><span class="n">dtype</span><span class="p">.</span><span class="nb">type</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: The element type class: &lt;class 'numpy.int32'&gt;
+</span>
+<span class="c1"># This &lt;class 'numpy.int32'&gt; is one of NumPy's scalar types
+# managed under the numerictypes concept.
+</span></code></pre></div></div>
+
+<p>So, <code class="language-plaintext highlighter-rouge">numerictypes</code> defines the actual classes like <code class="language-plaintext highlighter-rouge">np.int32</code>, <code class="language-plaintext highlighter-rouge">np.float64</code>, <code class="language-plaintext highlighter-rouge">np.integer</code>, <code class="language-plaintext highlighter-rouge">np.floating</code>, etc., that form the basis of NumPy’s type system.</p>
+
+<h2 id="the-type-hierarchy-a-family-tree">The Type Hierarchy: A Family Tree</h2>
+
+<p>NumPy organizes its scalar types into a hierarchy, much like biological classification (Kingdom &gt; Phylum &gt; Class &gt; Order…). This helps group related types.</p>
+
+<p>At the top is <code class="language-plaintext highlighter-rouge">np.generic</code>, the base class for all NumPy scalars. Below that, major branches include <code class="language-plaintext highlighter-rouge">np.number</code>, <code class="language-plaintext highlighter-rouge">np.flexible</code>, <code class="language-plaintext highlighter-rouge">np.bool_</code>, etc.</p>
+
+<p>Here’s a simplified view of the <em>numeric</em> part of the hierarchy:</p>
+
+<pre><code class="language-mermaid">graph TD
+    N[np.number] --&gt; I[np.integer]
+    N --&gt; IX[np.inexact]
+
+    I --&gt; SI[np.signedinteger]
+    I --&gt; UI[np.unsignedinteger]
+
+    IX --&gt; F[np.floating]
+    IX --&gt; C[np.complexfloating]
+
+    SI --&gt; i8[np.int8]
+    SI --&gt; i16[np.int16]
+    SI --&gt; i32[np.int32]
+    SI --&gt; i64[np.int64]
+    SI --&gt; ip[np.intp]
+    SI --&gt; dots_i[...]
+
+    UI --&gt; u8[np.uint8]
+    UI --&gt; u16[np.uint16]
+    UI --&gt; u32[np.uint32]
+    UI --&gt; u64[np.uint64]
+    UI --&gt; up[np.uintp]
+    UI --&gt; dots_u[...]
+
+    F --&gt; f16[np.float16]
+    F --&gt; f32[np.float32]
+    F --&gt; f64[np.float64]
+    F --&gt; fld[np.longdouble]
+    F --&gt; dots_f[...]
+
+    C --&gt; c64[np.complex64]
+    C --&gt; c128[np.complex128]
+    C --&gt; cld[np.clongdouble]
+    C --&gt; dots_c[...]
+
+    %% Styling for clarity
+    classDef abstract fill:#f9f,stroke:#333,stroke-width:2px;
+    class N,I,IX,SI,UI,F,C abstract;
+</code></pre>
+
+<ul>
+  <li><strong>Abstract Types:</strong> Boxes like <code class="language-plaintext highlighter-rouge">np.number</code>, <code class="language-plaintext highlighter-rouge">np.integer</code>, <code class="language-plaintext highlighter-rouge">np.floating</code> represent <em>categories</em> or abstract base classes. You usually don’t create arrays directly of type <code class="language-plaintext highlighter-rouge">np.integer</code>, but you can use these categories to check if a specific type belongs to that group.</li>
+  <li><strong>Concrete Types:</strong> Boxes like <code class="language-plaintext highlighter-rouge">np.int32</code>, <code class="language-plaintext highlighter-rouge">np.float64</code>, <code class="language-plaintext highlighter-rouge">np.complex128</code> are the specific, concrete types that you typically use to create arrays. They inherit from the abstract types. For example, <code class="language-plaintext highlighter-rouge">np.int32</code> is a subclass of <code class="language-plaintext highlighter-rouge">np.signedinteger</code>, which is a subclass of <code class="language-plaintext highlighter-rouge">np.integer</code>, which is a subclass of <code class="language-plaintext highlighter-rouge">np.number</code>.</li>
+</ul>
+
+<p>You can check these relationships using <code class="language-plaintext highlighter-rouge">np.issubdtype</code> or Python’s built-in <code class="language-plaintext highlighter-rouge">issubclass</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="n">np</span>
+
+<span class="c1"># Is np.int32 a kind of integer?
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"issubdtype(np.int32, np.integer): </span><span class="si">{</span><span class="n">np</span><span class="p">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">np</span><span class="p">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">np</span><span class="p">.</span><span class="n">integer</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: issubdtype(np.int32, np.integer): True
+</span>
+<span class="c1"># Is np.float64 a kind of integer?
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"issubdtype(np.float64, np.integer): </span><span class="si">{</span><span class="n">np</span><span class="p">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">np</span><span class="p">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">np</span><span class="p">.</span><span class="n">integer</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: issubdtype(np.float64, np.integer): False
+</span>
+<span class="c1"># Is np.float64 a kind of number?
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"issubdtype(np.float64, np.number): </span><span class="si">{</span><span class="n">np</span><span class="p">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">np</span><span class="p">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">np</span><span class="p">.</span><span class="n">number</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: issubdtype(np.float64, np.number): True
+</span>
+<span class="c1"># Using issubclass directly on the types also works
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"issubclass(np.int32, np.integer): </span><span class="si">{</span><span class="nb">issubclass</span><span class="p">(</span><span class="n">np</span><span class="p">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">np</span><span class="p">.</span><span class="n">integer</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: issubclass(np.int32, np.integer): True
+</span></code></pre></div></div>
+<p>This hierarchy is useful for understanding how NumPy treats different types, especially during calculations where types might need to be promoted (e.g., adding an <code class="language-plaintext highlighter-rouge">int32</code> and a <code class="language-plaintext highlighter-rouge">float64</code> usually results in a <code class="language-plaintext highlighter-rouge">float64</code>).</p>
+
+<h2 id="common-types-and-aliases">Common Types and Aliases</h2>
+
+<p>While NumPy defines many specific types (like <code class="language-plaintext highlighter-rouge">np.int8</code>, <code class="language-plaintext highlighter-rouge">np.uint16</code>, <code class="language-plaintext highlighter-rouge">np.float16</code>), you’ll most often encounter these:</p>
+
+<ul>
+  <li><strong>Integers:</strong> <code class="language-plaintext highlighter-rouge">np.int32</code>, <code class="language-plaintext highlighter-rouge">np.int64</code> (default on 64-bit systems is usually <code class="language-plaintext highlighter-rouge">np.int64</code>)</li>
+  <li><strong>Unsigned Integers:</strong> <code class="language-plaintext highlighter-rouge">np.uint8</code> (common for images), <code class="language-plaintext highlighter-rouge">np.uint32</code>, <code class="language-plaintext highlighter-rouge">np.uint64</code></li>
+  <li><strong>Floats:</strong> <code class="language-plaintext highlighter-rouge">np.float32</code> (single precision), <code class="language-plaintext highlighter-rouge">np.float64</code> (double precision, usually the default)</li>
+  <li><strong>Complex:</strong> <code class="language-plaintext highlighter-rouge">np.complex64</code>, <code class="language-plaintext highlighter-rouge">np.complex128</code></li>
+  <li><strong>Boolean:</strong> <code class="language-plaintext highlighter-rouge">np.bool_</code> (True/False)</li>
+</ul>
+
+<p>NumPy also provides several <strong>aliases</strong> or alternative names for convenience or historical reasons. Some common ones:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">np.byte</code> is an alias for <code class="language-plaintext highlighter-rouge">np.int8</code></li>
+  <li><code class="language-plaintext highlighter-rouge">np.short</code> is an alias for <code class="language-plaintext highlighter-rouge">np.int16</code></li>
+  <li><code class="language-plaintext highlighter-rouge">np.intc</code> often corresponds to the C <code class="language-plaintext highlighter-rouge">int</code> type (usually <code class="language-plaintext highlighter-rouge">np.int32</code> or <code class="language-plaintext highlighter-rouge">np.int64</code>)</li>
+  <li><code class="language-plaintext highlighter-rouge">np.int_</code> is the default integer type (often <code class="language-plaintext highlighter-rouge">np.int64</code> on 64-bit systems, <code class="language-plaintext highlighter-rouge">np.int32</code> on 32-bit systems). Platform dependent!</li>
+  <li><code class="language-plaintext highlighter-rouge">np.single</code> is an alias for <code class="language-plaintext highlighter-rouge">np.float32</code></li>
+  <li><code class="language-plaintext highlighter-rouge">np.double</code> or <code class="language-plaintext highlighter-rouge">np.float_</code> is an alias for <code class="language-plaintext highlighter-rouge">np.float64</code> (matches Python’s <code class="language-plaintext highlighter-rouge">float</code>)</li>
+  <li><code class="language-plaintext highlighter-rouge">np.longdouble</code> corresponds to the C <code class="language-plaintext highlighter-rouge">long double</code> (size varies by platform)</li>
+  <li><code class="language-plaintext highlighter-rouge">np.csingle</code> is an alias for <code class="language-plaintext highlighter-rouge">np.complex64</code></li>
+  <li><code class="language-plaintext highlighter-rouge">np.cdouble</code> or <code class="language-plaintext highlighter-rouge">np.complex_</code> is an alias for <code class="language-plaintext highlighter-rouge">np.complex128</code> (matches Python’s <code class="language-plaintext highlighter-rouge">complex</code>)</li>
+</ul>
+
+<p>You can usually use the specific name (like <code class="language-plaintext highlighter-rouge">np.float64</code>) or an alias (like <code class="language-plaintext highlighter-rouge">np.double</code>) interchangeably when specifying a <code class="language-plaintext highlighter-rouge">dtype</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="n">np</span>
+
+<span class="c1"># Using the specific name
+</span><span class="n">arr_f64</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="p">.</span><span class="n">float64</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Type using np.float64: </span><span class="si">{</span><span class="n">arr_f64</span><span class="p">.</span><span class="n">dtype</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: Type using np.float64: float64
+</span>
+<span class="c1"># Using an alias
+</span><span class="n">arr_double</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="p">.</span><span class="n">double</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Type using np.double: </span><span class="si">{</span><span class="n">arr_double</span><span class="p">.</span><span class="n">dtype</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: Type using np.double: float64
+</span>
+<span class="c1"># They refer to the same underlying type
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Is np.float64 the same as np.double? </span><span class="si">{</span><span class="n">np</span><span class="p">.</span><span class="n">float64</span> <span class="ow">is</span> <span class="n">np</span><span class="p">.</span><span class="n">double</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: Is np.float64 the same as np.double? True
+</span></code></pre></div></div>
+
+<h2 id="a-glimpse-under-the-hood">A Glimpse Under the Hood</h2>
+
+<p>How does NumPy define all these types and their relationships? It’s mostly done in Python code within the <code class="language-plaintext highlighter-rouge">numpy.core</code> submodule.</p>
+
+<ol>
+  <li><strong>Base C Types:</strong> The fundamental types (like a 32-bit integer, a 64-bit float) are ultimately implemented in C as part of the <a href="06_multiarray_module.md">multiarray Module</a>.</li>
+  <li><strong>Python Class Definitions:</strong> Python classes are defined for each scalar type (e.g., <code class="language-plaintext highlighter-rouge">class int32(signedinteger): ...</code>) in modules like <code class="language-plaintext highlighter-rouge">numpy/core/numerictypes.py</code>. These classes inherit from each other to create the hierarchy (e.g., <code class="language-plaintext highlighter-rouge">int32</code> inherits from <code class="language-plaintext highlighter-rouge">signedinteger</code>, which inherits from <code class="language-plaintext highlighter-rouge">integer</code>, etc.).</li>
+  <li><strong>Type Aliases:</strong> Files like <code class="language-plaintext highlighter-rouge">numpy/core/_type_aliases.py</code> set up dictionaries (<code class="language-plaintext highlighter-rouge">sctypeDict</code>, <code class="language-plaintext highlighter-rouge">allTypes</code>) that map various names (including aliases like “double” or “int_”) to the actual type objects (like <code class="language-plaintext highlighter-rouge">np.float64</code> or <code class="language-plaintext highlighter-rouge">np.intp</code>). This allows you to use different names when creating <code class="language-plaintext highlighter-rouge">dtype</code> objects.</li>
+  <li><strong>Registration:</strong> The Python number types are also registered with Python’s abstract base classes (<code class="language-plaintext highlighter-rouge">numbers.Integral</code>, <code class="language-plaintext highlighter-rouge">numbers.Real</code>, etc.) in <code class="language-plaintext highlighter-rouge">numerictypes.py</code> to improve interoperability with standard Python type checking.</li>
+  <li><strong>Documentation Generation:</strong> Helper scripts like <code class="language-plaintext highlighter-rouge">numpy/core/_add_newdocs_scalars.py</code> use the type information and aliases to automatically generate parts of the documentation strings you see when you type <code class="language-plaintext highlighter-rouge">help(np.int32)</code>, making sure the aliases and platform specifics are correctly listed.</li>
+</ol>
+
+<p>When you use a function like <code class="language-plaintext highlighter-rouge">np.issubdtype(np.int32, np.integer)</code>:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant P as Your Python Code
+    participant NPFunc as np.issubdtype
+    participant PyTypes as Python Type System
+    participant TypeHier as NumPy Type Hierarchy (in numerictypes.py)
+
+    P-&gt;&gt;NPFunc: np.issubdtype(np.int32, np.integer)
+    NPFunc-&gt;&gt;TypeHier: Get type object for np.int32
+    NPFunc-&gt;&gt;TypeHier: Get type object for np.integer
+    NPFunc-&gt;&gt;PyTypes: Ask: issubclass(np.int32_obj, np.integer_obj)?
+    PyTypes--&gt;&gt;NPFunc: Return True (based on class inheritance)
+    NPFunc--&gt;&gt;P: Return True
+</code></pre>
+
+<p>Essentially, <code class="language-plaintext highlighter-rouge">np.issubdtype</code> leverages Python’s standard <code class="language-plaintext highlighter-rouge">issubclass</code> mechanism, applied to the hierarchy of type classes defined within <code class="language-plaintext highlighter-rouge">numerictypes</code>. The <code class="language-plaintext highlighter-rouge">_type_aliases.py</code> file plays a crucial role in making sure that string names or alias names used in <code class="language-plaintext highlighter-rouge">dtype</code> specifications resolve to the correct underlying type object before such checks happen.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from numpy/core/_type_aliases.py
+</span>
+<span class="c1"># ... (definitions of actual types like np.int8, np.float64) ...
+</span>
+<span class="n">allTypes</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">'int8'</span><span class="p">:</span> <span class="n">np</span><span class="p">.</span><span class="n">int8</span><span class="p">,</span>
+    <span class="s">'int16'</span><span class="p">:</span> <span class="n">np</span><span class="p">.</span><span class="n">int16</span><span class="p">,</span>
+    <span class="c1"># ...
+</span>    <span class="s">'float64'</span><span class="p">:</span> <span class="n">np</span><span class="p">.</span><span class="n">float64</span><span class="p">,</span>
+    <span class="c1"># ...
+</span>    <span class="s">'signedinteger'</span><span class="p">:</span> <span class="n">np</span><span class="p">.</span><span class="n">signedinteger</span><span class="p">,</span> <span class="c1"># Abstract type
+</span>    <span class="s">'integer'</span><span class="p">:</span> <span class="n">np</span><span class="p">.</span><span class="n">integer</span><span class="p">,</span>           <span class="c1"># Abstract type
+</span>    <span class="s">'number'</span><span class="p">:</span> <span class="n">np</span><span class="p">.</span><span class="n">number</span><span class="p">,</span>             <span class="c1"># Abstract type
+</span>    <span class="c1"># ... etc
+</span><span class="p">}</span>
+
+<span class="n">_aliases</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">'double'</span><span class="p">:</span> <span class="s">'float64'</span><span class="p">,</span> <span class="c1"># "double" maps to the key "float64"
+</span>    <span class="s">'int_'</span><span class="p">:</span> <span class="s">'intp'</span><span class="p">,</span>      <span class="c1"># "int_" maps to the key "intp" (platform dependent type)
+</span>    <span class="c1"># ... etc
+</span><span class="p">}</span>
+
+<span class="n">sctypeDict</span> <span class="o">=</span> <span class="p">{}</span> <span class="c1"># Dictionary mapping names/aliases to types
+# Populate sctypeDict using allTypes and _aliases
+# ... (code to merge these dictionaries) ...
+</span>
+<span class="c1"># When you do np.dtype('double'), NumPy uses sctypeDict (or similar logic)
+# to find that 'double' means np.float64.
+</span></code></pre></div></div>
+
+<p>This setup provides a flexible and organized way to manage NumPy’s rich set of data types.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now explored the world of NumPy’s <code class="language-plaintext highlighter-rouge">numerictypes</code>! You learned:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">numerictypes</code> define the actual scalar <strong>type objects</strong> (like <code class="language-plaintext highlighter-rouge">np.int32</code>) and their <strong>relationships</strong>.</li>
+  <li>They form a <strong>hierarchy</strong> (like a family tree) with abstract categories (e.g., <code class="language-plaintext highlighter-rouge">np.integer</code>) and concrete types (e.g., <code class="language-plaintext highlighter-rouge">np.int32</code>).</li>
+  <li>This hierarchy helps NumPy understand how types relate, useful for calculations and type checking (<code class="language-plaintext highlighter-rouge">np.issubdtype</code>).</li>
+  <li>NumPy provides many convenient <strong>aliases</strong> (e.g., <code class="language-plaintext highlighter-rouge">np.double</code> for <code class="language-plaintext highlighter-rouge">np.float64</code>).</li>
+  <li>The types, hierarchy, and aliases are managed within Python code in <code class="language-plaintext highlighter-rouge">numpy.core</code>, primarily <code class="language-plaintext highlighter-rouge">numerictypes.py</code> and <code class="language-plaintext highlighter-rouge">_type_aliases.py</code>.</li>
+</ul>
+
+<p>Understanding this catalog of types helps clarify why NumPy behaves the way it does when mixing different kinds of numbers.</p>
+
+<p>Now that we know about the arrays, their data types, the functions that operate on them, and the specific numeric types available, how does NumPy <em>show</em> us the results?</p>
+
+<p>Let’s move on to how NumPy displays arrays: <a href="05_array_printing___arrayprint__.md">Chapter 5: Array Printing (<code class="language-plaintext highlighter-rouge">arrayprint</code>)</a>.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

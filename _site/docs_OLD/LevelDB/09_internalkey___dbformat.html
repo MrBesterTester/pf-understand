@@ -1,0 +1,330 @@
+<h1 id="chapter-9-internalkey--dbformat---leveldbs-internal-bookkeeping">Chapter 9: InternalKey &amp; DBFormat - LevelDB’s Internal Bookkeeping</h1>
+
+<p>Welcome to the final chapter of our deep dive into LevelDB’s core components! In <a href="08_compaction.md">Chapter 8: Compaction</a>, we saw how LevelDB keeps its storage tidy by merging and rewriting <a href="01_table___sstable___tablecache.md">SSTables</a> in the background. This compaction process relies heavily on being able to correctly compare different versions of the same key and discard old or deleted data.</p>
+
+<p>But how does LevelDB know which version of a key is newer? If you write <code class="language-plaintext highlighter-rouge">("mykey", "value1")</code> and later <code class="language-plaintext highlighter-rouge">("mykey", "value2")</code>, how does LevelDB know that <code class="language-plaintext highlighter-rouge">value2</code> is the current one? And how does it handle <code class="language-plaintext highlighter-rouge">Delete("mykey")</code>? It can’t just erase entries from immutable SSTable files.</p>
+
+<h2 id="whats-the-problem-tracking-versions-and-deletions">What’s the Problem? Tracking Versions and Deletions</h2>
+
+<p>Imagine a simple library catalog that only lists book titles (user keys) and their shelf locations (user values).</p>
+<ol>
+  <li>You add “Adventures of Tom Sawyer” on Shelf A. Catalog: <code class="language-plaintext highlighter-rouge">("Tom Sawyer", "Shelf A")</code></li>
+  <li>Later, you move it to Shelf B. If you just add <code class="language-plaintext highlighter-rouge">("Tom Sawyer", "Shelf B")</code>, how do you know Shelf A is wrong? The catalog now has two entries!</li>
+  <li>Later still, you remove the book entirely. How do you mark this in the catalog?</li>
+</ol>
+
+<p>Just storing the user’s key and value isn’t enough. LevelDB needs extra internal bookkeeping information attached to every entry to handle updates, deletions, and also <a href="07_iterator.md">Snapshots</a> (reading the database as it was at a specific point in time).</p>
+
+<h2 id="the-solution-sequence-numbers-and-value-types">The Solution: Sequence Numbers and Value Types</h2>
+
+<p>LevelDB solves this by adding two extra pieces of information to every key-value pair internally:</p>
+
+<ol>
+  <li>
+    <p><strong>Sequence Number:</strong> Think of this like a <strong>unique version number</strong> or a <strong>timestamp</strong> assigned to every modification. Every time you <code class="language-plaintext highlighter-rouge">Put</code> or <code class="language-plaintext highlighter-rouge">Delete</code> data (usually as part of a <a href="05_writebatch.md">WriteBatch</a>), LevelDB assigns a strictly increasing sequence number to that operation. A higher sequence number means the operation happened more recently. This number increments globally for the entire database.</p>
+  </li>
+  <li>
+    <p><strong>Value Type:</strong> This is a simple flag indicating whether an entry represents a <strong>value</strong> or a <strong>deletion</strong>.</p>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">kTypeValue</code>: Represents a regular key-value pair resulting from a <code class="language-plaintext highlighter-rouge">Put</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">kTypeDeletion</code>: Represents a “tombstone” marker indicating that a key was deleted by a <code class="language-plaintext highlighter-rouge">Delete</code> operation.</li>
+    </ul>
+  </li>
+</ol>
+
+<h2 id="internalkey-the-full-story">InternalKey: The Full Story</h2>
+
+<p>LevelDB combines the user’s key with these two extra pieces of information into a structure called an <strong>InternalKey</strong>.</p>
+
+<p><strong>InternalKey = <code class="language-plaintext highlighter-rouge">user_key</code> + <code class="language-plaintext highlighter-rouge">sequence_number</code> + <code class="language-plaintext highlighter-rouge">value_type</code></strong></p>
+
+<p>This <code class="language-plaintext highlighter-rouge">InternalKey</code> is what LevelDB <em>actually</em> stores and sorts within the <a href="02_memtable.md">MemTable</a> and <a href="01_table___sstable___tablecache.md">SSTables</a>. When you ask LevelDB for <code class="language-plaintext highlighter-rouge">Get("mykey")</code>, it internally searches for <code class="language-plaintext highlighter-rouge">InternalKey</code>s associated with <code class="language-plaintext highlighter-rouge">"mykey"</code> and uses the sequence numbers and value types to figure out the correct, most recent state.</p>
+
+<h2 id="sorting-internalkeys-the-magic-ingredient">Sorting InternalKeys: The Magic Ingredient</h2>
+
+<p>How <code class="language-plaintext highlighter-rouge">InternalKey</code>s are sorted is crucial for LevelDB’s efficiency. They are sorted based on the following rules:</p>
+
+<ol>
+  <li><strong>User Key:</strong> First, compare the <code class="language-plaintext highlighter-rouge">user_key</code> part using the standard comparator you configured for the database (e.g., lexicographical order). Keys <code class="language-plaintext highlighter-rouge">apple</code> come before <code class="language-plaintext highlighter-rouge">banana</code>.</li>
+  <li><strong>Sequence Number (Descending):</strong> If the user keys are the same, compare the <code class="language-plaintext highlighter-rouge">sequence_number</code> in <strong>DESCENDING</strong> order. The entry with the <em>highest</em> sequence number comes <em>first</em>.</li>
+  <li><strong>Value Type (Descending):</strong> If user keys and sequence numbers are the same (which shouldn’t normally happen for distinct operations), compare the <code class="language-plaintext highlighter-rouge">value_type</code> in <strong>DESCENDING</strong> order (<code class="language-plaintext highlighter-rouge">kTypeValue</code> comes before <code class="language-plaintext highlighter-rouge">kTypeDeletion</code>).</li>
+</ol>
+
+<p><strong>Why sort sequence numbers descending?</strong> Because when LevelDB looks for a user key, it wants to find the <em>most recent</em> version first. By sorting the highest sequence number first, a simple search or iteration naturally encounters the latest state of the key immediately.</p>
+
+<p><strong>Example:</strong> Let’s revisit our <code class="language-plaintext highlighter-rouge">Put</code>/<code class="language-plaintext highlighter-rouge">Put</code>/<code class="language-plaintext highlighter-rouge">Delete</code> example for <code class="language-plaintext highlighter-rouge">mykey</code>:</p>
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">Put("mykey", "v1")</code> -&gt; gets Sequence = 5 -&gt; InternalKey: <code class="language-plaintext highlighter-rouge">("mykey", 5, kTypeValue)</code></li>
+  <li><code class="language-plaintext highlighter-rouge">Put("mykey", "v2")</code> -&gt; gets Sequence = 10 -&gt; InternalKey: <code class="language-plaintext highlighter-rouge">("mykey", 10, kTypeValue)</code></li>
+  <li><code class="language-plaintext highlighter-rouge">Delete("mykey")</code> -&gt; gets Sequence = 15 -&gt; InternalKey: <code class="language-plaintext highlighter-rouge">("mykey", 15, kTypeDeletion)</code></li>
+</ol>
+
+<p>When these are sorted according to the rules, the order is:</p>
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">("mykey", 15, kTypeDeletion)</code> (Highest sequence)</li>
+  <li><code class="language-plaintext highlighter-rouge">("mykey", 10, kTypeValue)</code></li>
+  <li><code class="language-plaintext highlighter-rouge">("mykey", 5, kTypeValue)</code> (Lowest sequence)</li>
+</ol>
+
+<p>Now, when you call <code class="language-plaintext highlighter-rouge">Get("mykey")</code>:</p>
+<ul>
+  <li>LevelDB searches for entries matching <code class="language-plaintext highlighter-rouge">mykey</code>.</li>
+  <li>It finds <code class="language-plaintext highlighter-rouge">("mykey", 15, kTypeDeletion)</code> first because it sorts first.</li>
+  <li>It sees the <code class="language-plaintext highlighter-rouge">kTypeDeletion</code> marker and immediately knows the key is deleted, returning <code class="language-plaintext highlighter-rouge">NotFound</code> without even needing to look at the older versions (<code class="language-plaintext highlighter-rouge">v2</code> and <code class="language-plaintext highlighter-rouge">v1</code>).</li>
+</ul>
+
+<p><strong>Snapshots:</strong> Snapshots work by using a specific sequence number. If you take a snapshot at sequence 12, a <code class="language-plaintext highlighter-rouge">Get("mykey")</code> using that snapshot would ignore sequence 15. It would find <code class="language-plaintext highlighter-rouge">("mykey", 10, kTypeValue)</code> first, see it’s <code class="language-plaintext highlighter-rouge">kTypeValue</code> and <code class="language-plaintext highlighter-rouge">sequence &lt;= 12</code>, and return <code class="language-plaintext highlighter-rouge">"v2"</code>.</p>
+
+<h2 id="the-dbformat-module-defining-the-rules">The <code class="language-plaintext highlighter-rouge">dbformat</code> Module: Defining the Rules</h2>
+
+<p>The code that defines the <code class="language-plaintext highlighter-rouge">InternalKey</code> structure, the <code class="language-plaintext highlighter-rouge">ValueType</code> enum, sequence numbers, helper functions for manipulating them, and crucial constants is located in <code class="language-plaintext highlighter-rouge">dbformat.h</code> and <code class="language-plaintext highlighter-rouge">dbformat.cc</code>.</p>
+
+<p><strong>1. Key Structures and Constants (<code class="language-plaintext highlighter-rouge">dbformat.h</code>)</strong></p>
+
+<p>This header file defines the core types:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- File: db/dbformat.h ---</span>
+
+<span class="k">namespace</span> <span class="n">leveldb</span> <span class="p">{</span>
+
+<span class="c1">// Value types: Deletion or Value</span>
+<span class="k">enum</span> <span class="n">ValueType</span> <span class="p">{</span> <span class="n">kTypeDeletion</span> <span class="o">=</span> <span class="mh">0x0</span><span class="p">,</span> <span class="n">kTypeValue</span> <span class="o">=</span> <span class="mh">0x1</span> <span class="p">};</span>
+
+<span class="c1">// ValueType used for seeking. (Uses highest type value)</span>
+<span class="k">static</span> <span class="k">const</span> <span class="n">ValueType</span> <span class="n">kValueTypeForSeek</span> <span class="o">=</span> <span class="n">kTypeValue</span><span class="p">;</span>
+
+<span class="c1">// Type for sequence numbers. 56 bits available.</span>
+<span class="k">typedef</span> <span class="kt">uint64_t</span> <span class="n">SequenceNumber</span><span class="p">;</span>
+
+<span class="c1">// Max possible sequence number.</span>
+<span class="k">static</span> <span class="k">const</span> <span class="n">SequenceNumber</span> <span class="n">kMaxSequenceNumber</span> <span class="o">=</span> <span class="p">((</span><span class="mh">0x1ull</span> <span class="o">&lt;&lt;</span> <span class="mi">56</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">);</span>
+
+<span class="c1">// Structure to hold the parsed parts of an InternalKey</span>
+<span class="k">struct</span> <span class="nc">ParsedInternalKey</span> <span class="p">{</span>
+  <span class="n">Slice</span> <span class="n">user_key</span><span class="p">;</span>
+  <span class="n">SequenceNumber</span> <span class="n">sequence</span><span class="p">;</span>
+  <span class="n">ValueType</span> <span class="n">type</span><span class="p">;</span>
+
+  <span class="c1">// Constructors... DebugString()...</span>
+<span class="p">};</span>
+
+<span class="c1">// Helper class to manage the encoded string representation</span>
+<span class="k">class</span> <span class="nc">InternalKey</span> <span class="p">{</span>
+ <span class="nl">private:</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">rep_</span><span class="p">;</span> <span class="c1">// Holds the encoded key: user_key + seq/type tag</span>
+ <span class="nl">public:</span>
+  <span class="c1">// Constructors... DecodeFrom()... Encode()... user_key()...</span>
+  <span class="n">InternalKey</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">user_key</span><span class="p">,</span> <span class="n">SequenceNumber</span> <span class="n">s</span><span class="p">,</span> <span class="n">ValueType</span> <span class="n">t</span><span class="p">);</span>
+<span class="p">};</span>
+
+<span class="c1">// ... other definitions like LookupKey, InternalKeyComparator ...</span>
+
+<span class="p">}</span> <span class="c1">// namespace leveldb</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+<ul>
+  <li>Defines <code class="language-plaintext highlighter-rouge">ValueType</code> enum (<code class="language-plaintext highlighter-rouge">kTypeDeletion</code>, <code class="language-plaintext highlighter-rouge">kTypeValue</code>).</li>
+  <li>Defines <code class="language-plaintext highlighter-rouge">SequenceNumber</code> (a 64-bit integer, but only 56 bits are used, leaving 8 bits for the type).</li>
+  <li><code class="language-plaintext highlighter-rouge">ParsedInternalKey</code>: A temporary struct holding the three components separately.</li>
+  <li><code class="language-plaintext highlighter-rouge">InternalKey</code>: A class that usually stores the <em>encoded</em> form (as a single string) for efficiency.</li>
+</ul>
+
+<p><strong>2. Encoding and Parsing (<code class="language-plaintext highlighter-rouge">dbformat.cc</code>, <code class="language-plaintext highlighter-rouge">dbformat.h</code>)</strong></p>
+
+<p>LevelDB needs to combine the three parts (<code class="language-plaintext highlighter-rouge">user_key</code>, <code class="language-plaintext highlighter-rouge">sequence</code>, <code class="language-plaintext highlighter-rouge">type</code>) into a single <code class="language-plaintext highlighter-rouge">Slice</code> (a pointer + length, representing a string) for storage and comparison, and then parse them back out. The sequence and type are packed together into the last 8 bytes of the internal key string.</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- File: db/dbformat.h --- (Inline functions)</span>
+
+<span class="c1">// Combine sequence and type into 8 bytes (64 bits)</span>
+<span class="k">static</span> <span class="kt">uint64_t</span> <span class="nf">PackSequenceAndType</span><span class="p">(</span><span class="kt">uint64_t</span> <span class="n">seq</span><span class="p">,</span> <span class="n">ValueType</span> <span class="n">t</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// seq uses upper 56 bits, type uses lower 8 bits</span>
+  <span class="k">return</span> <span class="p">(</span><span class="n">seq</span> <span class="o">&lt;&lt;</span> <span class="mi">8</span><span class="p">)</span> <span class="o">|</span> <span class="n">t</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// Extract the user_key part from an encoded internal key</span>
+<span class="kr">inline</span> <span class="n">Slice</span> <span class="n">ExtractUserKey</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">internal_key</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">assert</span><span class="p">(</span><span class="n">internal_key</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">&gt;=</span> <span class="mi">8</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">Slice</span><span class="p">(</span><span class="n">internal_key</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span> <span class="n">internal_key</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">-</span> <span class="mi">8</span><span class="p">);</span> <span class="c1">// All bytes EXCEPT the last 8</span>
+<span class="p">}</span>
+
+<span class="c1">// --- File: db/dbformat.cc ---</span>
+
+<span class="c1">// Append the encoded internal key to a string 'result'</span>
+<span class="kt">void</span> <span class="n">AppendInternalKey</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">*</span> <span class="n">result</span><span class="p">,</span> <span class="k">const</span> <span class="n">ParsedInternalKey</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">result</span><span class="o">-&gt;</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="p">.</span><span class="n">user_key</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span> <span class="n">key</span><span class="p">.</span><span class="n">user_key</span><span class="p">.</span><span class="n">size</span><span class="p">());</span> <span class="c1">// Append user key</span>
+  <span class="c1">// Append the 8-byte packed sequence and type</span>
+  <span class="n">PutFixed64</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">PackSequenceAndType</span><span class="p">(</span><span class="n">key</span><span class="p">.</span><span class="n">sequence</span><span class="p">,</span> <span class="n">key</span><span class="p">.</span><span class="n">type</span><span class="p">));</span>
+<span class="p">}</span>
+
+<span class="c1">// Parse an encoded internal key 'internal_key' into 'result'</span>
+<span class="kt">bool</span> <span class="n">ParseInternalKey</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">internal_key</span><span class="p">,</span> <span class="n">ParsedInternalKey</span><span class="o">*</span> <span class="n">result</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span> <span class="o">=</span> <span class="n">internal_key</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">n</span> <span class="o">&lt;</span> <span class="mi">8</span><span class="p">)</span> <span class="k">return</span> <span class="nb">false</span><span class="p">;</span> <span class="c1">// Must have the 8-byte trailer</span>
+  <span class="c1">// Decode the 8-byte trailer</span>
+  <span class="kt">uint64_t</span> <span class="n">num</span> <span class="o">=</span> <span class="n">DecodeFixed64</span><span class="p">(</span><span class="n">internal_key</span><span class="p">.</span><span class="n">data</span><span class="p">()</span> <span class="o">+</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">8</span><span class="p">);</span>
+  <span class="kt">uint8_t</span> <span class="n">c</span> <span class="o">=</span> <span class="n">num</span> <span class="o">&amp;</span> <span class="mh">0xff</span><span class="p">;</span> <span class="c1">// Lower 8 bits are the type</span>
+  <span class="n">result</span><span class="o">-&gt;</span><span class="n">sequence</span> <span class="o">=</span> <span class="n">num</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span><span class="p">;</span> <span class="c1">// Upper 56 bits are sequence</span>
+  <span class="n">result</span><span class="o">-&gt;</span><span class="n">type</span> <span class="o">=</span> <span class="k">static_cast</span><span class="o">&lt;</span><span class="n">ValueType</span><span class="o">&gt;</span><span class="p">(</span><span class="n">c</span><span class="p">);</span>
+  <span class="n">result</span><span class="o">-&gt;</span><span class="n">user_key</span> <span class="o">=</span> <span class="n">Slice</span><span class="p">(</span><span class="n">internal_key</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">8</span><span class="p">);</span> <span class="c1">// The rest is user key</span>
+  <span class="k">return</span> <span class="p">(</span><span class="n">c</span> <span class="o">&lt;=</span> <span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">uint8_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">kTypeValue</span><span class="p">));</span> <span class="c1">// Basic validation</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">PackSequenceAndType</code>: Shifts the sequence number left by 8 bits and combines it with the 1-byte type.</li>
+  <li><code class="language-plaintext highlighter-rouge">AppendInternalKey</code>: Builds the string representation: user key bytes followed by the 8-byte packed sequence/type.</li>
+  <li><code class="language-plaintext highlighter-rouge">ExtractUserKey</code>: Returns a slice pointing to the user key portion (all but the last 8 bytes).</li>
+  <li><code class="language-plaintext highlighter-rouge">ParseInternalKey</code>: Does the reverse of <code class="language-plaintext highlighter-rouge">AppendInternalKey</code>, extracting the parts from the encoded slice.</li>
+</ul>
+
+<p><strong>3. Comparing Internal Keys (<code class="language-plaintext highlighter-rouge">dbformat.cc</code>)</strong></p>
+
+<p>The <code class="language-plaintext highlighter-rouge">InternalKeyComparator</code> uses the user-provided comparator for the user keys and then implements the descending sequence number logic.</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- File: db/dbformat.cc ---</span>
+
+<span class="kt">int</span> <span class="n">InternalKeyComparator</span><span class="o">::</span><span class="n">Compare</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">akey</span><span class="p">,</span> <span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">bkey</span><span class="p">)</span> <span class="k">const</span> <span class="p">{</span>
+  <span class="c1">// 1. Compare user keys using the user's comparator</span>
+  <span class="kt">int</span> <span class="n">r</span> <span class="o">=</span> <span class="n">user_comparator_</span><span class="o">-&gt;</span><span class="n">Compare</span><span class="p">(</span><span class="n">ExtractUserKey</span><span class="p">(</span><span class="n">akey</span><span class="p">),</span> <span class="n">ExtractUserKey</span><span class="p">(</span><span class="n">bkey</span><span class="p">));</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="n">r</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// User keys are equal, compare sequence numbers (descending)</span>
+    <span class="c1">// Decode the 8-byte tag (seq+type) from the end of each key</span>
+    <span class="k">const</span> <span class="kt">uint64_t</span> <span class="n">anum</span> <span class="o">=</span> <span class="n">DecodeFixed64</span><span class="p">(</span><span class="n">akey</span><span class="p">.</span><span class="n">data</span><span class="p">()</span> <span class="o">+</span> <span class="n">akey</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">-</span> <span class="mi">8</span><span class="p">);</span>
+    <span class="k">const</span> <span class="kt">uint64_t</span> <span class="n">bnum</span> <span class="o">=</span> <span class="n">DecodeFixed64</span><span class="p">(</span><span class="n">bkey</span><span class="p">.</span><span class="n">data</span><span class="p">()</span> <span class="o">+</span> <span class="n">bkey</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">-</span> <span class="mi">8</span><span class="p">);</span>
+    <span class="c1">// Higher sequence number should come first (negative result)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">anum</span> <span class="o">&gt;</span> <span class="n">bnum</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">r</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">anum</span> <span class="o">&lt;</span> <span class="n">bnum</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">r</span> <span class="o">=</span> <span class="o">+</span><span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="c1">// If sequence numbers are also equal, type decides (descending,</span>
+    <span class="c1">// but packed value comparison handles this implicitly).</span>
+  <span class="p">}</span>
+  <span class="k">return</span> <span class="n">r</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong> This function first compares user keys. If they differ, that result is returned. If they are the same, it decodes the 8-byte tag from both keys and compares them. Since a higher sequence number results in a larger packed <code class="language-plaintext highlighter-rouge">uint64_t</code> value, comparing <code class="language-plaintext highlighter-rouge">anum</code> and <code class="language-plaintext highlighter-rouge">bnum</code> directly and flipping the sign (<code class="language-plaintext highlighter-rouge">-1</code> if <code class="language-plaintext highlighter-rouge">anum &gt; bnum</code>, <code class="language-plaintext highlighter-rouge">+1</code> if <code class="language-plaintext highlighter-rouge">anum &lt; bnum</code>) achieves the desired descending order for sequence numbers.</p>
+
+<p><strong>4. Seeking with LookupKey (<code class="language-plaintext highlighter-rouge">dbformat.h</code>, <code class="language-plaintext highlighter-rouge">dbformat.cc</code>)</strong></p>
+
+<p>When you call <code class="language-plaintext highlighter-rouge">Seek(target_key)</code> on an iterator, LevelDB needs to find the internal key representing the latest version of <code class="language-plaintext highlighter-rouge">target_key</code> at or before the iterator’s snapshot sequence number. Directly seeking using an internal key <code class="language-plaintext highlighter-rouge">(target_key, snapshot_seq, kTypeValue)</code> might overshoot, landing on an entry <em>newer</em> than the snapshot.</p>
+
+<p><code class="language-plaintext highlighter-rouge">LookupKey</code> creates a specially formatted key for seeking in MemTables and internal iterators.</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- File: db/dbformat.h ---</span>
+
+<span class="c1">// A helper class useful for DBImpl::Get() and Iterator::Seek()</span>
+<span class="k">class</span> <span class="nc">LookupKey</span> <span class="p">{</span>
+ <span class="nl">public:</span>
+  <span class="c1">// Create a key for looking up user_key at snapshot 'sequence'.</span>
+  <span class="n">LookupKey</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">user_key</span><span class="p">,</span> <span class="n">SequenceNumber</span> <span class="n">sequence</span><span class="p">);</span>
+  <span class="o">~</span><span class="n">LookupKey</span><span class="p">();</span>
+
+  <span class="c1">// Key for MemTable lookup (includes length prefix for internal key)</span>
+  <span class="n">Slice</span> <span class="n">memtable_key</span><span class="p">()</span> <span class="k">const</span><span class="p">;</span>
+  <span class="c1">// Key for Internal Iterator lookup (user_key + seq/type tag)</span>
+  <span class="n">Slice</span> <span class="n">internal_key</span><span class="p">()</span> <span class="k">const</span><span class="p">;</span>
+  <span class="c1">// User key part</span>
+  <span class="n">Slice</span> <span class="n">user_key</span><span class="p">()</span> <span class="k">const</span><span class="p">;</span>
+
+ <span class="nl">private:</span>
+  <span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">start_</span><span class="p">;</span> <span class="c1">// Beginning of allocated buffer</span>
+  <span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">kstart_</span><span class="p">;</span> <span class="c1">// Beginning of user_key portion</span>
+  <span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">end_</span><span class="p">;</span>   <span class="c1">// End of allocated buffer</span>
+  <span class="kt">char</span> <span class="n">space_</span><span class="p">[</span><span class="mi">200</span><span class="p">];</span> <span class="c1">// Avoid heap allocation for short keys</span>
+<span class="p">};</span>
+
+<span class="c1">// --- File: db/dbformat.cc --- (Simplified Constructor Logic)</span>
+
+<span class="n">LookupKey</span><span class="o">::</span><span class="n">LookupKey</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">user_key</span><span class="p">,</span> <span class="n">SequenceNumber</span> <span class="n">s</span><span class="p">)</span> <span class="p">{</span>
+  <span class="kt">size_t</span> <span class="n">usize</span> <span class="o">=</span> <span class="n">user_key</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+  <span class="c1">// Need space for: internal key length, user key, 8-byte tag</span>
+  <span class="kt">size_t</span> <span class="n">needed</span> <span class="o">=</span> <span class="n">VarintLength</span><span class="p">(</span><span class="n">usize</span> <span class="o">+</span> <span class="mi">8</span><span class="p">)</span> <span class="o">+</span> <span class="n">usize</span> <span class="o">+</span> <span class="mi">8</span><span class="p">;</span>
+  <span class="kt">char</span><span class="o">*</span> <span class="n">dst</span> <span class="o">=</span> <span class="cm">/* ... allocate space_ or new char[] ... */</span> <span class="p">;</span>
+
+  <span class="n">start_</span> <span class="o">=</span> <span class="n">dst</span><span class="p">;</span>
+  <span class="c1">// Encode length of internal key (user_key size + 8)</span>
+  <span class="n">dst</span> <span class="o">=</span> <span class="n">EncodeVarint32</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span> <span class="n">usize</span> <span class="o">+</span> <span class="mi">8</span><span class="p">);</span>
+  <span class="n">kstart_</span> <span class="o">=</span> <span class="n">dst</span><span class="p">;</span> <span class="c1">// Mark start of internal key part</span>
+  <span class="c1">// Copy user key data</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">memcpy</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span> <span class="n">user_key</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span> <span class="n">usize</span><span class="p">);</span>
+  <span class="n">dst</span> <span class="o">+=</span> <span class="n">usize</span><span class="p">;</span>
+  <span class="c1">// Encode the 8-byte tag: Use the target sequence 's' BUT use</span>
+  <span class="c1">// kValueTypeForSeek (which is kTypeValue, the highest type value).</span>
+  <span class="n">EncodeFixed64</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span> <span class="n">PackSequenceAndType</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">kValueTypeForSeek</span><span class="p">));</span>
+  <span class="n">dst</span> <span class="o">+=</span> <span class="mi">8</span><span class="p">;</span>
+  <span class="n">end_</span> <span class="o">=</span> <span class="n">dst</span><span class="p">;</span> <span class="c1">// Mark end of buffer</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+<ul>
+  <li>A <code class="language-plaintext highlighter-rouge">LookupKey</code> bundles the <code class="language-plaintext highlighter-rouge">user_key</code> with the target <code class="language-plaintext highlighter-rouge">sequence</code> number.</li>
+  <li>Critically, when creating the 8-byte tag, it uses <code class="language-plaintext highlighter-rouge">kValueTypeForSeek</code>. Because internal keys are sorted by user key, then <em>descending</em> sequence, then <em>descending</em> type, seeking for <code class="language-plaintext highlighter-rouge">(user_key, sequence, kValueTypeForSeek)</code> ensures we find the <em>first</em> entry whose user key matches and whose sequence number is less than or equal to the target <code class="language-plaintext highlighter-rouge">sequence</code>. This correctly handles the descending sort order during seeks.</li>
+</ul>
+
+<p><strong>5. Configuration Constants (<code class="language-plaintext highlighter-rouge">dbformat.h</code>)</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">dbformat.h</code> also defines key constants that control LevelDB’s behavior, especially related to compaction triggers:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- File: db/dbformat.h ---</span>
+
+<span class="k">namespace</span> <span class="n">config</span> <span class="p">{</span>
+<span class="k">static</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">kNumLevels</span> <span class="o">=</span> <span class="mi">7</span><span class="p">;</span> <span class="c1">// Number of levels in the LSM tree</span>
+
+<span class="c1">// Level-0 compaction is started when we hit this many files.</span>
+<span class="k">static</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">kL0_CompactionTrigger</span> <span class="o">=</span> <span class="mi">4</span><span class="p">;</span>
+
+<span class="c1">// Soft limit on number of level-0 files. We slow down writes at this point.</span>
+<span class="k">static</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">kL0_SlowdownWritesTrigger</span> <span class="o">=</span> <span class="mi">8</span><span class="p">;</span>
+
+<span class="c1">// Maximum number of level-0 files. We stop writes at this point.</span>
+<span class="k">static</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">kL0_StopWritesTrigger</span> <span class="o">=</span> <span class="mi">12</span><span class="p">;</span>
+
+<span class="c1">// Maximum level to push a new memtable compaction to if it doesn't overlap.</span>
+<span class="k">static</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">kMaxMemCompactLevel</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+<span class="c1">// ... other constants ...</span>
+<span class="p">}</span> <span class="c1">// namespace config</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong> These constants define parameters like the number of levels and the file count thresholds in Level-0 that trigger compactions or slow down/stop writes. They are part of the database “format” because changing them affects performance and behavior.</p>
+
+<p><strong>Internal Key Structure Diagram</strong></p>
+
+<pre><code class="language-mermaid">graph TB
+    A[User Application] --&gt; |"Put('key', 'value')"| B(LevelDB)
+    B --&gt; |"Assigns Seq=10"| C{Internal Operation}
+    C --&gt; |"Creates"| D[InternalKey String]
+    
+    D --&gt; I{Storage}
+    
+    subgraph "Key Components"
+    D --- E["InternalKey Structure"]
+    E --&gt; E1["User Key"]
+    E --&gt; E2["8-byte Tag"]
+    E2 --&gt; G["Seq # (56 bits)"]
+    E2 --&gt; H["Type (8 bits)"]
+    end
+    
+    subgraph "Sort Order"
+    I --&gt; J["By User Key"]
+    J --&gt; K["By Sequence DESC"]
+    K --&gt; L["By Type DESC"]
+    end
+</code></pre>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>LevelDB doesn’t just store your raw keys and values. It enhances them internally by adding a <strong>sequence number</strong> (like a version timestamp) and a <strong>value type</strong> (Value or Deletion). This combined structure, the <strong>InternalKey</strong>, is what LevelDB actually sorts and stores in its MemTables and SSTables.</p>
+
+<p>The specific way InternalKeys are sorted (user key ascending, sequence number descending) is critical for efficiently finding the latest version of a key and handling deletions and snapshots correctly. The <code class="language-plaintext highlighter-rouge">dbformat</code> module (<code class="language-plaintext highlighter-rouge">dbformat.h</code>, <code class="language-plaintext highlighter-rouge">dbformat.cc</code>) defines these internal structures, their encoding/decoding rules, the comparison logic (<code class="language-plaintext highlighter-rouge">InternalKeyComparator</code>), the special <code class="language-plaintext highlighter-rouge">LookupKey</code> for seeks, and other important constants related to the database’s structure and behavior.</p>
+
+<p>Understanding <code class="language-plaintext highlighter-rouge">InternalKey</code> and <code class="language-plaintext highlighter-rouge">dbformat</code> reveals the clever bookkeeping that allows LevelDB’s Log-Structured Merge-Tree design to function correctly and efficiently. This chapter concludes our tour of the fundamental building blocks of LevelDB!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

@@ -1,0 +1,259 @@
+<h1 id="chapter-5-writebatch---grouping-changes-together">Chapter 5: WriteBatch - Grouping Changes Together</h1>
+
+<p>Welcome back! In <a href="04_dbimpl.md">Chapter 4: DBImpl</a>, we saw how <code class="language-plaintext highlighter-rouge">DBImpl</code> acts as the general manager, coordinating writes, reads, and background tasks. We learned that when you call <code class="language-plaintext highlighter-rouge">Put</code> or <code class="language-plaintext highlighter-rouge">Delete</code>, <code class="language-plaintext highlighter-rouge">DBImpl</code> handles writing to the <a href="03_write_ahead_log__wal____logwriter_logreader.md">Write-Ahead Log (WAL)</a> and then updating the <a href="02_memtable.md">MemTable</a>.</p>
+
+<p>But what if you need to make <em>multiple</em> changes that should happen <em>together</em>?</p>
+
+<h2 id="whats-the-problem-making-multiple-changes-atomically">What’s the Problem? Making Multiple Changes Atomically</h2>
+
+<p>Imagine you’re managing game scores. When Player A beats Player B, you need to do two things: increase Player A’s score and decrease Player B’s score.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// Goal: Increase playerA score, decrease playerB score
+db-&gt;Put(options, "score_playerA", "101");
+db-&gt;Put(options, "score_playerB", "49");
+</code></pre></div></div>
+
+<p>What happens if the system crashes right <em>after</em> the first <code class="language-plaintext highlighter-rouge">Put</code> but <em>before</em> the second <code class="language-plaintext highlighter-rouge">Put</code>? Player A gets a point, but Player B <em>doesn’t</em> lose one. The scores are now inconsistent! This isn’t good.</p>
+
+<p>We need a way to tell LevelDB: “Please perform these <em>multiple</em> operations (like updating both scores) as a single, indivisible unit. Either <em>all</em> of them should succeed, or <em>none</em> of them should.” This property is called <strong>atomicity</strong>.</p>
+
+<h2 id="writebatch-the-atomic-to-do-list">WriteBatch: The Atomic To-Do List</h2>
+
+<p>LevelDB provides the <code class="language-plaintext highlighter-rouge">WriteBatch</code> class to solve this exact problem.</p>
+
+<p>Think of a <code class="language-plaintext highlighter-rouge">WriteBatch</code> like making a <strong>shopping list</strong> before you go to the store, or giving a librarian a list of multiple transactions to perform all at once (check out book A, return book B).</p>
+
+<ol>
+  <li><strong>Collect Changes:</strong> You create an empty <code class="language-plaintext highlighter-rouge">WriteBatch</code> object. Then, instead of calling <code class="language-plaintext highlighter-rouge">db-&gt;Put</code> or <code class="language-plaintext highlighter-rouge">db-&gt;Delete</code> directly, you call <code class="language-plaintext highlighter-rouge">batch.Put</code> and <code class="language-plaintext highlighter-rouge">batch.Delete</code> to add your desired changes to the batch object. This just adds items to your “to-do list” in memory; it doesn’t modify the database yet.</li>
+  <li><strong>Apply Atomically:</strong> Once your list is complete, you hand the entire <code class="language-plaintext highlighter-rouge">WriteBatch</code> to the database using a single <code class="language-plaintext highlighter-rouge">db-&gt;Write(options, &amp;batch)</code> call.</li>
+  <li><strong>All or Nothing:</strong> LevelDB guarantees that all the operations (<code class="language-plaintext highlighter-rouge">Put</code>s and <code class="language-plaintext highlighter-rouge">Delete</code>s) listed in the <code class="language-plaintext highlighter-rouge">WriteBatch</code> will be applied <strong>atomically</strong>. They will either <em>all</em> succeed and become durable together, or if something goes wrong (like a crash during the process), <em>none</em> of them will appear to have happened after recovery.</li>
+</ol>
+
+<p>Using <code class="language-plaintext highlighter-rouge">WriteBatch</code> for our score update:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">"leveldb/write_batch.h"</span><span class="cp">
+#include</span> <span class="cpf">"leveldb/db.h"</span><span class="cp">
+</span>
+<span class="c1">// ... assume db is an open LevelDB database ...</span>
+<span class="n">leveldb</span><span class="o">::</span><span class="n">WriteOptions</span> <span class="n">write_options</span><span class="p">;</span>
+<span class="n">write_options</span><span class="p">.</span><span class="n">sync</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span> <span class="c1">// Ensure durability</span>
+
+<span class="c1">// 1. Create an empty WriteBatch</span>
+<span class="n">leveldb</span><span class="o">::</span><span class="n">WriteBatch</span> <span class="n">batch</span><span class="p">;</span>
+
+<span class="c1">// 2. Add changes to the batch (in memory)</span>
+<span class="n">batch</span><span class="p">.</span><span class="n">Put</span><span class="p">(</span><span class="s">"score_playerA"</span><span class="p">,</span> <span class="s">"101"</span><span class="p">);</span> <span class="c1">// Add 'Put playerA' to the list</span>
+<span class="n">batch</span><span class="p">.</span><span class="n">Delete</span><span class="p">(</span><span class="s">"old_temp_key"</span><span class="p">);</span>       <span class="c1">// Add 'Delete old_temp_key' to the list</span>
+<span class="n">batch</span><span class="p">.</span><span class="n">Put</span><span class="p">(</span><span class="s">"score_playerB"</span><span class="p">,</span> <span class="s">"49"</span><span class="p">);</span>  <span class="c1">// Add 'Put playerB' to the list</span>
+
+<span class="c1">// 3. Apply the entire batch atomically</span>
+<span class="n">leveldb</span><span class="o">::</span><span class="n">Status</span> <span class="n">status</span> <span class="o">=</span> <span class="n">db</span><span class="o">-&gt;</span><span class="n">Write</span><span class="p">(</span><span class="n">write_options</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">batch</span><span class="p">);</span>
+
+<span class="k">if</span> <span class="p">(</span><span class="n">status</span><span class="p">.</span><span class="n">ok</span><span class="p">())</span> <span class="p">{</span>
+  <span class="c1">// Success! Both score_playerA and score_playerB are updated,</span>
+  <span class="c1">// and old_temp_key is deleted.</span>
+<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+  <span class="c1">// Failure! The database state is unchanged. Neither score was updated,</span>
+  <span class="c1">// and old_temp_key was not deleted.</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>We create a <code class="language-plaintext highlighter-rouge">WriteBatch</code> called <code class="language-plaintext highlighter-rouge">batch</code>.</li>
+  <li>We call <code class="language-plaintext highlighter-rouge">batch.Put</code> and <code class="language-plaintext highlighter-rouge">batch.Delete</code>. These methods modify the <code class="language-plaintext highlighter-rouge">batch</code> object itself, not the database. They are very fast as they just record the desired operations internally.</li>
+  <li>We call <code class="language-plaintext highlighter-rouge">db-&gt;Write</code> with the completed <code class="language-plaintext highlighter-rouge">batch</code>. LevelDB now takes this list and applies it atomically. Thanks to the <a href="03_write_ahead_log__wal____logwriter_logreader.md">WAL</a>, even if the system crashes <em>during</em> the <code class="language-plaintext highlighter-rouge">db-&gt;Write</code> call, recovery will ensure either all changes from the batch are applied or none are.</li>
+</ol>
+
+<h2 id="performance-benefit-too">Performance Benefit Too!</h2>
+
+<p>Besides atomicity, <code class="language-plaintext highlighter-rouge">WriteBatch</code> also often improves performance when making multiple changes:</p>
+
+<ul>
+  <li><strong>Single Log Write:</strong> LevelDB can write the <em>entire batch</em> as a single record to the WAL file on disk. This is usually much faster than writing separate log records for each individual <code class="language-plaintext highlighter-rouge">Put</code> or <code class="language-plaintext highlighter-rouge">Delete</code>, reducing disk I/O.</li>
+  <li><strong>Single Lock Acquisition:</strong> The <code class="language-plaintext highlighter-rouge">DBImpl</code> only needs to acquire its internal lock once for the entire <code class="language-plaintext highlighter-rouge">Write</code> call, rather than once per operation.</li>
+</ul>
+
+<p>So, even if you don’t strictly <em>need</em> atomicity, using <code class="language-plaintext highlighter-rouge">WriteBatch</code> for bulk updates can be faster.</p>
+
+<h2 id="under-the-hood-how-writebatch-works">Under the Hood: How WriteBatch Works</h2>
+
+<p>What happens inside LevelDB when you call <code class="language-plaintext highlighter-rouge">db-&gt;Write(options, &amp;batch)</code>?</p>
+
+<ol>
+  <li><strong>Serialization:</strong> The <code class="language-plaintext highlighter-rouge">WriteBatch</code> object holds a simple, serialized representation of all the <code class="language-plaintext highlighter-rouge">Put</code> and <code class="language-plaintext highlighter-rouge">Delete</code> operations you added. It’s basically a byte string (<code class="language-plaintext highlighter-rouge">rep_</code> internally) containing the sequence of operations and their arguments.</li>
+  <li><strong>DBImpl Coordination:</strong> The <code class="language-plaintext highlighter-rouge">DBImpl::Write</code> method receives the <code class="language-plaintext highlighter-rouge">WriteBatch</code>.</li>
+  <li><strong>WAL Write:</strong> <code class="language-plaintext highlighter-rouge">DBImpl</code> takes the entire serialized content of the <code class="language-plaintext highlighter-rouge">WriteBatch</code> (from <code class="language-plaintext highlighter-rouge">WriteBatchInternal::Contents</code>) and writes it as <strong>one single record</strong> to the <a href="03_write_ahead_log__wal____logwriter_logreader.md">Write-Ahead Log (WAL)</a> using <code class="language-plaintext highlighter-rouge">log_-&gt;AddRecord()</code>.</li>
+  <li><strong>MemTable Update:</strong> If the WAL write is successful (and synced to disk if <code class="language-plaintext highlighter-rouge">options.sync</code> is true), <code class="language-plaintext highlighter-rouge">DBImpl</code> then iterates through the operations <em>within</em> the <code class="language-plaintext highlighter-rouge">WriteBatch</code>. For each operation, it applies the change to the in-memory <a href="02_memtable.md">MemTable</a> (<code class="language-plaintext highlighter-rouge">WriteBatchInternal::InsertInto(batch, mem_)</code>).</li>
+</ol>
+
+<p>This two-step process (WAL first, then MemTable) ensures both durability and atomicity. If a crash occurs after the WAL write but before the MemTable update finishes, the recovery process will read the <em>entire batch</em> from the WAL and re-apply it to the MemTable, ensuring all changes are present.</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant App as Application
+    participant DBImpl as DBImpl::Write
+    participant WriteBatch as WriteBatch Object
+    participant WAL as WAL File (Disk)
+    participant MemTable as MemTable (RAM)
+
+    App-&gt;&gt;WriteBatch: batch.Put("k1", "v1")
+    App-&gt;&gt;WriteBatch: batch.Delete("k2")
+    App-&gt;&gt;WriteBatch: batch.Put("k3", "v3")
+    App-&gt;&gt;DBImpl: db-&gt;Write(options, &amp;batch)
+    DBImpl-&gt;&gt;WriteBatch: Get serialized contents (rep_)
+    WriteBatch--&gt;&gt;DBImpl: Return byte string representing all ops
+    DBImpl-&gt;&gt;WAL: AddRecord(entire batch content)
+    Note right of WAL: Single disk write (if sync)
+    WAL--&gt;&gt;DBImpl: WAL Write OK
+    DBImpl-&gt;&gt;WriteBatch: Iterate through operations
+    loop Apply each operation from Batch
+        WriteBatch--&gt;&gt;DBImpl: Next Op: Put("k1", "v1")
+        DBImpl-&gt;&gt;MemTable: Add("k1", "v1")
+        WriteBatch--&gt;&gt;DBImpl: Next Op: Delete("k2")
+        DBImpl-&gt;&gt;MemTable: Add("k2", deletion_marker)
+        WriteBatch--&gt;&gt;DBImpl: Next Op: Put("k3", "v3")
+        DBImpl-&gt;&gt;MemTable: Add("k3", "v3")
+    end
+    MemTable--&gt;&gt;DBImpl: MemTable Updates Done
+    DBImpl--&gt;&gt;App: Write Successful
+</code></pre>
+
+<h2 id="writebatch-internals-code-view">WriteBatch Internals (Code View)</h2>
+
+<p>Let’s peek at the code.</p>
+
+<p><strong>Adding to the Batch:</strong></p>
+
+<p>When you call <code class="language-plaintext highlighter-rouge">batch.Put("key", "val")</code> or <code class="language-plaintext highlighter-rouge">batch.Delete("key")</code>, the <code class="language-plaintext highlighter-rouge">WriteBatch</code> simply appends a representation of that operation to its internal string buffer (<code class="language-plaintext highlighter-rouge">rep_</code>).</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- File: leveldb/write_batch.cc ---</span>
+
+<span class="c1">// Simplified serialization format:</span>
+<span class="c1">// rep_ :=</span>
+<span class="c1">//    sequence: fixed64 (8 bytes, initially 0)</span>
+<span class="c1">//    count:    fixed32 (4 bytes, number of records)</span>
+<span class="c1">//    data:     record[count]</span>
+<span class="c1">// record :=</span>
+<span class="c1">//    kTypeValue  varstring varstring |</span>
+<span class="c1">//    kTypeDeletion varstring</span>
+<span class="c1">// varstring :=</span>
+<span class="c1">//    len: varint32</span>
+<span class="c1">//    data: uint8[len]</span>
+
+<span class="kt">void</span> <span class="n">WriteBatch</span><span class="o">::</span><span class="n">Put</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span> <span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">value</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// Increment the record count stored in the header</span>
+  <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">SetCount</span><span class="p">(</span><span class="k">this</span><span class="p">,</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">Count</span><span class="p">(</span><span class="k">this</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+
+  <span class="c1">// Append the type marker (kTypeValue)</span>
+  <span class="n">rep_</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">char</span><span class="o">&gt;</span><span class="p">(</span><span class="n">kTypeValue</span><span class="p">));</span>
+  <span class="c1">// Append the key (length-prefixed)</span>
+  <span class="n">PutLengthPrefixedSlice</span><span class="p">(</span><span class="o">&amp;</span><span class="n">rep_</span><span class="p">,</span> <span class="n">key</span><span class="p">);</span>
+  <span class="c1">// Append the value (length-prefixed)</span>
+  <span class="n">PutLengthPrefixedSlice</span><span class="p">(</span><span class="o">&amp;</span><span class="n">rep_</span><span class="p">,</span> <span class="n">value</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="n">WriteBatch</span><span class="o">::</span><span class="n">Delete</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// Increment the record count stored in the header</span>
+  <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">SetCount</span><span class="p">(</span><span class="k">this</span><span class="p">,</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">Count</span><span class="p">(</span><span class="k">this</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+
+  <span class="c1">// Append the type marker (kTypeDeletion)</span>
+  <span class="n">rep_</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">char</span><span class="o">&gt;</span><span class="p">(</span><span class="n">kTypeDeletion</span><span class="p">));</span>
+  <span class="c1">// Append the key (length-prefixed)</span>
+  <span class="n">PutLengthPrefixedSlice</span><span class="p">(</span><span class="o">&amp;</span><span class="n">rep_</span><span class="p">,</span> <span class="n">key</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// Helper to get/set the 4-byte count from the header (bytes 8-11)</span>
+<span class="kt">int</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">Count</span><span class="p">(</span><span class="k">const</span> <span class="n">WriteBatch</span><span class="o">*</span> <span class="n">b</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">return</span> <span class="n">DecodeFixed32</span><span class="p">(</span><span class="n">b</span><span class="o">-&gt;</span><span class="n">rep_</span><span class="p">.</span><span class="n">data</span><span class="p">()</span> <span class="o">+</span> <span class="mi">8</span><span class="p">);</span> <span class="c1">// Read count from header</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">SetCount</span><span class="p">(</span><span class="n">WriteBatch</span><span class="o">*</span> <span class="n">b</span><span class="p">,</span> <span class="kt">int</span> <span class="n">n</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">EncodeFixed32</span><span class="p">(</span><span class="o">&amp;</span><span class="n">b</span><span class="o">-&gt;</span><span class="n">rep_</span><span class="p">[</span><span class="mi">8</span><span class="p">],</span> <span class="n">n</span><span class="p">);</span> <span class="c1">// Write count to header</span>
+<span class="p">}</span>
+
+<span class="c1">// Helper to get the full serialized content</span>
+<span class="n">Slice</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">Contents</span><span class="p">(</span><span class="k">const</span> <span class="n">WriteBatch</span><span class="o">*</span> <span class="n">batch</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">return</span> <span class="n">Slice</span><span class="p">(</span><span class="n">batch</span><span class="o">-&gt;</span><span class="n">rep_</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>Each <code class="language-plaintext highlighter-rouge">Put</code> or <code class="language-plaintext highlighter-rouge">Delete</code> increments a counter stored in the first 12 bytes (<code class="language-plaintext highlighter-rouge">kHeader</code>) of the internal string <code class="language-plaintext highlighter-rouge">rep_</code>.</li>
+  <li>It then appends a 1-byte type marker (<code class="language-plaintext highlighter-rouge">kTypeValue</code> or <code class="language-plaintext highlighter-rouge">kTypeDeletion</code>).</li>
+  <li>Finally, it appends the key (and value for <code class="language-plaintext highlighter-rouge">Put</code>) using <code class="language-plaintext highlighter-rouge">PutLengthPrefixedSlice</code>, which writes the length of the slice followed by its data. This makes it easy to parse the operations back later.</li>
+</ul>
+
+<p><strong>Applying the Batch to MemTable:</strong></p>
+
+<p>When <code class="language-plaintext highlighter-rouge">DBImpl::Write</code> calls <code class="language-plaintext highlighter-rouge">WriteBatchInternal::InsertInto(batch, mem_)</code>, this helper function iterates through the serialized <code class="language-plaintext highlighter-rouge">rep_</code> string and applies each operation to the MemTable.</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- File: leveldb/write_batch.cc ---</span>
+<span class="c1">// Helper class used by InsertInto</span>
+<span class="k">namespace</span> <span class="p">{</span>
+<span class="k">class</span> <span class="nc">MemTableInserter</span> <span class="o">:</span> <span class="k">public</span> <span class="n">WriteBatch</span><span class="o">::</span><span class="n">Handler</span> <span class="p">{</span>
+ <span class="nl">public:</span>
+  <span class="n">SequenceNumber</span> <span class="n">sequence_</span><span class="p">;</span> <span class="c1">// Starting sequence number for the batch</span>
+  <span class="n">MemTable</span><span class="o">*</span> <span class="n">mem_</span><span class="p">;</span>           <span class="c1">// MemTable to insert into</span>
+
+  <span class="kt">void</span> <span class="n">Put</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span> <span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">value</span><span class="p">)</span> <span class="k">override</span> <span class="p">{</span>
+    <span class="c1">// Add the Put operation to the MemTable</span>
+    <span class="n">mem_</span><span class="o">-&gt;</span><span class="n">Add</span><span class="p">(</span><span class="n">sequence_</span><span class="p">,</span> <span class="n">kTypeValue</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">);</span>
+    <span class="n">sequence_</span><span class="o">++</span><span class="p">;</span> <span class="c1">// Increment sequence number for the next operation</span>
+  <span class="p">}</span>
+  <span class="kt">void</span> <span class="n">Delete</span><span class="p">(</span><span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">)</span> <span class="k">override</span> <span class="p">{</span>
+    <span class="c1">// Add the Delete operation (as a deletion marker) to the MemTable</span>
+    <span class="n">mem_</span><span class="o">-&gt;</span><span class="n">Add</span><span class="p">(</span><span class="n">sequence_</span><span class="p">,</span> <span class="n">kTypeDeletion</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">Slice</span><span class="p">());</span> <span class="c1">// Value is ignored</span>
+    <span class="n">sequence_</span><span class="o">++</span><span class="p">;</span> <span class="c1">// Increment sequence number for the next operation</span>
+  <span class="p">}</span>
+<span class="p">};</span>
+<span class="p">}</span> <span class="c1">// namespace</span>
+
+<span class="c1">// Applies the batch operations to the MemTable</span>
+<span class="n">Status</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">InsertInto</span><span class="p">(</span><span class="k">const</span> <span class="n">WriteBatch</span><span class="o">*</span> <span class="n">b</span><span class="p">,</span> <span class="n">MemTable</span><span class="o">*</span> <span class="n">memtable</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">MemTableInserter</span> <span class="n">inserter</span><span class="p">;</span>
+  <span class="c1">// Get the starting sequence number assigned by DBImpl::Write</span>
+  <span class="n">inserter</span><span class="p">.</span><span class="n">sequence_</span> <span class="o">=</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">Sequence</span><span class="p">(</span><span class="n">b</span><span class="p">);</span>
+  <span class="n">inserter</span><span class="p">.</span><span class="n">mem_</span> <span class="o">=</span> <span class="n">memtable</span><span class="p">;</span>
+  <span class="c1">// Iterate() parses rep_ and calls handler.Put/handler.Delete</span>
+  <span class="k">return</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">Iterate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">inserter</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// Helper to get/set the 8-byte sequence number from header (bytes 0-7)</span>
+<span class="n">SequenceNumber</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">Sequence</span><span class="p">(</span><span class="k">const</span> <span class="n">WriteBatch</span><span class="o">*</span> <span class="n">b</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">return</span> <span class="n">SequenceNumber</span><span class="p">(</span><span class="n">DecodeFixed64</span><span class="p">(</span><span class="n">b</span><span class="o">-&gt;</span><span class="n">rep_</span><span class="p">.</span><span class="n">data</span><span class="p">()));</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">SetSequence</span><span class="p">(</span><span class="n">WriteBatch</span><span class="o">*</span> <span class="n">b</span><span class="p">,</span> <span class="n">SequenceNumber</span> <span class="n">seq</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">EncodeFixed64</span><span class="p">(</span><span class="o">&amp;</span><span class="n">b</span><span class="o">-&gt;</span><span class="n">rep_</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">seq</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">InsertInto</code> creates a helper object <code class="language-plaintext highlighter-rouge">MemTableInserter</code>.</li>
+  <li>It gets the starting <code class="language-plaintext highlighter-rouge">SequenceNumber</code> for this batch (which was assigned by <code class="language-plaintext highlighter-rouge">DBImpl::Write</code> and stored in the batch’s header).</li>
+  <li>It calls <code class="language-plaintext highlighter-rouge">b-&gt;Iterate(&amp;inserter)</code>. The <code class="language-plaintext highlighter-rouge">Iterate</code> method (code not shown, but it reverses the serialization process) parses the <code class="language-plaintext highlighter-rouge">rep_</code> string. For each operation it finds, it calls the appropriate method on the <code class="language-plaintext highlighter-rouge">inserter</code> object (<code class="language-plaintext highlighter-rouge">Put</code> or <code class="language-plaintext highlighter-rouge">Delete</code>).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">inserter.Put</code> and <code class="language-plaintext highlighter-rouge">inserter.Delete</code> methods simply call <code class="language-plaintext highlighter-rouge">mem_-&gt;Add</code>, passing along the correct sequence number (which increments for each operation within the batch) and the type (<code class="language-plaintext highlighter-rouge">kTypeValue</code> or <code class="language-plaintext highlighter-rouge">kTypeDeletion</code>).</li>
+</ol>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">WriteBatch</code> is a simple yet powerful tool in LevelDB. It allows you to:</p>
+
+<ol>
+  <li><strong>Group Multiple Changes:</strong> Collect several <code class="language-plaintext highlighter-rouge">Put</code> and <code class="language-plaintext highlighter-rouge">Delete</code> operations together.</li>
+  <li><strong>Ensure Atomicity:</strong> Apply these changes as a single, all-or-nothing unit using <code class="language-plaintext highlighter-rouge">db-&gt;Write</code>. This prevents inconsistent states if errors or crashes occur mid-operation.</li>
+  <li><strong>Improve Performance:</strong> Often makes bulk updates faster by reducing the number of WAL writes and lock acquisitions.</li>
+</ol>
+
+<p>It works by serializing the list of operations into a byte string, which LevelDB writes to the WAL as a single record and then replays into the MemTable.</p>
+
+<p>Now that we understand how individual changes and batches of changes are safely written and stored temporarily in the MemTable and WAL, how does LevelDB manage the overall state of the database, including all the SSTable files on disk? How does it know which files contain the data for a particular key?</p>
+
+<p>Next up: <a href="06_version___versionset.md">Chapter 6: Version &amp; VersionSet</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

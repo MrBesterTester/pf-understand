@@ -1,0 +1,460 @@
+<h1 id="chapter-4-dbimpl---the-database-general-manager">Chapter 4: DBImpl - The Database General Manager</h1>
+
+<p>In the previous chapters, we’ve explored some key ingredients of LevelDB:</p>
+<ul>
+  <li><a href="01_table___sstable___tablecache.md">SSTables</a> for storing data permanently on disk.</li>
+  <li>The <a href="02_memtable.md">MemTable</a> for quickly handling recent writes in memory.</li>
+  <li>The <a href="03_write_ahead_log__wal____logwriter_logreader.md">Write-Ahead Log (WAL)</a> for ensuring durability even if the system crashes.</li>
+</ul>
+
+<p>But how do all these pieces work together? Who tells LevelDB to write to the WAL first, <em>then</em> the MemTable? Who decides when the MemTable is full and needs to be flushed to an SSTable? Who coordinates reading data from both memory <em>and</em> disk files?</p>
+
+<h2 id="whats-the-problem-orchestrating-everything">What’s the Problem? Orchestrating Everything</h2>
+
+<p>Imagine a large library. You have librarians putting books on shelves (SSTables), a front desk clerk taking newly returned books (MemTable), and a security guard logging everyone who enters (WAL). But someone needs to be in charge of the whole operation – the <strong>General Manager</strong>.</p>
+
+<p>This manager doesn’t shelve every book themselves, but they direct the staff, manage the budget, decide when to rearrange sections (compaction), and handle emergencies (recovery). Without a manager, it would be chaos!</p>
+
+<p>LevelDB needs a similar central coordinator to manage all its different parts and ensure they work together smoothly and correctly.</p>
+
+<h2 id="dbimpl-the-general-manager-of-leveldb">DBImpl: The General Manager of LevelDB</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">DBImpl</code> class is the heart of LevelDB’s implementation. It’s the <strong>General Manager</strong> of our database library. It doesn’t <em>contain</em> the data itself (that’s in MemTables and SSTables), but it <strong>orchestrates</strong> almost every operation.</p>
+
+<ul>
+  <li>It takes requests from your application (like <code class="language-plaintext highlighter-rouge">Put</code>, <code class="language-plaintext highlighter-rouge">Get</code>, <code class="language-plaintext highlighter-rouge">Delete</code>).</li>
+  <li>It directs these requests to the right components (WAL, MemTable, TableCache).</li>
+  <li>It manages the state of the database (like which MemTable is active, which files exist).</li>
+  <li>It initiates and manages background tasks like flushing the MemTable and running compactions.</li>
+  <li>It handles the recovery process when the database starts up.</li>
+</ul>
+
+<p>Almost every interaction you have with a LevelDB database object ultimately goes through <code class="language-plaintext highlighter-rouge">DBImpl</code>.</p>
+
+<h2 id="key-responsibilities-of-dbimpl">Key Responsibilities of DBImpl</h2>
+
+<p>Think of the <code class="language-plaintext highlighter-rouge">DBImpl</code> general manager juggling several key tasks:</p>
+
+<ol>
+  <li><strong>Handling Writes (<code class="language-plaintext highlighter-rouge">Put</code>, <code class="language-plaintext highlighter-rouge">Delete</code>, <code class="language-plaintext highlighter-rouge">Write</code>):</strong> Ensuring data is safely written to the WAL and then the MemTable. Managing the process when the MemTable fills up.</li>
+  <li><strong>Handling Reads (<code class="language-plaintext highlighter-rouge">Get</code>, <code class="language-plaintext highlighter-rouge">NewIterator</code>):</strong> Figuring out where to find the requested data – checking the active MemTable, the soon-to-be-flushed immutable MemTable, and finally the various SSTable files on disk (using helpers like <a href="06_version___versionset.md">Version &amp; VersionSet</a> and <a href="01_table___sstable___tablecache.md">Table / SSTable &amp; TableCache</a>).</li>
+  <li><strong>Background Maintenance (<a href="08_compaction.md">Compaction</a>):</strong> Deciding when and how to run compactions to clean up old data, merge SSTables, and keep reads efficient. It schedules and oversees this background work.</li>
+  <li><strong>Startup and Recovery:</strong> When the database opens, <code class="language-plaintext highlighter-rouge">DBImpl</code> manages locking the database directory, reading the manifest file (<a href="06_version___versionset.md">Version &amp; VersionSet</a>), and replaying the <a href="03_write_ahead_log__wal____logwriter_logreader.md">WAL</a> to recover any data that wasn’t flushed before the last shutdown or crash.</li>
+  <li><strong>Snapshot Management:</strong> Handling requests to create and release snapshots, which provide a consistent view of the database at a specific point in time.</li>
+</ol>
+
+<p><code class="language-plaintext highlighter-rouge">DBImpl</code> uses other components extensively to perform these tasks. It holds references to the active MemTable (<code class="language-plaintext highlighter-rouge">mem_</code>), the immutable MemTable (<code class="language-plaintext highlighter-rouge">imm_</code>), the WAL (<code class="language-plaintext highlighter-rouge">log_</code>), the <code class="language-plaintext highlighter-rouge">TableCache</code>, and the <code class="language-plaintext highlighter-rouge">VersionSet</code> (which tracks all the SSTable files).</p>
+
+<h2 id="how-dbimpl-handles-writes">How DBImpl Handles Writes</h2>
+
+<p>Let’s trace a simple <code class="language-plaintext highlighter-rouge">Put</code> operation:</p>
+
+<ol>
+  <li><strong>Request:</strong> Your application calls <code class="language-plaintext highlighter-rouge">db-&gt;Put("mykey", "myvalue")</code>.</li>
+  <li><strong>DBImpl Entry:</strong> This call enters the <code class="language-plaintext highlighter-rouge">DBImpl::Put</code> method (which typically wraps the operation in a <a href="05_writebatch.md">WriteBatch</a> and calls <code class="language-plaintext highlighter-rouge">DBImpl::Write</code>).</li>
+  <li><strong>Queueing (Optional):</strong> <code class="language-plaintext highlighter-rouge">DBImpl</code> manages a queue of writers to ensure writes happen in order. It might group multiple concurrent writes together for efficiency (<code class="language-plaintext highlighter-rouge">BuildBatchGroup</code>).</li>
+  <li><strong>Making Room:</strong> Before writing, <code class="language-plaintext highlighter-rouge">DBImpl</code> checks if there’s space in the current <code class="language-plaintext highlighter-rouge">MemTable</code> (<code class="language-plaintext highlighter-rouge">mem_</code>). If not (<code class="language-plaintext highlighter-rouge">MakeRoomForWrite</code>), it might:
+    <ul>
+      <li>Pause briefly if Level-0 SSTable count is high (slowdown trigger).</li>
+      <li>Wait if the <em>immutable</em> MemTable (<code class="language-plaintext highlighter-rouge">imm_</code>) is still being flushed.</li>
+      <li>Wait if Level-0 SSTable count is too high (stop trigger).</li>
+      <li><strong>Trigger a MemTable switch:</strong>
+        <ul>
+          <li>Mark the current <code class="language-plaintext highlighter-rouge">mem_</code> as read-only (<code class="language-plaintext highlighter-rouge">imm_</code>).</li>
+          <li>Create a new empty <code class="language-plaintext highlighter-rouge">mem_</code>.</li>
+          <li>Create a new WAL file (<code class="language-plaintext highlighter-rouge">logfile_</code>).</li>
+          <li>Schedule a background task (<code class="language-plaintext highlighter-rouge">MaybeScheduleCompaction</code>) to flush the old <code class="language-plaintext highlighter-rouge">imm_</code> to an SSTable.</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><strong>Write to WAL:</strong> <code class="language-plaintext highlighter-rouge">DBImpl</code> writes the operation(s) to the current WAL file (<code class="language-plaintext highlighter-rouge">log_-&gt;AddRecord(...)</code>). If requested (<code class="language-plaintext highlighter-rouge">options.sync</code>), it ensures the WAL data is physically on disk (<code class="language-plaintext highlighter-rouge">logfile_-&gt;Sync()</code>).</li>
+  <li><strong>Write to MemTable:</strong> Only after the WAL write succeeds, <code class="language-plaintext highlighter-rouge">DBImpl</code> inserts the data into the active <code class="language-plaintext highlighter-rouge">MemTable</code> (<code class="language-plaintext highlighter-rouge">mem_-&gt;Add(...)</code> via <code class="language-plaintext highlighter-rouge">WriteBatchInternal::InsertInto</code>).</li>
+  <li><strong>Return:</strong> Control returns to your application.</li>
+</ol>
+
+<p>Here’s a highly simplified view of the <code class="language-plaintext highlighter-rouge">Write</code> method:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/db_impl.cc ---</span>
+
+<span class="n">Status</span> <span class="n">DBImpl</span><span class="o">::</span><span class="n">Write</span><span class="p">(</span><span class="k">const</span> <span class="n">WriteOptions</span><span class="o">&amp;</span> <span class="n">options</span><span class="p">,</span> <span class="n">WriteBatch</span><span class="o">*</span> <span class="n">updates</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// ... acquire mutex, manage writer queue (omitted) ...</span>
+
+  <span class="c1">// Step 4: Make sure there's space. This might trigger a MemTable switch</span>
+  <span class="c1">// and schedule background work. May wait if MemTable is full or</span>
+  <span class="c1">// too many L0 files exist.</span>
+  <span class="n">Status</span> <span class="n">status</span> <span class="o">=</span> <span class="n">MakeRoomForWrite</span><span class="p">(</span><span class="n">updates</span> <span class="o">==</span> <span class="nb">nullptr</span> <span class="cm">/* force compact? */</span><span class="p">);</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="n">status</span><span class="p">.</span><span class="n">ok</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="n">updates</span> <span class="o">!=</span> <span class="nb">nullptr</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// ... potentially group multiple concurrent writes (BuildBatchGroup) ...</span>
+
+    <span class="c1">// Step 5: Add the batch to the Write-Ahead Log</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="n">log_</span><span class="o">-&gt;</span><span class="n">AddRecord</span><span class="p">(</span><span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">Contents</span><span class="p">(</span><span class="n">updates</span><span class="p">));</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">status</span><span class="p">.</span><span class="n">ok</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="n">options</span><span class="p">.</span><span class="n">sync</span><span class="p">)</span> <span class="p">{</span>
+      <span class="c1">// Ensure log entry is on disk if requested</span>
+      <span class="n">status</span> <span class="o">=</span> <span class="n">logfile_</span><span class="o">-&gt;</span><span class="n">Sync</span><span class="p">();</span>
+      <span class="c1">// ... handle sync error by recording background error ...</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Step 6: Insert the batch into the active MemTable (only if WAL ok)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">status</span><span class="p">.</span><span class="n">ok</span><span class="p">())</span> <span class="p">{</span>
+      <span class="n">status</span> <span class="o">=</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">InsertInto</span><span class="p">(</span><span class="n">updates</span><span class="p">,</span> <span class="n">mem_</span><span class="p">);</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+
+  <span class="c1">// ... update sequence number, manage writer queue, release mutex ...</span>
+  <span class="k">return</span> <span class="n">status</span><span class="p">;</span> <span class="c1">// Step 7: Return status to caller</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong> This code shows the core sequence: check/make room (<code class="language-plaintext highlighter-rouge">MakeRoomForWrite</code>), write to the log (<code class="language-plaintext highlighter-rouge">log_-&gt;AddRecord</code>), potentially sync the log (<code class="language-plaintext highlighter-rouge">logfile_-&gt;Sync</code>), and finally insert into the MemTable (<code class="language-plaintext highlighter-rouge">InsertInto(..., mem_)</code>). Error handling and writer coordination are omitted for clarity.</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant App as Application
+    participant DBImpl
+    participant WriterQueue as Writer Queue
+    participant LogWriter as log::Writer (WAL)
+    participant MemTable as Active MemTable (RAM)
+
+    App-&gt;&gt;DBImpl: Put("key", "value") / Write(batch)
+    DBImpl-&gt;&gt;WriterQueue: Add writer to queue
+    Note over DBImpl: Waits if not front of queue
+    DBImpl-&gt;&gt;DBImpl: MakeRoomForWrite()?
+    alt MemTable Full / L0 Trigger
+        DBImpl-&gt;&gt;DBImpl: Switch MemTable, Schedule Flush
+    end
+    DBImpl-&gt;&gt;LogWriter: AddRecord(batch_data)
+    opt Sync Option Enabled
+      DBImpl-&gt;&gt;LogWriter: Sync() Log File
+    end
+    LogWriter--&gt;&gt;DBImpl: Log Write Status
+    alt Log Write OK
+        DBImpl-&gt;&gt;MemTable: InsertInto(batch_data)
+        MemTable--&gt;&gt;DBImpl: Insert Status
+        DBImpl-&gt;&gt;WriterQueue: Remove writer, Signal next
+        DBImpl--&gt;&gt;App: Return OK
+    else Log Write Failed
+        DBImpl-&gt;&gt;WriterQueue: Remove writer, Signal next
+        DBImpl--&gt;&gt;App: Return Error Status
+    end
+</code></pre>
+
+<h2 id="how-dbimpl-handles-reads">How DBImpl Handles Reads</h2>
+
+<p>Reading data involves checking different places in a specific order to ensure the most recent value is found:</p>
+
+<ol>
+  <li><strong>Request:</strong> Your application calls <code class="language-plaintext highlighter-rouge">db-&gt;Get("mykey")</code>.</li>
+  <li><strong>DBImpl Entry:</strong> The call enters <code class="language-plaintext highlighter-rouge">DBImpl::Get</code>.</li>
+  <li><strong>Snapshot:</strong> <code class="language-plaintext highlighter-rouge">DBImpl</code> determines the sequence number to read up to (either from the provided <code class="language-plaintext highlighter-rouge">ReadOptions::snapshot</code> or the current latest sequence number).</li>
+  <li><strong>Check MemTable:</strong> It first checks the active <code class="language-plaintext highlighter-rouge">MemTable</code> (<code class="language-plaintext highlighter-rouge">mem_</code>). If the key is found (either a value or a deletion marker), the search stops, and the result is returned.</li>
+  <li><strong>Check Immutable MemTable:</strong> If not found in <code class="language-plaintext highlighter-rouge">mem_</code>, and if an immutable MemTable (<code class="language-plaintext highlighter-rouge">imm_</code>) exists (one that’s waiting to be flushed), it checks <code class="language-plaintext highlighter-rouge">imm_</code>. If found, the search stops.</li>
+  <li><strong>Check SSTables:</strong> If the key wasn’t found in memory, <code class="language-plaintext highlighter-rouge">DBImpl</code> asks the current <code class="language-plaintext highlighter-rouge">Version</code> (managed by <code class="language-plaintext highlighter-rouge">VersionSet</code>) to find the key in the SSTable files (<code class="language-plaintext highlighter-rouge">current-&gt;Get(...)</code>). The <code class="language-plaintext highlighter-rouge">Version</code> object knows which files might contain the key and uses the <code class="language-plaintext highlighter-rouge">TableCache</code> to access them efficiently.</li>
+  <li><strong>Update Stats (Optional):</strong> If the read involved checking SSTables, <code class="language-plaintext highlighter-rouge">DBImpl</code> might update internal statistics about file access (<code class="language-plaintext highlighter-rouge">current-&gt;UpdateStats</code>). If a file is read frequently, this might trigger a future compaction (<code class="language-plaintext highlighter-rouge">MaybeScheduleCompaction</code>).</li>
+  <li><strong>Return:</strong> The value found (or a “Not Found” status) is returned to the application.</li>
+</ol>
+
+<p>A simplified view of <code class="language-plaintext highlighter-rouge">Get</code>:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/db_impl.cc ---</span>
+
+<span class="n">Status</span> <span class="n">DBImpl</span><span class="o">::</span><span class="n">Get</span><span class="p">(</span><span class="k">const</span> <span class="n">ReadOptions</span><span class="o">&amp;</span> <span class="n">options</span><span class="p">,</span> <span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
+                   <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">*</span> <span class="n">value</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">Status</span> <span class="n">s</span><span class="p">;</span>
+  <span class="n">SequenceNumber</span> <span class="n">snapshot</span><span class="p">;</span>
+  <span class="c1">// ... (Step 3) Determine snapshot sequence number ...</span>
+  <span class="n">mutex_</span><span class="p">.</span><span class="n">Lock</span><span class="p">();</span> <span class="c1">// Need lock to access mem_, imm_, current version</span>
+  <span class="n">MemTable</span><span class="o">*</span> <span class="n">mem</span> <span class="o">=</span> <span class="n">mem_</span><span class="p">;</span>
+  <span class="n">MemTable</span><span class="o">*</span> <span class="n">imm</span> <span class="o">=</span> <span class="n">imm_</span><span class="p">;</span>
+  <span class="n">Version</span><span class="o">*</span> <span class="n">current</span> <span class="o">=</span> <span class="n">versions_</span><span class="o">-&gt;</span><span class="n">current</span><span class="p">();</span>
+  <span class="n">mem</span><span class="o">-&gt;</span><span class="n">Ref</span><span class="p">();</span> <span class="c1">// Increase reference counts</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">imm</span> <span class="o">!=</span> <span class="nb">nullptr</span><span class="p">)</span> <span class="n">imm</span><span class="o">-&gt;</span><span class="n">Ref</span><span class="p">();</span>
+  <span class="n">current</span><span class="o">-&gt;</span><span class="n">Ref</span><span class="p">();</span>
+  <span class="n">mutex_</span><span class="p">.</span><span class="n">Unlock</span><span class="p">();</span> <span class="c1">// Unlock for potentially slow lookups</span>
+
+  <span class="n">LookupKey</span> <span class="n">lkey</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">snapshot</span><span class="p">);</span> <span class="c1">// Internal key format for lookup</span>
+
+  <span class="c1">// Step 4: Check active MemTable</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">mem</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">lkey</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">s</span><span class="p">))</span> <span class="p">{</span>
+    <span class="c1">// Found in mem_ (value or deletion marker)</span>
+  <span class="p">}</span>
+  <span class="c1">// Step 5: Check immutable MemTable (if it exists)</span>
+  <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">imm</span> <span class="o">!=</span> <span class="nb">nullptr</span> <span class="o">&amp;&amp;</span> <span class="n">imm</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">lkey</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">s</span><span class="p">))</span> <span class="p">{</span>
+    <span class="c1">// Found in imm_</span>
+  <span class="p">}</span>
+  <span class="c1">// Step 6: Check SSTables via current Version</span>
+  <span class="k">else</span> <span class="p">{</span>
+    <span class="n">Version</span><span class="o">::</span><span class="n">GetStats</span> <span class="n">stats</span><span class="p">;</span> <span class="c1">// To record file access stats</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">current</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">lkey</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">stats</span><span class="p">);</span>
+    <span class="c1">// Step 7: Maybe update stats and schedule compaction</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">current</span><span class="o">-&gt;</span><span class="n">UpdateStats</span><span class="p">(</span><span class="n">stats</span><span class="p">))</span> <span class="p">{</span>
+       <span class="n">mutex_</span><span class="p">.</span><span class="n">Lock</span><span class="p">();</span>
+       <span class="n">MaybeScheduleCompaction</span><span class="p">();</span> <span class="c1">// Needs lock</span>
+       <span class="n">mutex_</span><span class="p">.</span><span class="n">Unlock</span><span class="p">();</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+
+  <span class="c1">// Decrease reference counts</span>
+  <span class="n">mutex_</span><span class="p">.</span><span class="n">Lock</span><span class="p">();</span>
+  <span class="n">mem</span><span class="o">-&gt;</span><span class="n">Unref</span><span class="p">();</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">imm</span> <span class="o">!=</span> <span class="nb">nullptr</span><span class="p">)</span> <span class="n">imm</span><span class="o">-&gt;</span><span class="n">Unref</span><span class="p">();</span>
+  <span class="n">current</span><span class="o">-&gt;</span><span class="n">Unref</span><span class="p">();</span>
+  <span class="n">mutex_</span><span class="p">.</span><span class="n">Unlock</span><span class="p">();</span>
+
+  <span class="k">return</span> <span class="n">s</span><span class="p">;</span> <span class="c1">// Step 8: Return status</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong> This shows the order of checking: <code class="language-plaintext highlighter-rouge">mem-&gt;Get</code>, <code class="language-plaintext highlighter-rouge">imm-&gt;Get</code>, and finally <code class="language-plaintext highlighter-rouge">current-&gt;Get</code> (which searches SSTables). It also highlights the reference counting (<code class="language-plaintext highlighter-rouge">Ref</code>/<code class="language-plaintext highlighter-rouge">Unref</code>) needed because these components might be changed or deleted by background threads while the read is in progress. The lock is held only when accessing shared pointers, not during the actual data lookup.</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant App as Application
+    participant DBImpl
+    participant MemTable as Active MemTable (RAM)
+    participant ImmMemTable as Immutable MemTable (RAM)
+    participant Version as Current Version
+    participant TableCache as TableCache (SSTables)
+
+    App-&gt;&gt;DBImpl: Get("key")
+    DBImpl-&gt;&gt;MemTable: Get(lkey)?
+    alt Key Found in MemTable
+        MemTable--&gt;&gt;DBImpl: Return value / deletion
+        DBImpl--&gt;&gt;App: Return value / NotFound
+    else Key Not Found in MemTable
+        MemTable--&gt;&gt;DBImpl: Not Found
+        DBImpl-&gt;&gt;ImmMemTable: Get(lkey)?
+        alt Key Found in ImmMemTable
+            ImmMemTable--&gt;&gt;DBImpl: Return value / deletion
+            DBImpl--&gt;&gt;App: Return value / NotFound
+        else Key Not Found in ImmMemTable
+            ImmMemTable--&gt;&gt;DBImpl: Not Found
+            DBImpl-&gt;&gt;Version: Get(lkey) from SSTables?
+            Version-&gt;&gt;TableCache: Find key in relevant SSTables
+            TableCache--&gt;&gt;Version: Return value / deletion / NotFound
+            Version--&gt;&gt;DBImpl: Return value / deletion / NotFound
+            DBImpl--&gt;&gt;App: Return value / NotFound
+        end
+    end
+</code></pre>
+
+<h2 id="managing-background-work-compaction">Managing Background Work (Compaction)</h2>
+
+<p><code class="language-plaintext highlighter-rouge">DBImpl</code> is responsible for kicking off background work. It doesn’t <em>do</em> the compaction itself (that logic is largely within <a href="08_compaction.md">Compaction</a> and <a href="06_version___versionset.md">VersionSet</a>), but it manages the <em>triggering</em> and the background thread.</p>
+
+<ul>
+  <li><strong>When is work needed?</strong> <code class="language-plaintext highlighter-rouge">DBImpl</code> checks if work is needed in a few places:
+    <ul>
+      <li>After a MemTable switch (<code class="language-plaintext highlighter-rouge">MakeRoomForWrite</code> schedules flush of <code class="language-plaintext highlighter-rouge">imm_</code>).</li>
+      <li>After a read operation updates file stats (<code class="language-plaintext highlighter-rouge">Get</code> might call <code class="language-plaintext highlighter-rouge">MaybeScheduleCompaction</code>).</li>
+      <li>After a background compaction finishes (it checks if <em>more</em> compaction is needed).</li>
+      <li>When explicitly requested (<code class="language-plaintext highlighter-rouge">CompactRange</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Scheduling:</strong> If work is needed and a background task isn’t already running, <code class="language-plaintext highlighter-rouge">DBImpl::MaybeScheduleCompaction</code> sets a flag (<code class="language-plaintext highlighter-rouge">background_compaction_scheduled_</code>) and asks the <code class="language-plaintext highlighter-rouge">Env</code> (Environment object, handles OS interactions) to schedule a function (<code class="language-plaintext highlighter-rouge">DBImpl::BGWork</code>) to run on a background thread.</li>
+  <li><strong>Performing Work:</strong> The background thread eventually calls <code class="language-plaintext highlighter-rouge">DBImpl::BackgroundCall</code>, which locks the mutex and calls <code class="language-plaintext highlighter-rouge">DBImpl::BackgroundCompaction</code>. This method decides <em>what</em> work to do:
+    <ul>
+      <li>If <code class="language-plaintext highlighter-rouge">imm_</code> exists, it calls <code class="language-plaintext highlighter-rouge">CompactMemTable</code> (which uses <code class="language-plaintext highlighter-rouge">WriteLevel0Table</code> -&gt; <code class="language-plaintext highlighter-rouge">BuildTable</code>) to flush it.</li>
+      <li>Otherwise, it asks the <code class="language-plaintext highlighter-rouge">VersionSet</code> to pick an appropriate SSTable compaction (<code class="language-plaintext highlighter-rouge">versions_-&gt;PickCompaction()</code>).</li>
+      <li>It then calls <code class="language-plaintext highlighter-rouge">DoCompactionWork</code> to perform the actual SSTable compaction (releasing the main lock during the heavy lifting).</li>
+    </ul>
+  </li>
+  <li><strong>Signaling:</strong> Once background work finishes, it signals (<code class="language-plaintext highlighter-rouge">background_work_finished_signal_.SignalAll()</code>) any foreground threads that might be waiting (e.g., a write operation waiting for <code class="language-plaintext highlighter-rouge">imm_</code> to be flushed).</li>
+</ul>
+
+<p>Here’s the simplified scheduling logic:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/db_impl.cc ---</span>
+
+<span class="kt">void</span> <span class="n">DBImpl</span><span class="o">::</span><span class="n">MaybeScheduleCompaction</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">mutex_</span><span class="p">.</span><span class="n">AssertHeld</span><span class="p">();</span> <span class="c1">// Must hold lock to check/change state</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="n">background_compaction_scheduled_</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Already scheduled</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">shutting_down_</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_acquire</span><span class="p">))</span> <span class="p">{</span>
+    <span class="c1">// DB is closing</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">bg_error_</span><span class="p">.</span><span class="n">ok</span><span class="p">())</span> <span class="p">{</span>
+    <span class="c1">// Background error stopped activity</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">imm_</span> <span class="o">==</span> <span class="nb">nullptr</span> <span class="o">&amp;&amp;</span> <span class="c1">// No MemTable flush needed AND</span>
+             <span class="n">manual_compaction_</span> <span class="o">==</span> <span class="nb">nullptr</span> <span class="o">&amp;&amp;</span> <span class="c1">// No manual request AND</span>
+             <span class="o">!</span><span class="n">versions_</span><span class="o">-&gt;</span><span class="n">NeedsCompaction</span><span class="p">())</span> <span class="p">{</span> <span class="c1">// VersionSet says no work needed</span>
+    <span class="c1">// No work to be done</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+    <span class="c1">// Work needs to be done! Schedule it.</span>
+    <span class="n">background_compaction_scheduled_</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span>
+    <span class="n">env_</span><span class="o">-&gt;</span><span class="n">Schedule</span><span class="p">(</span><span class="o">&amp;</span><span class="n">DBImpl</span><span class="o">::</span><span class="n">BGWork</span><span class="p">,</span> <span class="k">this</span><span class="p">);</span> <span class="c1">// Ask Env to run BGWork later</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong> This function checks several conditions under a lock. If there’s an immutable MemTable to flush (<code class="language-plaintext highlighter-rouge">imm_ != nullptr</code>) or the <code class="language-plaintext highlighter-rouge">VersionSet</code> indicates compaction is needed (<code class="language-plaintext highlighter-rouge">versions_-&gt;NeedsCompaction()</code>) and no background task is already scheduled, it marks one as scheduled and tells the environment (<code class="language-plaintext highlighter-rouge">env_</code>) to run the <code class="language-plaintext highlighter-rouge">BGWork</code> function in the background.</p>
+
+<pre><code class="language-mermaid">flowchart TD
+    A["Write/Read/Compact finishes"] --&gt; B{"Need Compaction?"}
+    B --&gt;|Yes| C{"BG Task Scheduled?"}
+    B --&gt;|No| Z["Idle"]
+    C --&gt;|Yes| Z
+    C --&gt;|No| D["Mark BG Scheduled = true"]
+    D --&gt; E["Schedule BGWork"]
+    E --&gt; F["Background Thread Pool"]
+    F --&gt;|Runs| G["DBImpl::BGWork"]
+    G --&gt; H["DBImpl::BackgroundCall"]
+    H --&gt; I{"Compact imm_ OR Pick/Run SSTable Compaction?"}
+    I --&gt; J["Perform Compaction Work"]
+    J --&gt; K["Mark BG Scheduled = false"]
+    K --&gt; L["Signal Waiting Threads"]
+    L --&gt; B
+</code></pre>
+
+<h2 id="recovery-on-startup">Recovery on Startup</h2>
+
+<p>When you open a database, <code class="language-plaintext highlighter-rouge">DBImpl::Open</code> orchestrates the recovery process:</p>
+
+<ol>
+  <li><strong>Lock:</strong> It locks the database directory (<code class="language-plaintext highlighter-rouge">env_-&gt;LockFile</code>) to prevent other processes from using it.</li>
+  <li><strong>Recover VersionSet:</strong> It calls <code class="language-plaintext highlighter-rouge">versions_-&gt;Recover()</code>, which reads the <code class="language-plaintext highlighter-rouge">MANIFEST</code> file to understand the state of SSTables from the last clean run.</li>
+  <li><strong>Find Logs:</strong> It scans the database directory for any <code class="language-plaintext highlighter-rouge">.log</code> files (WAL files) that are newer than the ones recorded in the <code class="language-plaintext highlighter-rouge">MANIFEST</code>. These logs represent writes that might not have been flushed to SSTables before the last shutdown/crash.</li>
+  <li><strong>Replay Logs:</strong> For each relevant log file found, it calls <code class="language-plaintext highlighter-rouge">DBImpl::RecoverLogFile</code>.
+    <ul>
+      <li>Inside <code class="language-plaintext highlighter-rouge">RecoverLogFile</code>, it creates a <code class="language-plaintext highlighter-rouge">log::Reader</code>.</li>
+      <li>It reads records (which are serialized <code class="language-plaintext highlighter-rouge">WriteBatch</code>es) from the log file one by one.</li>
+      <li>For each record, it applies the operations (<code class="language-plaintext highlighter-rouge">WriteBatchInternal::InsertInto</code>) to a temporary in-memory <code class="language-plaintext highlighter-rouge">MemTable</code>.</li>
+      <li>This effectively rebuilds the state of the MemTable(s) as they were just before the crash/shutdown.</li>
+    </ul>
+  </li>
+  <li><strong>Finalize State:</strong> Once all logs are replayed, the recovered MemTable becomes the active <code class="language-plaintext highlighter-rouge">mem_</code>. If the recovery process itself filled the MemTable, <code class="language-plaintext highlighter-rouge">RecoverLogFile</code> might even flush it to a Level-0 SSTable (<code class="language-plaintext highlighter-rouge">WriteLevel0Table</code>). <code class="language-plaintext highlighter-rouge">DBImpl</code> updates the <code class="language-plaintext highlighter-rouge">VersionSet</code> with the recovered sequence number and potentially writes a new <code class="language-plaintext highlighter-rouge">MANIFEST</code>.</li>
+  <li><strong>Ready:</strong> The database is now recovered and ready for new operations.</li>
+</ol>
+
+<p>Here’s a conceptual snippet from the recovery logic:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Conceptual, simplified from DBImpl::RecoverLogFile ---</span>
+
+<span class="c1">// Inside loop processing a single log file during recovery:</span>
+<span class="k">while</span> <span class="p">(</span><span class="n">reader</span><span class="p">.</span><span class="n">ReadRecord</span><span class="p">(</span><span class="o">&amp;</span><span class="n">record</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">scratch</span><span class="p">)</span> <span class="o">&amp;&amp;</span> <span class="n">status</span><span class="p">.</span><span class="n">ok</span><span class="p">())</span> <span class="p">{</span>
+  <span class="c1">// Check if record looks like a valid WriteBatch</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">record</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mi">12</span><span class="p">)</span> <span class="p">{</span> <span class="cm">/* report corruption */</span> <span class="k">continue</span><span class="p">;</span> <span class="p">}</span>
+
+  <span class="c1">// Parse the raw log record back into a WriteBatch object</span>
+  <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">SetContents</span><span class="p">(</span><span class="o">&amp;</span><span class="n">batch</span><span class="p">,</span> <span class="n">record</span><span class="p">);</span>
+
+  <span class="c1">// Create a MemTable if we don't have one yet for this log</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">mem</span> <span class="o">==</span> <span class="nb">nullptr</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">mem</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MemTable</span><span class="p">(</span><span class="n">internal_comparator_</span><span class="p">);</span>
+    <span class="n">mem</span><span class="o">-&gt;</span><span class="n">Ref</span><span class="p">();</span>
+  <span class="p">}</span>
+
+  <span class="c1">// Apply the operations from the batch TO THE MEMTABLE</span>
+  <span class="n">status</span> <span class="o">=</span> <span class="n">WriteBatchInternal</span><span class="o">::</span><span class="n">InsertInto</span><span class="p">(</span><span class="o">&amp;</span><span class="n">batch</span><span class="p">,</span> <span class="n">mem</span><span class="p">);</span>
+  <span class="c1">// ... handle error ...</span>
+
+  <span class="c1">// Keep track of the latest sequence number seen</span>
+  <span class="k">const</span> <span class="n">SequenceNumber</span> <span class="n">last_seq</span> <span class="o">=</span> <span class="cm">/* ... get sequence from batch ... */</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">last_seq</span> <span class="o">&gt;</span> <span class="o">*</span><span class="n">max_sequence</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">*</span><span class="n">max_sequence</span> <span class="o">=</span> <span class="n">last_seq</span><span class="p">;</span>
+  <span class="p">}</span>
+
+  <span class="c1">// If the MemTable gets full *during recovery*, flush it!</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">mem</span><span class="o">-&gt;</span><span class="n">ApproximateMemoryUsage</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">options_</span><span class="p">.</span><span class="n">write_buffer_size</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="n">WriteLevel0Table</span><span class="p">(</span><span class="n">mem</span><span class="p">,</span> <span class="n">edit</span><span class="p">,</span> <span class="nb">nullptr</span><span class="p">);</span> <span class="c1">// Flush to L0 SSTable</span>
+    <span class="n">mem</span><span class="o">-&gt;</span><span class="n">Unref</span><span class="p">();</span>
+    <span class="n">mem</span> <span class="o">=</span> <span class="nb">nullptr</span><span class="p">;</span> <span class="c1">// Will create a new one if needed</span>
+    <span class="c1">// ... handle error ...</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+<span class="c1">// After loop, handle the final state of 'mem'</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong> This loop reads each record (a <code class="language-plaintext highlighter-rouge">WriteBatch</code>) from the log file using <code class="language-plaintext highlighter-rouge">reader.ReadRecord</code>. It then applies the batch’s changes directly to an in-memory <code class="language-plaintext highlighter-rouge">MemTable</code> (<code class="language-plaintext highlighter-rouge">InsertInto(&amp;batch, mem)</code>), effectively replaying the lost writes. It even handles flushing this MemTable if it fills up during the recovery process.</p>
+
+<h2 id="the-dbimpl-class-code-glimpse">The DBImpl Class (Code Glimpse)</h2>
+
+<p>The definition of <code class="language-plaintext highlighter-rouge">DBImpl</code> in <code class="language-plaintext highlighter-rouge">db_impl.h</code> shows the key components it manages:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/db_impl.h ---</span>
+
+<span class="k">class</span> <span class="nc">DBImpl</span> <span class="o">:</span> <span class="k">public</span> <span class="n">DB</span> <span class="p">{</span>
+ <span class="nl">public:</span>
+  <span class="n">DBImpl</span><span class="p">(</span><span class="k">const</span> <span class="n">Options</span><span class="o">&amp;</span> <span class="n">options</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">dbname</span><span class="p">);</span>
+  <span class="o">~</span><span class="n">DBImpl</span><span class="p">()</span> <span class="k">override</span><span class="p">;</span>
+
+  <span class="c1">// Public API methods (implementing DB interface)</span>
+  <span class="n">Status</span> <span class="n">Put</span><span class="p">(...)</span> <span class="k">override</span><span class="p">;</span>
+  <span class="n">Status</span> <span class="n">Delete</span><span class="p">(...)</span> <span class="k">override</span><span class="p">;</span>
+  <span class="n">Status</span> <span class="n">Write</span><span class="p">(...)</span> <span class="k">override</span><span class="p">;</span>
+  <span class="n">Status</span> <span class="n">Get</span><span class="p">(...)</span> <span class="k">override</span><span class="p">;</span>
+  <span class="n">Iterator</span><span class="o">*</span> <span class="n">NewIterator</span><span class="p">(...)</span> <span class="k">override</span><span class="p">;</span>
+  <span class="k">const</span> <span class="n">Snapshot</span><span class="o">*</span> <span class="n">GetSnapshot</span><span class="p">()</span> <span class="k">override</span><span class="p">;</span>
+  <span class="kt">void</span> <span class="n">ReleaseSnapshot</span><span class="p">(...)</span> <span class="k">override</span><span class="p">;</span>
+  <span class="c1">// ... other public methods ...</span>
+
+ <span class="nl">private:</span>
+  <span class="c1">// Friend classes allow access to private members</span>
+  <span class="k">friend</span> <span class="k">class</span> <span class="nc">DB</span><span class="p">;</span>
+  <span class="k">struct</span> <span class="nc">CompactionState</span><span class="p">;</span> <span class="c1">// Helper struct for compactions</span>
+  <span class="k">struct</span> <span class="nc">Writer</span><span class="p">;</span>          <span class="c1">// Helper struct for writer queue</span>
+
+  <span class="c1">// Core methods for internal operations</span>
+  <span class="n">Status</span> <span class="n">Recover</span><span class="p">(</span><span class="n">VersionEdit</span><span class="o">*</span> <span class="n">edit</span><span class="p">,</span> <span class="kt">bool</span><span class="o">*</span> <span class="n">save_manifest</span><span class="p">);</span>
+  <span class="kt">void</span> <span class="n">CompactMemTable</span><span class="p">();</span>
+  <span class="n">Status</span> <span class="n">RecoverLogFile</span><span class="p">(...);</span>
+  <span class="n">Status</span> <span class="n">WriteLevel0Table</span><span class="p">(...);</span>
+  <span class="n">Status</span> <span class="n">MakeRoomForWrite</span><span class="p">(...);</span>
+  <span class="kt">void</span> <span class="n">MaybeScheduleCompaction</span><span class="p">();</span>
+  <span class="k">static</span> <span class="kt">void</span> <span class="n">BGWork</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span> <span class="n">db</span><span class="p">);</span> <span class="c1">// Background task entry point</span>
+  <span class="kt">void</span> <span class="n">BackgroundCall</span><span class="p">();</span>
+  <span class="kt">void</span> <span class="n">BackgroundCompaction</span><span class="p">();</span>
+  <span class="n">Status</span> <span class="n">DoCompactionWork</span><span class="p">(...);</span>
+  <span class="c1">// ... other private helpers ...</span>
+
+  <span class="c1">// == Key Member Variables ==</span>
+  <span class="n">Env</span><span class="o">*</span> <span class="k">const</span> <span class="n">env_</span><span class="p">;</span>                <span class="c1">// OS interaction layer</span>
+  <span class="k">const</span> <span class="n">InternalKeyComparator</span> <span class="n">internal_comparator_</span><span class="p">;</span> <span class="c1">// For sorting keys</span>
+  <span class="k">const</span> <span class="n">Options</span> <span class="n">options_</span><span class="p">;</span>         <span class="c1">// Database configuration options</span>
+  <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">dbname_</span><span class="p">;</span>      <span class="c1">// Database directory path</span>
+
+  <span class="n">TableCache</span><span class="o">*</span> <span class="k">const</span> <span class="n">table_cache_</span><span class="p">;</span> <span class="c1">// Cache for open SSTable files</span>
+
+  <span class="n">FileLock</span><span class="o">*</span> <span class="n">db_lock_</span><span class="p">;</span>             <span class="c1">// Lock file handle for DB directory</span>
+
+  <span class="n">port</span><span class="o">::</span><span class="n">Mutex</span> <span class="n">mutex_</span><span class="p">;</span>             <span class="c1">// Main mutex protecting shared state</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">bool</span><span class="o">&gt;</span> <span class="n">shutting_down_</span><span class="p">;</span> <span class="c1">// Flag indicating DB closure</span>
+  <span class="n">port</span><span class="o">::</span><span class="n">CondVar</span> <span class="n">background_work_finished_signal_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span> <span class="c1">// For waiting</span>
+
+  <span class="n">MemTable</span><span class="o">*</span> <span class="n">mem_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span> <span class="c1">// Active memtable (accepts writes)</span>
+  <span class="n">MemTable</span><span class="o">*</span> <span class="n">imm_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span> <span class="c1">// Immutable memtable (being flushed)</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">bool</span><span class="o">&gt;</span> <span class="n">has_imm_</span><span class="p">;</span>        <span class="c1">// Fast check if imm_ is non-null</span>
+
+  <span class="n">WritableFile</span><span class="o">*</span> <span class="n">logfile_</span><span class="p">;</span>         <span class="c1">// Current WAL file handle</span>
+  <span class="kt">uint64_t</span> <span class="n">logfile_number_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span> <span class="c1">// Current WAL file number</span>
+  <span class="n">log</span><span class="o">::</span><span class="n">Writer</span><span class="o">*</span> <span class="n">log_</span><span class="p">;</span>              <span class="c1">// WAL writer object</span>
+
+  <span class="n">VersionSet</span><span class="o">*</span> <span class="k">const</span> <span class="n">versions_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span> <span class="c1">// Manages SSTables/Versions</span>
+
+  <span class="c1">// Queue of writers waiting for their turn</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">deque</span><span class="o">&lt;</span><span class="n">Writer</span><span class="o">*&gt;</span> <span class="n">writers_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
+  <span class="c1">// List of active snapshots</span>
+  <span class="n">SnapshotList</span> <span class="n">snapshots_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
+  <span class="c1">// Files being generated by compactions</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">set</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span> <span class="n">pending_outputs_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
+  <span class="c1">// Is a background compaction scheduled/running?</span>
+  <span class="kt">bool</span> <span class="n">background_compaction_scheduled_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
+  <span class="c1">// Error status from background threads</span>
+  <span class="n">Status</span> <span class="n">bg_error_</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
+  <span class="c1">// Compaction statistics</span>
+  <span class="n">CompactionStats</span> <span class="n">stats_</span><span class="p">[</span><span class="n">config</span><span class="o">::</span><span class="n">kNumLevels</span><span class="p">]</span> <span class="n">GUARDED_BY</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong> This header shows <code class="language-plaintext highlighter-rouge">DBImpl</code> inheriting from the public <code class="language-plaintext highlighter-rouge">DB</code> interface. It contains references to essential components like the <code class="language-plaintext highlighter-rouge">Env</code>, <code class="language-plaintext highlighter-rouge">Options</code>, <code class="language-plaintext highlighter-rouge">TableCache</code>, <code class="language-plaintext highlighter-rouge">MemTable</code> (<code class="language-plaintext highlighter-rouge">mem_</code> and <code class="language-plaintext highlighter-rouge">imm_</code>), WAL (<code class="language-plaintext highlighter-rouge">log_</code>, <code class="language-plaintext highlighter-rouge">logfile_</code>), and <code class="language-plaintext highlighter-rouge">VersionSet</code>. Crucially, it also has a <code class="language-plaintext highlighter-rouge">mutex_</code> to protect shared state accessed by multiple threads (foreground application threads and background compaction threads) and condition variables (<code class="language-plaintext highlighter-rouge">background_work_finished_signal_</code>) to allow threads to wait for background work.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p><code class="language-plaintext highlighter-rouge">DBImpl</code> is the central nervous system of LevelDB. It doesn’t store the data itself, but it acts as the <strong>General Manager</strong>, receiving requests and coordinating the actions of all the other specialized components like the MemTable, WAL, VersionSet, and TableCache. It handles the intricate dance between fast in-memory writes, durable logging, persistent disk storage, background maintenance, and safe recovery. Understanding <code class="language-plaintext highlighter-rouge">DBImpl</code>’s role is key to seeing how all the pieces of LevelDB fit together to create a functional database.</p>
+
+<p>One tool <code class="language-plaintext highlighter-rouge">DBImpl</code> uses to make writes efficient and atomic is the <code class="language-plaintext highlighter-rouge">WriteBatch</code>. Let’s see how that works next.</p>
+
+<p>Next up: <a href="05_writebatch.md">Chapter 5: WriteBatch</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

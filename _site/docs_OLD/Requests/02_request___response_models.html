@@ -1,0 +1,252 @@
+<h1 id="chapter-2-what-happens-when-you-order-request--response-models">Chapter 2: What Happens When You Order? Request &amp; Response Models</h1>
+
+<p>In <a href="01_functional_api.md">Chapter 1: The Simplest Way - The Functional API</a>, we saw how easy it is to fetch a webpage or send data using simple functions like <code class="language-plaintext highlighter-rouge">requests.get()</code> and <code class="language-plaintext highlighter-rouge">requests.post()</code>. We also noticed that these functions return something called a <code class="language-plaintext highlighter-rouge">Response</code> object.</p>
+
+<p>But what exactly <em>is</em> that <code class="language-plaintext highlighter-rouge">Response</code> object? And what happens behind the scenes when <code class="language-plaintext highlighter-rouge">requests</code> sends your request? Just like ordering food involves more than just shouting your order and getting a meal, web requests have structured steps and data carriers. Understanding these helps you use <code class="language-plaintext highlighter-rouge">requests</code> more effectively.</p>
+
+<h2 id="why-models-the-need-for-structure">Why Models? The Need for Structure</h2>
+
+<p>Imagine ordering takeout again. You don’t just tell the restaurant “food!”; you give them specific details: “One large pepperoni pizza, delivery to 123 Main St.” The restaurant then prepares exactly that and delivers it back to you with a receipt.</p>
+
+<p>Web requests work similarly. You need to tell the server:</p>
+<ul>
+  <li><em>What</em> you want (the URL, like <code class="language-plaintext highlighter-rouge">/get</code> or <code class="language-plaintext highlighter-rouge">/post</code>).</li>
+  <li><em>How</em> you want to interact (the method, like <code class="language-plaintext highlighter-rouge">GET</code> or <code class="language-plaintext highlighter-rouge">POST</code>).</li>
+  <li><em>Any extra details</em> (like headers or data you’re sending).</li>
+</ul>
+
+<p>The server then replies with:</p>
+<ul>
+  <li><em>If it worked</em> (a status code, like <code class="language-plaintext highlighter-rouge">200 OK</code> or <code class="language-plaintext highlighter-rouge">404 Not Found</code>).</li>
+  <li><em>Information about the reply</em> (headers, like the content type).</li>
+  <li><em>The actual stuff</em> you asked for (the content, like HTML or JSON).</li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">Requests</code> uses special Python objects to hold all this information in an organized way. These are the <strong>Request and Response Models</strong>.</p>
+
+<h2 id="the-main-characters-request-preparedrequest-and-response">The Main Characters: Request, PreparedRequest, and Response</h2>
+
+<p>Think of the process like ordering at a restaurant:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">Request</code> Object (Your Order Slip):</strong> This is your initial intention. It holds the basic details of the request you <em>want</em> to make: the URL, the method (<code class="language-plaintext highlighter-rouge">GET</code>, <code class="language-plaintext highlighter-rouge">POST</code>, etc.), any headers you want to add, and any data you want to send. You usually don’t create this object directly when using the simple functional API, but <code class="language-plaintext highlighter-rouge">requests</code> does it for you internally.
+    <ul>
+      <li><em>Analogy:</em> You write down “Large Pizza, Pepperoni, Extra Cheese” on an order slip.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">PreparedRequest</code> Object (The Prepared Tray):</strong> This is the finalized, ready-to-go version of your request. <code class="language-plaintext highlighter-rouge">Requests</code> takes the initial <code class="language-plaintext highlighter-rouge">Request</code> object, processes it (encodes data, applies cookies, adds default headers like <code class="language-plaintext highlighter-rouge">User-Agent</code>), and gets it ready to be sent over the network. It contains the <em>exact</em> bytes and final details. This is mostly an internal step.
+    <ul>
+      <li><em>Analogy:</em> The kitchen takes your slip, makes the pizza, puts it in a box, adds napkins and maybe a drink, and puts it all on a tray ready for the delivery driver.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Response</code> Object (The Delivered Meal):</strong> This object represents the server’s reply <em>after</em> the <code class="language-plaintext highlighter-rouge">PreparedRequest</code> has been sent and the server has responded. It contains everything the server sent back: the status code (Did the order succeed?), the response headers (What kind of food is this? How was it packaged?), and the actual content (The pizza itself!). This is the object you usually work with directly.
+    <ul>
+      <li><em>Analogy:</em> The delivery driver hands you the tray with the pizza and receipt. You check the receipt (<code class="language-plaintext highlighter-rouge">status_code</code>, <code class="language-plaintext highlighter-rouge">headers</code>) and eat the pizza (<code class="language-plaintext highlighter-rouge">content</code>).</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Most of the time, you’ll interact primarily with the <code class="language-plaintext highlighter-rouge">Response</code> object. But knowing about <code class="language-plaintext highlighter-rouge">Request</code> and <code class="language-plaintext highlighter-rouge">PreparedRequest</code> helps understand what <code class="language-plaintext highlighter-rouge">requests</code> is doing for you.</p>
+
+<h2 id="working-with-the-response-object">Working with the <code class="language-plaintext highlighter-rouge">Response</code> Object</h2>
+
+<p>Let’s revisit our <code class="language-plaintext highlighter-rouge">requests.get()</code> example from Chapter 1 and see what useful things are inside the <code class="language-plaintext highlighter-rouge">response</code> object we get back.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="n">url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/get'</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Fetching data from: </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+
+<span class="c1"># --- Exploring the Response Object ---
+</span>
+<span class="c1"># 1. Status Code: Was it successful?
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Status Code: </span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># A number like 200 (OK) or 404 (Not Found)
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Was it successful (status &lt; 400)? </span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">ok</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># A boolean True/False
+</span>
+<span class="c1"># 2. Response Headers: Information *about* the response
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Response Headers (Content-Type): </span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">headers</span><span class="p">[</span><span class="s">'Content-Type'</span><span class="p">]</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Headers are like a dictionary (Case-Insensitive)
+</span><span class="k">print</span><span class="p">(</span><span class="s">"All Headers:"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">response</span><span class="p">.</span><span class="n">headers</span><span class="p">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"  </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># 3. Response Content (Body): The actual data!
+#    - As text (decoded using guessed encoding):
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Response Text (first 100 chars):"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">text</span><span class="p">[:</span><span class="mi">100</span><span class="p">])</span>
+
+<span class="c1">#    - As raw bytes (useful for non-text like images):
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Response Content (bytes, first 20):"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">content</span><span class="p">[:</span><span class="mi">20</span><span class="p">])</span>
+
+<span class="c1"># 4. JSON Helper: If the content is JSON
+</span><span class="n">json_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/json'</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Fetching JSON from: </span><span class="si">{</span><span class="n">json_url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="n">json_response</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">json_url</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">json_response</span><span class="p">.</span><span class="n">ok</span> <span class="ow">and</span> <span class="s">'application/json'</span> <span class="ow">in</span> <span class="n">json_response</span><span class="p">.</span><span class="n">headers</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'Content-Type'</span><span class="p">,</span> <span class="s">''</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">json_response</span><span class="p">.</span><span class="n">json</span><span class="p">()</span> <span class="c1"># Decodes JSON into a Python dict/list
+</span>        <span class="k">print</span><span class="p">(</span><span class="s">"Decoded JSON data:"</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Value of 'title': </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s">'slideshow'</span><span class="p">][</span><span class="s">'title'</span><span class="p">]</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">requests</span><span class="p">.</span><span class="n">exceptions</span><span class="p">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"Response was not valid JSON."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>What we learned from the <code class="language-plaintext highlighter-rouge">Response</code>:</strong></p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">response.status_code</code></strong>: A standard HTTP status code number. <code class="language-plaintext highlighter-rouge">200</code> means “OK”. <code class="language-plaintext highlighter-rouge">404</code> means “Not Found”. Many others exist.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">response.ok</code></strong>: A quick boolean check. <code class="language-plaintext highlighter-rouge">True</code> if the status code is less than 400 (meaning success or redirect), <code class="language-plaintext highlighter-rouge">False</code> for errors (4xx or 5xx codes).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">response.headers</code></strong>: A dictionary-like object holding the response headers sent by the server (like <code class="language-plaintext highlighter-rouge">Content-Type</code>, <code class="language-plaintext highlighter-rouge">Date</code>, <code class="language-plaintext highlighter-rouge">Server</code>). It’s case-insensitive, so <code class="language-plaintext highlighter-rouge">response.headers['content-type']</code> works too.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">response.text</code></strong>: The response body decoded into a string. <code class="language-plaintext highlighter-rouge">Requests</code> tries to guess the correct text encoding based on headers, or falls back to a guess based on the content itself. Good for HTML, plain text, etc.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">response.content</code></strong>: The response body as raw bytes, exactly as received from the server. Use this for images, downloads, or when you need precise control over decoding.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">response.json()</code></strong>: A convenient method that tries to parse the <code class="language-plaintext highlighter-rouge">response.text</code> as JSON and returns a Python dictionary or list. It raises an error if the content isn’t valid JSON.</li>
+</ol>
+
+<p>The <code class="language-plaintext highlighter-rouge">Response</code> object neatly packages all the server’s reply information for you to use.</p>
+
+<h2 id="how-it-works-internally-from-request-to-response">How It Works Internally: From Request to Response</h2>
+
+<p>When you call <code class="language-plaintext highlighter-rouge">requests.get(url)</code>, the following happens under the hood (simplified):</p>
+
+<ol>
+  <li><strong>Create <code class="language-plaintext highlighter-rouge">Request</code>:</strong> <code class="language-plaintext highlighter-rouge">Requests</code> creates a <code class="language-plaintext highlighter-rouge">Request</code> object containing the method (<code class="language-plaintext highlighter-rouge">'GET'</code>), the <code class="language-plaintext highlighter-rouge">url</code>, and any other arguments you provided (like <code class="language-plaintext highlighter-rouge">headers</code> or <code class="language-plaintext highlighter-rouge">params</code>). (See <code class="language-plaintext highlighter-rouge">requests/sessions.py</code> <code class="language-plaintext highlighter-rouge">request</code> method which creates a <code class="language-plaintext highlighter-rouge">models.Request</code>)</li>
+  <li><strong>Prepare <code class="language-plaintext highlighter-rouge">Request</code>:</strong> This <code class="language-plaintext highlighter-rouge">Request</code> object is then passed to a preparation step. Here, it becomes a <code class="language-plaintext highlighter-rouge">PreparedRequest</code>. This involves:
+    <ul>
+      <li>Merging session-level settings (like default headers or cookies from a <a href="03_session.md">Session</a>, which the functional API uses temporarily).</li>
+      <li>Encoding parameters (<code class="language-plaintext highlighter-rouge">params</code>).</li>
+      <li>Encoding the body (<code class="language-plaintext highlighter-rouge">data</code> or <code class="language-plaintext highlighter-rouge">json</code>).</li>
+      <li>Handling authentication (<code class="language-plaintext highlighter-rouge">auth</code>).</li>
+      <li>Adding standard headers (like <code class="language-plaintext highlighter-rouge">User-Agent</code>, <code class="language-plaintext highlighter-rouge">Accept-Encoding</code>).</li>
+      <li>Resolving the final URL.
+(See <code class="language-plaintext highlighter-rouge">requests/sessions.py</code> <code class="language-plaintext highlighter-rouge">prepare_request</code> method which calls <code class="language-plaintext highlighter-rouge">PreparedRequest.prepare</code> in <code class="language-plaintext highlighter-rouge">requests/models.py</code>)</li>
+    </ul>
+  </li>
+  <li><strong>Send <code class="language-plaintext highlighter-rouge">PreparedRequest</code>:</strong> The <code class="language-plaintext highlighter-rouge">PreparedRequest</code>, now containing the exact bytes and headers, is handed off to a <strong>Transport Adapter</strong> (we’ll cover these in <a href="07_transport_adapters.md">Transport Adapters</a>). The adapter handles the actual network communication (opening connections, sending bytes, dealing with HTTP/HTTPS specifics). (See <code class="language-plaintext highlighter-rouge">requests/sessions.py</code> <code class="language-plaintext highlighter-rouge">send</code> method which calls <code class="language-plaintext highlighter-rouge">adapter.send</code> in <code class="language-plaintext highlighter-rouge">requests/adapters.py</code>)</li>
+  <li><strong>Receive Reply:</strong> The Transport Adapter waits for the server’s reply (status line, headers, body).</li>
+  <li><strong>Build <code class="language-plaintext highlighter-rouge">Response</code>:</strong> The adapter takes the raw reply data and uses it to build the <code class="language-plaintext highlighter-rouge">Response</code> object you receive. It parses the status code, headers, and makes the raw content available. (See <code class="language-plaintext highlighter-rouge">requests/adapters.py</code> <code class="language-plaintext highlighter-rouge">build_response</code> method which creates a <code class="language-plaintext highlighter-rouge">models.Response</code>)</li>
+  <li><strong>Return <code class="language-plaintext highlighter-rouge">Response</code>:</strong> The <code class="language-plaintext highlighter-rouge">send</code> method returns the fully formed <code class="language-plaintext highlighter-rouge">Response</code> object back to your code.</li>
+</ol>
+
+<p>Here’s a diagram showing the journey:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant UserCode as Your Code (e.g., requests.get)
+    participant Session as requests Session (Temporary or Explicit)
+    participant PrepReq as PreparedRequest
+    participant Adapter as Transport Adapter
+    participant Server as Web Server
+    participant Resp as Response
+
+    UserCode-&gt;&gt;Session: Call get(url) / post(url, data=...)
+    Session-&gt;&gt;Session: Create models.Request object
+    Session-&gt;&gt;PrepReq: prepare_request(request) -&gt; PreparedRequest
+    Note over PrepReq: Encodes data, adds headers, cookies etc.
+    Session-&gt;&gt;Adapter: send(prepared_request)
+    Adapter-&gt;&gt;Server: Send HTTP Request bytes
+    Server--&gt;&gt;Adapter: Send HTTP Response bytes
+    Adapter-&gt;&gt;Resp: build_response(raw_reply) -&gt; Response
+    Resp--&gt;&gt;Adapter: Return Response
+    Adapter--&gt;&gt;Session: Return Response
+    Session--&gt;&gt;UserCode: Return Response
+</code></pre>
+
+<p>You can see the definitions for these objects in <code class="language-plaintext highlighter-rouge">requests/models.py</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: requests/models.py (Highly Simplified)
+</span>
+<span class="k">class</span> <span class="nc">Request</span><span class="p">:</span>
+    <span class="s">"""A user-created Request object. Used to prepare a PreparedRequest."""</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">files</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">data</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">auth</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cookies</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">hooks</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">url</span> <span class="o">=</span> <span class="n">url</span>
+        <span class="c1"># ... other attributes ...
+</span>
+    <span class="k">def</span> <span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">"""Constructs a PreparedRequest for transmission."""</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">PreparedRequest</span><span class="p">()</span>
+        <span class="n">p</span><span class="p">.</span><span class="n">prepare</span><span class="p">(</span>
+            <span class="n">method</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">method</span><span class="p">,</span>
+            <span class="n">url</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">url</span><span class="p">,</span>
+            <span class="c1"># ... pass other attributes ...
+</span>        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">p</span>
+
+<span class="k">class</span> <span class="nc">PreparedRequest</span><span class="p">:</span>
+    <span class="s">"""The fully mutable PreparedRequest object, containing the exact bytes
+    that will be sent to the server."""</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">method</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">url</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">headers</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">body</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="c1"># ... other attributes ...
+</span>
+    <span class="k">def</span> <span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">files</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">auth</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cookies</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">hooks</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="s">"""Prepares the entire request."""</span>
+        <span class="c1"># ... Logic to encode data, set headers, handle auth, etc. ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">url</span> <span class="o">=</span> <span class="c1"># processed url
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">headers</span> <span class="o">=</span> <span class="c1"># final headers
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">body</span> <span class="o">=</span> <span class="c1"># encoded body bytes or stream
+</span>        <span class="c1"># ...
+</span>
+<span class="k">class</span> <span class="nc">Response</span><span class="p">:</span>
+    <span class="s">"""Contains a server's response to an HTTP request."""</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_content</span> <span class="o">=</span> <span class="bp">False</span> <span class="c1"># Content hasn't been read yet
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">status_code</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">CaseInsensitiveDict</span><span class="p">()</span> <span class="c1"># Special dictionary for headers
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">raw</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># The raw stream from the network connection
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">url</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">encoding</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">history</span> <span class="o">=</span> <span class="p">[]</span> <span class="c1"># List of redirects
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">reason</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># Text reason, e.g., "OK"
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">cookies</span> <span class="o">=</span> <span class="n">cookiejar_from_dict</span><span class="p">({})</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">elapsed</span> <span class="o">=</span> <span class="n">datetime</span><span class="p">.</span><span class="n">timedelta</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="c1"># Time taken
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">request</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># The PreparedRequest that led to this response
+</span>
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">content</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">"""Content of the response, in bytes."""</span>
+        <span class="c1"># ... logic to read from self.raw if not already read ...
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_content</span>
+
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">text</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">"""Content of the response, in unicode."""</span>
+        <span class="c1"># ... logic to decode self.content using self.encoding or guessed encoding ...
+</span>        <span class="k">return</span> <span class="n">decoded_string</span>
+
+    <span class="k">def</span> <span class="nf">json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="s">"""Returns the json-encoded content of a response, if any."""</span>
+        <span class="c1"># ... logic to parse self.text as JSON ...
+</span>        <span class="k">return</span> <span class="n">python_object</span>
+
+    <span class="c1"># ... other properties like .ok, .is_redirect, and methods like .raise_for_status() ...
+</span></code></pre></div></div>
+
+<p>Understanding these models gives you a clearer picture of how <code class="language-plaintext highlighter-rouge">requests</code> turns your simple function call into a network operation and packages the result neatly for you.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the core data carriers in <code class="language-plaintext highlighter-rouge">Requests</code>:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">Request</code>: Your initial intent.</li>
+  <li><code class="language-plaintext highlighter-rouge">PreparedRequest</code>: The finalized request ready for sending.</li>
+  <li><code class="language-plaintext highlighter-rouge">Response</code>: The server’s reply, containing status, headers, and content.</li>
+</ul>
+
+<p>While you mostly interact with the <code class="language-plaintext highlighter-rouge">Response</code> object after making a request, knowing about the <code class="language-plaintext highlighter-rouge">Request</code> and <code class="language-plaintext highlighter-rouge">PreparedRequest</code> helps demystify the process. You saw how to access useful attributes of the <code class="language-plaintext highlighter-rouge">Response</code> like <code class="language-plaintext highlighter-rouge">status_code</code>, <code class="language-plaintext highlighter-rouge">headers</code>, <code class="language-plaintext highlighter-rouge">text</code>, <code class="language-plaintext highlighter-rouge">content</code>, and the handy <code class="language-plaintext highlighter-rouge">json()</code> method.</p>
+
+<p>In Chapter 1, we noted that the functional API creates a temporary setup for each request. This is simple but inefficient if you need to talk to the same website multiple times, perhaps needing to maintain login status or custom settings. How can we do that better?</p>
+
+<p><strong>Next:</strong> <a href="03_session.md">Chapter 3: Remembering Things - The Session Object</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

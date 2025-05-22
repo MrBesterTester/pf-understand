@@ -1,0 +1,326 @@
+<h1 id="chapter-6-batch-processing-batchnode-batchflow-asyncparallelbatchnode">Chapter 6: Batch Processing (<code class="language-plaintext highlighter-rouge">BatchNode</code>, <code class="language-plaintext highlighter-rouge">BatchFlow</code>, <code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code>)</h1>
+
+<p>In <a href="05_asynchronous_processing___asyncnode____asyncflow___.md">Chapter 5: Asynchronous Processing (<code class="language-plaintext highlighter-rouge">AsyncNode</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a>, we explored how <code class="language-plaintext highlighter-rouge">AsyncNode</code> and <code class="language-plaintext highlighter-rouge">AsyncFlow</code> help build responsive applications that can handle waiting for tasks like API calls. Now, what if you need to perform a similar operation on <em>many</em> different items? For example, imagine you have a document, and you want to translate it into ten different languages. Doing this one by one, or even coordinating many asynchronous calls manually, can be cumbersome. PocketFlow provides specialized tools for exactly this: <strong>Batch Processing</strong>.</p>
+
+<p>Batch processing in PocketFlow allows you to efficiently apply a piece of logic to a collection of items, simplifying the code and often improving performance, especially with parallel execution.</p>
+
+<p>Our main use case for this chapter will be: <strong>Translating a single document into multiple target languages.</strong></p>
+
+<p>Let’s explore the tools PocketFlow offers for this:</p>
+
+<h2 id="1-batchnode-the-sequential-worker-for-batches">1. <code class="language-plaintext highlighter-rouge">BatchNode</code>: The Sequential Worker for Batches</h2>
+
+<p>A <code class="language-plaintext highlighter-rouge">BatchNode</code> is designed to process a list of items one after the other (sequentially). It’s like a meticulous librarian who takes a stack of books and processes each one individually before moving to the next.</p>
+
+<p><strong>How it Works:</strong></p>
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">prep(self, shared)</code></strong>: This method is responsible for preparing your list of individual items to be processed. It should return an iterable (like a list) where each element is a single item for processing.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">exec(self, item)</code></strong>: This method is called <em>for each individual item</em> returned by <code class="language-plaintext highlighter-rouge">prep</code>. It contains the logic to process that single <code class="language-plaintext highlighter-rouge">item</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">post(self, shared, prep_res, exec_res_list)</code></strong>: After all items have been processed by <code class="language-plaintext highlighter-rouge">exec</code>, this method is called. <code class="language-plaintext highlighter-rouge">exec_res_list</code> will be a list containing the results from each call to <code class="language-plaintext highlighter-rouge">exec</code>, in the same order as the input items.</li>
+</ol>
+
+<p><strong>Example: Processing a Large CSV in Chunks</strong></p>
+
+<p>Let’s look at <code class="language-plaintext highlighter-rouge">CSVProcessor</code> from <code class="language-plaintext highlighter-rouge">cookbook/pocketflow-batch-node/nodes.py</code>. It reads a large CSV file not all at once, but in smaller “chunks” (batches of rows).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># cookbook/pocketflow-batch-node/nodes.py
+</span><span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="n">pd</span>
+<span class="kn">from</span> <span class="nn">pocketflow</span> <span class="kn">import</span> <span class="n">BatchNode</span>
+
+<span class="k">class</span> <span class="nc">CSVProcessor</span><span class="p">(</span><span class="n">BatchNode</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="mi">1000</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">chunk_size</span> <span class="o">=</span> <span class="n">chunk_size</span>
+    
+    <span class="k">def</span> <span class="nf">prep</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">):</span>
+        <span class="c1"># Returns an iterator of DataFrame chunks
+</span>        <span class="n">chunks</span> <span class="o">=</span> <span class="n">pd</span><span class="p">.</span><span class="n">read_csv</span><span class="p">(</span>
+            <span class="n">shared</span><span class="p">[</span><span class="s">"input_file"</span><span class="p">],</span> <span class="n">chunksize</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">chunk_size</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">chunks</span> <span class="c1"># Each 'chunk' is an item
+</span>
+    <span class="k">def</span> <span class="nf">exec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunk</span><span class="p">):</span> <span class="c1"># Called for each chunk
+</span>        <span class="c1"># Process one chunk (a pandas DataFrame)
+</span>        <span class="k">return</span> <span class="p">{</span> <span class="s">"total_sales"</span><span class="p">:</span> <span class="n">chunk</span><span class="p">[</span><span class="s">"amount"</span><span class="p">].</span><span class="nb">sum</span><span class="p">(),</span> <span class="c1"># ... more stats ... 
+</span>        <span class="p">}</span>
+
+    <span class="k">def</span> <span class="nf">post</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">,</span> <span class="n">prep_res</span><span class="p">,</span> <span class="n">exec_res_list</span><span class="p">):</span>
+        <span class="c1"># exec_res_list contains results from all chunks
+</span>        <span class="c1"># ... (combine statistics from all chunks) ...
+</span>        <span class="n">shared</span><span class="p">[</span><span class="s">"statistics"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span> <span class="c1"># ... final aggregated stats ... 
+</span>        <span class="p">}</span>
+        <span class="k">return</span> <span class="s">"show_stats"</span>
+</code></pre></div></div>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">prep</code>: Reads the CSV specified in <code class="language-plaintext highlighter-rouge">shared["input_file"]</code> and returns an iterator where each item is a <code class="language-plaintext highlighter-rouge">DataFrame</code> (a chunk of rows).</li>
+  <li><code class="language-plaintext highlighter-rouge">exec</code>: Takes one <code class="language-plaintext highlighter-rouge">chunk</code> (a <code class="language-plaintext highlighter-rouge">DataFrame</code>) and calculates some statistics for it. This method will be called multiple times, once for each chunk from <code class="language-plaintext highlighter-rouge">prep</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">post</code>: Receives <code class="language-plaintext highlighter-rouge">exec_res_list</code>, which is a list of dictionaries (one from each <code class="language-plaintext highlighter-rouge">exec</code> call). It then aggregates these results and stores the final statistics in <code class="language-plaintext highlighter-rouge">shared</code>.</li>
+</ul>
+
+<p>This <code class="language-plaintext highlighter-rouge">BatchNode</code> processes each chunk sequentially.</p>
+
+<h2 id="2-asyncparallelbatchnode-the-concurrent-worker-for-batches">2. <code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code>: The Concurrent Worker for Batches</h2>
+
+<p>What if processing each item involves waiting (like an API call), and you want to do them concurrently to save time? That’s where <code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code> comes in. It’s like <code class="language-plaintext highlighter-rouge">BatchNode</code> but for asynchronous operations that can run in parallel. Imagine a team of librarians, each given a book from the stack, processing them all at the same time.</p>
+
+<p><strong>How it Works:</strong></p>
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">async def prep_async(self, shared)</code></strong>: Similar to <code class="language-plaintext highlighter-rouge">BatchNode.prep</code>, but asynchronous. It returns a list of items to be processed.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">async def exec_async(self, item)</code></strong>: This asynchronous method is called for each item. PocketFlow will use <code class="language-plaintext highlighter-rouge">asyncio.gather</code> to run these <code class="language-plaintext highlighter-rouge">exec_async</code> calls concurrently for all items.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">async def post_async(self, shared, prep_res, exec_res_list)</code></strong>: Called after all <code class="language-plaintext highlighter-rouge">exec_async</code> calls have completed. <code class="language-plaintext highlighter-rouge">exec_res_list</code> contains their results.</li>
+</ol>
+
+<p><strong>Solving Our Use Case: Translating a Document into Multiple Languages</strong></p>
+
+<p>The <code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code> is perfect for our document translation task. Let’s look at <code class="language-plaintext highlighter-rouge">TranslateTextNodeParallel</code> from <code class="language-plaintext highlighter-rouge">cookbook/pocketflow-parallel-batch/main.py</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># cookbook/pocketflow-parallel-batch/main.py (simplified)
+</span><span class="kn">from</span> <span class="nn">pocketflow</span> <span class="kn">import</span> <span class="n">AsyncFlow</span><span class="p">,</span> <span class="n">AsyncParallelBatchNode</span>
+<span class="c1"># from utils import call_llm # Assumed async LLM call
+</span>
+<span class="k">class</span> <span class="nc">TranslateTextNodeParallel</span><span class="p">(</span><span class="n">AsyncParallelBatchNode</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">prep_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">):</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">shared</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"text"</span><span class="p">,</span> <span class="s">""</span><span class="p">)</span>
+        <span class="n">languages</span> <span class="o">=</span> <span class="n">shared</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"languages"</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="c1"># Create a list of (text_to_translate, target_language) tuples
+</span>        <span class="k">return</span> <span class="p">[(</span><span class="n">text</span><span class="p">,</span> <span class="n">lang</span><span class="p">)</span> <span class="k">for</span> <span class="n">lang</span> <span class="ow">in</span> <span class="n">languages</span><span class="p">]</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">exec_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_tuple</span><span class="p">):</span>
+        <span class="n">text</span><span class="p">,</span> <span class="n">language</span> <span class="o">=</span> <span class="n">data_tuple</span> <span class="c1"># One (text, language) pair
+</span>        <span class="c1"># prompt = f"Translate '{text}' to {language}..."
+</span>        <span class="c1"># result = await call_llm(prompt) # Call LLM API
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Translated to </span><span class="si">{</span><span class="n">language</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># Simplified
+</span>        <span class="k">return</span> <span class="p">{</span><span class="s">"language"</span><span class="p">:</span> <span class="n">language</span><span class="p">,</span> <span class="s">"translation"</span><span class="p">:</span> <span class="sa">f</span><span class="s">"Translated: </span><span class="si">{</span><span class="n">language</span><span class="si">}</span><span class="s">"</span><span class="p">}</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">post_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">,</span> <span class="n">prep_res</span><span class="p">,</span> <span class="n">exec_res_list</span><span class="p">):</span>
+        <span class="c1"># exec_res_list has all translation results
+</span>        <span class="c1"># ... (code to save each translation to a file) ...
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"All </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">exec_res_list</span><span class="p">)</span><span class="si">}</span><span class="s"> translations processed."</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s">"default"</span> <span class="c1"># Or some other action
+</span>
+<span class="c1"># To run this, you'd typically wrap it in an AsyncFlow:
+# translate_node = TranslateTextNodeParallel()
+# translation_flow = AsyncFlow(start=translate_node)
+# await translation_flow.run_async(shared_data_with_text_and_languages)
+</span></code></pre></div></div>
+<p>In this example:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">prep_async</code>: Takes the document <code class="language-plaintext highlighter-rouge">text</code> and a list of <code class="language-plaintext highlighter-rouge">languages</code> from <code class="language-plaintext highlighter-rouge">shared</code>. It returns a list of tuples, e.g., <code class="language-plaintext highlighter-rouge">[(original_text, "Spanish"), (original_text, "French"), ...]</code>. Each tuple is an “item” for <code class="language-plaintext highlighter-rouge">exec_async</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">exec_async</code>: Takes one <code class="language-plaintext highlighter-rouge">(text, language)</code> tuple, calls an asynchronous LLM function (<code class="language-plaintext highlighter-rouge">call_llm</code>) to perform the translation, and returns a dictionary with the result. Because this is an <code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code>, PocketFlow will try to run these LLM calls for all languages concurrently!</li>
+  <li><code class="language-plaintext highlighter-rouge">post_async</code>: Gets the list of all translation results and, in the full example, saves them to files.</li>
+</ul>
+
+<p>This drastically speeds up the overall translation process compared to doing them one by one.</p>
+
+<h2 id="3-batchflow-running-a-sub-workflow-multiple-times">3. <code class="language-plaintext highlighter-rouge">BatchFlow</code>: Running a Sub-Workflow Multiple Times</h2>
+
+<p>Sometimes, the “logic” you want to apply to a collection isn’t just a single <code class="language-plaintext highlighter-rouge">exec</code> method, but a whole sub-workflow (which could be a single <a href="02_node___basenode____node____asyncnode__.md">Node (<code class="language-plaintext highlighter-rouge">BaseNode</code>, <code class="language-plaintext highlighter-rouge">Node</code>, <code class="language-plaintext highlighter-rouge">AsyncNode</code>)</a> or a more complex <a href="04_flow___flow____asyncflow__.md">Flow (<code class="language-plaintext highlighter-rouge">Flow</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a>). You want to run this sub-workflow multiple times, each time with slightly different <em>parameters</em>. This is what <code class="language-plaintext highlighter-rouge">BatchFlow</code> is for.</p>
+
+<p>Think of a film director who has a specific scene (the sub-workflow) and wants to shoot it multiple times, but each time with different actors or lighting (the parameters).</p>
+
+<p><strong>How it Works:</strong></p>
+<ol>
+  <li>The <code class="language-plaintext highlighter-rouge">BatchFlow</code> is initialized with a <code class="language-plaintext highlighter-rouge">start</code> component, which is the sub-workflow (a <a href="02_node___basenode____node____asyncnode__.md">Node (<code class="language-plaintext highlighter-rouge">BaseNode</code>, <code class="language-plaintext highlighter-rouge">Node</code>, <code class="language-plaintext highlighter-rouge">AsyncNode</code>)</a> or <a href="04_flow___flow____asyncflow__.md">Flow (<code class="language-plaintext highlighter-rouge">Flow</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a>) to be run multiple times.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">prep(self, shared)</code></strong>: This method of the <code class="language-plaintext highlighter-rouge">BatchFlow</code> itself should return a list of parameter dictionaries. Each dictionary represents one “run” of the sub-workflow.</li>
+  <li>For each parameter dictionary from <code class="language-plaintext highlighter-rouge">prep</code>, the <code class="language-plaintext highlighter-rouge">BatchFlow</code> executes its <code class="language-plaintext highlighter-rouge">start</code> component (the sub-workflow). The parameters from the dictionary are made available to the sub-workflow for that particular run, usually merged into its <code class="language-plaintext highlighter-rouge">shared</code> context or node <code class="language-plaintext highlighter-rouge">params</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">post(self, shared, prep_res, exec_res)</code></strong>: This is called after all batch executions of the sub-workflow are done. Note: <code class="language-plaintext highlighter-rouge">exec_res</code> here is often <code class="language-plaintext highlighter-rouge">None</code> because the results of each sub-workflow execution are typically handled within those sub-workflows by writing to <code class="language-plaintext highlighter-rouge">shared</code>.</li>
+</ol>
+
+<p><strong>Example: Applying Different Filters to Multiple Images</strong></p>
+
+<p>Consider <code class="language-plaintext highlighter-rouge">cookbook/pocketflow-batch-flow/flow.py</code>. We want to process several images, applying a different filter to each (or multiple filters to each image).</p>
+
+<p>First, a base <a href="04_flow___flow____asyncflow__.md">Flow (<code class="language-plaintext highlighter-rouge">Flow</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a> defines how to process <em>one</em> image with <em>one</em> filter:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># cookbook/pocketflow-batch-flow/flow.py (simplified base_flow)
+# from pocketflow import Flow
+# from nodes import LoadImage, ApplyFilter, SaveImage
+</span>
+<span class="k">def</span> <span class="nf">create_base_flow</span><span class="p">():</span> <span class="c1"># This is our sub-workflow
+</span>    <span class="n">load</span> <span class="o">=</span> <span class="n">LoadImage</span><span class="p">()</span>
+    <span class="n">filter_node</span> <span class="o">=</span> <span class="n">ApplyFilter</span><span class="p">()</span>
+    <span class="n">save</span> <span class="o">=</span> <span class="n">SaveImage</span><span class="p">()</span>
+    
+    <span class="n">load</span> <span class="o">-</span> <span class="s">"apply_filter"</span> <span class="o">&gt;&gt;</span> <span class="n">filter_node</span>
+    <span class="n">filter_node</span> <span class="o">-</span> <span class="s">"save"</span> <span class="o">&gt;&gt;</span> <span class="n">save</span>
+    <span class="k">return</span> <span class="n">Flow</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="n">load</span><span class="p">)</span> <span class="c1"># Base flow for one image-filter pair
+</span></code></pre></div></div>
+
+<p>Now, the <code class="language-plaintext highlighter-rouge">ImageBatchFlow</code>:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># cookbook/pocketflow-batch-flow/flow.py (ImageBatchFlow)
+# from pocketflow import BatchFlow
+</span>
+<span class="k">class</span> <span class="nc">ImageBatchFlow</span><span class="p">(</span><span class="n">BatchFlow</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">prep</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">):</span>
+        <span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="s">"cat.jpg"</span><span class="p">,</span> <span class="s">"dog.jpg"</span><span class="p">]</span>
+        <span class="n">filters</span> <span class="o">=</span> <span class="p">[</span><span class="s">"grayscale"</span><span class="p">,</span> <span class="s">"blur"</span><span class="p">]</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span> <span class="c1"># List of parameter dictionaries
+</span>        <span class="k">for</span> <span class="n">img</span> <span class="ow">in</span> <span class="n">images</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">filters</span><span class="p">:</span>
+                <span class="c1"># Each dict is one set of params for the base_flow
+</span>                <span class="n">params</span><span class="p">.</span><span class="n">append</span><span class="p">({</span><span class="s">"input_image_path"</span><span class="p">:</span> <span class="n">img</span><span class="p">,</span> <span class="s">"filter_type"</span><span class="p">:</span> <span class="n">f</span><span class="p">})</span>
+        <span class="k">return</span> <span class="n">params</span>
+
+<span class="c1"># How to use it:
+# base_processing_logic = create_base_flow()
+# image_processor = ImageBatchFlow(start=base_processing_logic)
+# image_processor.run(initial_shared_data)
+</span></code></pre></div></div>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">ImageBatchFlow.prep</code>: Generates a list of parameter dictionaries. Each dictionary specifies an input image and a filter type, e.g., <code class="language-plaintext highlighter-rouge">[{"input_image_path": "cat.jpg", "filter_type": "grayscale"}, {"input_image_path": "cat.jpg", "filter_type": "blur"}, ...]</code>.</li>
+  <li>When <code class="language-plaintext highlighter-rouge">image_processor.run()</code> is called, the <code class="language-plaintext highlighter-rouge">base_processing_logic</code> (<a href="04_flow___flow____asyncflow__.md">Flow (<code class="language-plaintext highlighter-rouge">Flow</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a>) will be executed for <em>each</em> of these parameter dictionaries. The <code class="language-plaintext highlighter-rouge">LoadImage</code> node inside <code class="language-plaintext highlighter-rouge">base_processing_logic</code> would then use <code class="language-plaintext highlighter-rouge">params["input_image_path"]</code>, and <code class="language-plaintext highlighter-rouge">ApplyFilter</code> would use <code class="language-plaintext highlighter-rouge">params["filter_type"]</code>.</li>
+</ul>
+
+<h2 id="4-asyncparallelbatchflow-running-sub-workflows-in-parallel">4. <code class="language-plaintext highlighter-rouge">AsyncParallelBatchFlow</code>: Running Sub-Workflows in Parallel</h2>
+
+<p>Just as <code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code> is the concurrent version of <code class="language-plaintext highlighter-rouge">BatchNode</code>, <code class="language-plaintext highlighter-rouge">AsyncParallelBatchFlow</code> is the concurrent version of <code class="language-plaintext highlighter-rouge">BatchFlow</code>. It runs the multiple executions of its sub-workflow <em>in parallel</em>.</p>
+
+<p>This is like having multiple film crews, each with their own set, shooting different variations of the same scene (sub-workflow with different parameters) all at the same time.</p>
+
+<p><strong>How it Works:</strong>
+Similar to <code class="language-plaintext highlighter-rouge">BatchFlow</code>, but:</p>
+<ol>
+  <li>Uses <code class="language-plaintext highlighter-rouge">async def prep_async(self, shared)</code> to generate the list of parameter dictionaries.</li>
+  <li>When run with <code class="language-plaintext highlighter-rouge">await my_flow.run_async()</code>, it executes the sub-workflow for each parameter set concurrently using <code class="language-plaintext highlighter-rouge">asyncio.gather</code>.</li>
+</ol>
+
+<p><strong>Example: Parallel Image Processing with Filters</strong>
+The <code class="language-plaintext highlighter-rouge">cookbook/pocketflow-parallel-batch-flow/flow.py</code> shows an <code class="language-plaintext highlighter-rouge">ImageParallelBatchFlow</code>.</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># cookbook/pocketflow-parallel-batch-flow/flow.py (Conceptual)
+# from pocketflow import AsyncParallelBatchFlow
+# from nodes import LoadImageAsync, ApplyFilterAsync, SaveImageAsync 
+# (assuming async versions of nodes for the base async flow)
+</span>
+<span class="c1"># def create_async_base_flow(): ... returns an AsyncFlow ...
+</span>
+<span class="k">class</span> <span class="nc">ImageParallelBatchFlow</span><span class="p">(</span><span class="n">AsyncParallelBatchFlow</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">prep_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">):</span>
+        <span class="c1"># ... (generates list of param dicts like before) ...
+</span>        <span class="c1"># params.append({"image_path": img, "filter": f_type})
+</span>        <span class="k">return</span> <span class="n">params</span>
+
+<span class="c1"># How to use it:
+# async_base_logic = create_async_base_flow() # An AsyncFlow
+# parallel_processor = ImageParallelBatchFlow(start=async_base_logic)
+# await parallel_processor.run_async(initial_shared_data)
+</span></code></pre></div></div>
+<p>This would run the <code class="language-plaintext highlighter-rouge">async_base_logic</code> for each image-filter combination in parallel, potentially speeding up processing if the sub-workflow involves <code class="language-plaintext highlighter-rouge">await</code>able operations.</p>
+
+<h2 id="under-the-hood-a-glimpse">Under the Hood: A Glimpse</h2>
+
+<p>Let’s briefly see how these batch components achieve their magic, using simplified logic.</p>
+
+<p><strong><code class="language-plaintext highlighter-rouge">BatchNode</code></strong>
+Its <code class="language-plaintext highlighter-rouge">_exec</code> method essentially loops through the items from <code class="language-plaintext highlighter-rouge">prep</code> and calls its parent’s <code class="language-plaintext highlighter-rouge">_exec</code> (which eventually calls your <code class="language-plaintext highlighter-rouge">exec</code> method) for each one.</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># pocketflow/__init__.py (BatchNode simplified)
+</span><span class="k">class</span> <span class="nc">BatchNode</span><span class="p">(</span><span class="n">Node</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_exec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">items_from_prep</span><span class="p">):</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="p">(</span><span class="n">items_from_prep</span> <span class="ow">or</span> <span class="p">[]):</span>
+            <span class="c1"># Calls Node._exec(item), which calls self.exec(item)
+</span>            <span class="n">result_for_item</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">BatchNode</span><span class="p">,</span> <span class="bp">self</span><span class="p">).</span><span class="n">_exec</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+            <span class="n">results</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">result_for_item</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">results</span> <span class="c1"># This list becomes exec_res_list in post()
+</span></code></pre></div></div>
+
+<p><strong><code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code></strong>
+Its <code class="language-plaintext highlighter-rouge">_exec</code> method uses <code class="language-plaintext highlighter-rouge">asyncio.gather</code> to run the processing of all items concurrently.</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># pocketflow/__init__.py (AsyncParallelBatchNode simplified)
+</span><span class="k">class</span> <span class="nc">AsyncParallelBatchNode</span><span class="p">(</span><span class="n">AsyncNode</span><span class="p">,</span> <span class="n">BatchNode</span><span class="p">):</span> <span class="c1"># Inherits from AsyncNode
+</span>    <span class="k">async</span> <span class="k">def</span> <span class="nf">_exec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">items_from_prep_async</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items_from_prep_async</span><span class="p">:</span>
+            <span class="c1"># Create a task for super()._exec(item)
+</span>            <span class="c1"># super()._exec eventually calls self.exec_async(item)
+</span>            <span class="n">task</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">AsyncParallelBatchNode</span><span class="p">,</span> <span class="bp">self</span><span class="p">).</span><span class="n">_exec</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+            <span class="n">tasks</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">asyncio</span><span class="p">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">tasks</span><span class="p">)</span> <span class="c1"># Run all tasks concurrently
+</span></code></pre></div></div>
+<pre><code class="language-mermaid">sequenceDiagram
+    participant UserApp
+    participant APBN as AsyncParallelBatchNode
+    participant Item1Proc as exec_async(item1)
+    participant Item2Proc as exec_async(item2)
+    participant EventLoop
+
+    UserApp-&gt;&gt;APBN: await node.run_async(shared)
+    APBN-&gt;&gt;APBN: await self.prep_async(shared)
+    Note right of APBN: Returns [item1, item2]
+    APBN-&gt;&gt;APBN: await self._exec([item1, item2])
+    APBN-&gt;&gt;EventLoop: asyncio.gather(exec_async(item1), exec_async(item2))
+    EventLoop--&gt;&gt;Item1Proc: Start
+    EventLoop--&gt;&gt;Item2Proc: Start
+    Note over Item1Proc, Item2Proc: Both run concurrently
+    Item1Proc--&gt;&gt;EventLoop: Done (result1)
+    Item2Proc--&gt;&gt;EventLoop: Done (result2)
+    EventLoop--&gt;&gt;APBN: Returns [result1, result2]
+    APBN-&gt;&gt;APBN: await self.post_async(shared, ..., [result1, result2])
+    APBN--&gt;&gt;UserApp: Final action
+</code></pre>
+
+<p><strong><code class="language-plaintext highlighter-rouge">BatchFlow</code></strong>
+Its <code class="language-plaintext highlighter-rouge">_run</code> method iterates through the parameter dictionaries from <code class="language-plaintext highlighter-rouge">prep</code> and, for each one, calls <code class="language-plaintext highlighter-rouge">_orch</code> (the standard <a href="04_flow___flow____asyncflow__.md">Flow (<code class="language-plaintext highlighter-rouge">Flow</code>, <code class="language-plaintext highlighter-rouge">AsyncFlow</code>)</a> orchestration method) to run its <code class="language-plaintext highlighter-rouge">start</code> component with those parameters.</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># pocketflow/__init__.py (BatchFlow simplified)
+</span><span class="k">class</span> <span class="nc">BatchFlow</span><span class="p">(</span><span class="n">Flow</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">):</span>
+        <span class="n">param_list</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">prep</span><span class="p">(</span><span class="n">shared</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">param_set</span> <span class="ow">in</span> <span class="n">param_list</span><span class="p">:</span>
+            <span class="c1"># Run the entire sub-workflow (self.start_node)
+</span>            <span class="c1"># with current param_set merged.
+</span>            <span class="c1"># self.params are the BatchFlow's own params.
+</span>            <span class="n">merged_params</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="bp">self</span><span class="p">.</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">param_set</span><span class="p">}</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">_orch</span><span class="p">(</span><span class="n">shared</span><span class="p">,</span> <span class="n">merged_params</span><span class="p">)</span> <span class="c1"># _orch runs the sub-flow
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">post</span><span class="p">(</span><span class="n">shared</span><span class="p">,</span> <span class="n">param_list</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+</code></pre></div></div>
+<pre><code class="language-mermaid">sequenceDiagram
+    participant UserApp
+    participant BF as BatchFlow
+    participant SubFlowOrch as Sub-Workflow Orchestration (_orch)
+    
+    UserApp-&gt;&gt;BF: flow.run(shared)
+    BF-&gt;&gt;BF: self.prep(shared)
+    Note right of BF: Returns [params1, params2]
+    BF-&gt;&gt;SubFlowOrch: _orch(shared, params1)
+    Note right of SubFlowOrch: Sub-workflow runs with params1
+    SubFlowOrch--&gt;&gt;BF: Completes
+    BF-&gt;&gt;SubFlowOrch: _orch(shared, params2)
+    Note right of SubFlowOrch: Sub-workflow runs with params2
+    SubFlowOrch--&gt;&gt;BF: Completes
+    BF-&gt;&gt;BF: self.post(shared, ...)
+    BF--&gt;&gt;UserApp: Final action
+</code></pre>
+
+<p><strong><code class="language-plaintext highlighter-rouge">AsyncParallelBatchFlow</code></strong>
+Its <code class="language-plaintext highlighter-rouge">_run_async</code> method is similar to <code class="language-plaintext highlighter-rouge">BatchFlow._run</code> but uses <code class="language-plaintext highlighter-rouge">asyncio.gather</code> to run all the <code class="language-plaintext highlighter-rouge">_orch_async</code> calls (for its sub-workflow) in parallel.</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># pocketflow/__init__.py (AsyncParallelBatchFlow simplified)
+</span><span class="k">class</span> <span class="nc">AsyncParallelBatchFlow</span><span class="p">(</span><span class="n">AsyncFlow</span><span class="p">,</span> <span class="n">BatchFlow</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_run_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shared</span><span class="p">):</span>
+        <span class="n">param_list</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">prep_async</span><span class="p">(</span><span class="n">shared</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">param_set</span> <span class="ow">in</span> <span class="n">param_list</span><span class="p">:</span>
+            <span class="n">merged_params</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="bp">self</span><span class="p">.</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">param_set</span><span class="p">}</span>
+            <span class="c1"># Create a task for each sub-workflow run
+</span>            <span class="n">task</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_orch_async</span><span class="p">(</span><span class="n">shared</span><span class="p">,</span> <span class="n">merged_params</span><span class="p">)</span>
+            <span class="n">tasks</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="p">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">tasks</span><span class="p">)</span> <span class="c1"># Run all sub-workflow instances concurrently
+</span>        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">post_async</span><span class="p">(</span><span class="n">shared</span><span class="p">,</span> <span class="n">param_list</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Batch processing tools in PocketFlow—<code class="language-plaintext highlighter-rouge">BatchNode</code>, <code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code>, <code class="language-plaintext highlighter-rouge">BatchFlow</code>, and <code class="language-plaintext highlighter-rouge">AsyncParallelBatchFlow</code>—provide powerful and convenient ways to handle collections of items or run workflows multiple times with varying parameters.</p>
+<ul>
+  <li>Use <strong><code class="language-plaintext highlighter-rouge">BatchNode</code></strong> for sequential processing of a list of items where <code class="language-plaintext highlighter-rouge">exec</code> defines the logic for one item.</li>
+  <li>Use <strong><code class="language-plaintext highlighter-rouge">AsyncParallelBatchNode</code></strong> for concurrent processing of items, ideal for I/O-bound tasks like multiple API calls (our translation example).</li>
+  <li>Use <strong><code class="language-plaintext highlighter-rouge">BatchFlow</code></strong> when you have a sub-workflow that needs to be run multiple times sequentially, each time with different parameters.</li>
+  <li>Use <strong><code class="language-plaintext highlighter-rouge">AsyncParallelBatchFlow</code></strong> to run instances of a sub-workflow concurrently with different parameters.</li>
+</ul>
+
+<p>These abstractions help keep your code clean, manage complexity, and leverage concurrency for better performance.</p>
+
+<p>So far, we’ve seen how individual agents or flows can be constructed. But what if you need multiple, distinct AI agents to collaborate and communicate with each other?</p>
+
+<p>Next up: <a href="07_a2a__agent_to_agent__communication_framework.md">Chapter 7: A2A (Agent-to-Agent) Communication Framework</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

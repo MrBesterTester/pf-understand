@@ -1,0 +1,268 @@
+<h1 id="chapter-5-a2a-client-implementation">Chapter 5: A2A Client Implementation</h1>
+
+<p>In the <a href="04_a2a_server_implementation.md">previous chapter</a>, we learned how to build the “embassy” for our AI agent – the <strong>A2A Server</strong>. This server listens for incoming requests, acting as the official entry point for our agent according to the A2A protocol rules.</p>
+
+<p>But how does someone actually <em>visit</em> this embassy and make a request? If you build a fantastic translation agent server, how does your chat application, or another AI agent, actually <em>use</em> it to translate text?</p>
+
+<p>This chapter tackles that problem: <strong>How do we build the component that <em>initiates</em> communication with an A2A agent server?</strong></p>
+
+<p>This is the job of the <strong>A2A Client Implementation</strong>.</p>
+
+<h2 id="what-is-an-a2a-client-the-agents-customer">What is an A2A Client? The Agent’s Customer</h2>
+
+<p>Think about how you use the web:</p>
+
+<ul>
+  <li>You want to visit a website (like <code class="language-plaintext highlighter-rouge">google.com</code>).</li>
+  <li>You open your <strong>web browser</strong> (like Chrome or Firefox).</li>
+  <li>You type the website’s address into the browser.</li>
+  <li>The browser sends a request to the website’s server.</li>
+  <li>The server sends back the webpage content.</li>
+  <li>Your browser receives the content and displays it to you.</li>
+</ul>
+
+<p>In this scenario, your <strong>web browser</strong> is the <strong>client</strong>. It <em>starts</em> the conversation, knows how to format the request (using HTTP), sends it to the right address, and understands the server’s response.</p>
+
+<p>Similarly, an <strong>A2A Client</strong> is the software component that acts like that web browser, but specifically for talking to A2A agents:</p>
+
+<ol>
+  <li><strong>Knows the Agent’s Address:</strong> It needs the URL of the agent’s A2A server (which it might get from the agent’s <a href="01_agent_card.md">Agent Card</a>).</li>
+  <li><strong>Speaks the Language:</strong> It knows how to format requests according to the <a href="03_a2a_protocol___core_types.md">A2A Protocol &amp; Core Types</a>, using JSON-RPC for commands like <code class="language-plaintext highlighter-rouge">tasks/send</code>.</li>
+  <li><strong>Initiates the Call:</strong> It sends these requests over the network (usually via HTTP POST) to the agent’s server.</li>
+  <li><strong>Understands the Reply:</strong> It receives the server’s JSON-RPC response, checks for success or errors, and parses the results (like the initial <code class="language-plaintext highlighter-rouge">Task</code> object or streaming updates).</li>
+</ol>
+
+<p>Essentially, the A2A Client is the part of your application (or another agent) that <em>consumes</em> the services offered by an A2A agent server.</p>
+
+<h2 id="why-do-we-need-it">Why Do We Need It?</h2>
+
+<p>Your application’s core logic (e.g., the chat interface, the document summarizer UI) shouldn’t need to worry about the messy details of JSON-RPC formatting, HTTP headers, or handling network connections.</p>
+
+<p>The A2A Client acts as an <strong>intermediary</strong> or <strong>adapter</strong>. It provides a cleaner, simpler way for your application code to interact with a remote A2A agent. Your application can just say, “Client, please send this message to the agent,” and the client handles all the protocol details.</p>
+
+<h2 id="using-an-a2a-client-library">Using an A2A Client Library</h2>
+
+<p>Just like we used <code class="language-plaintext highlighter-rouge">A2AServer</code> libraries to simplify building the server in <a href="04_a2a_server_implementation.md">Chapter 4</a>, the <code class="language-plaintext highlighter-rouge">Google A2A</code> project provides <code class="language-plaintext highlighter-rouge">A2AClient</code> libraries to make building the client side easier.</p>
+
+<p>Let’s see how we might use these libraries in JavaScript and Python to talk to the “Echo Agent” server we discussed previously.</p>
+
+<h3 id="javascript-example-using-a2aclient-from-the-library">JavaScript Example (using <code class="language-plaintext highlighter-rouge">A2AClient</code> from the library)</h3>
+
+<p>Imagine we’re building a simple command-line tool (<code class="language-plaintext highlighter-rouge">cli.ts</code>) that lets a user chat with our Echo Agent running at <code class="language-plaintext highlighter-rouge">http://localhost:4000</code>.</p>
+
+<div class="language-typescript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// File: samples/js/src/cli.ts (Simplified Snippet)</span>
+<span class="k">import</span> <span class="p">{</span> <span class="nx">A2AClient</span> <span class="p">}</span> <span class="k">from</span> <span class="dl">"</span><span class="s2">./client/client.js</span><span class="dl">"</span><span class="p">;</span> <span class="c1">// The client library</span>
+<span class="k">import</span> <span class="p">{</span> <span class="nx">TaskSendParams</span> <span class="p">}</span> <span class="k">from</span> <span class="dl">"</span><span class="s2">./schema.js</span><span class="dl">"</span><span class="p">;</span> <span class="c1">// Types for request parameters</span>
+<span class="k">import</span> <span class="nx">crypto</span> <span class="k">from</span> <span class="dl">"</span><span class="s2">node:crypto</span><span class="dl">"</span><span class="p">;</span> <span class="c1">// To generate IDs</span>
+
+<span class="c1">// Agent's address (replace with your agent's URL)</span>
+<span class="kd">const</span> <span class="nx">serverUrl</span> <span class="o">=</span> <span class="dl">"</span><span class="s2">http://localhost:4000</span><span class="dl">"</span><span class="p">;</span>
+
+<span class="c1">// 1. Create a client instance pointing to the agent's server</span>
+<span class="kd">const</span> <span class="nx">client</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">A2AClient</span><span class="p">(</span><span class="nx">serverUrl</span><span class="p">);</span>
+
+<span class="c1">// User input from the command line</span>
+<span class="kd">const</span> <span class="nx">userInput</span> <span class="o">=</span> <span class="dl">"</span><span class="s2">Hello Echo Agent!</span><span class="dl">"</span><span class="p">;</span>
+
+<span class="c1">// 2. Prepare the parameters for the 'tasks/sendSubscribe' request</span>
+<span class="kd">const</span> <span class="nx">taskId</span> <span class="o">=</span> <span class="nx">crypto</span><span class="p">.</span><span class="nx">randomUUID</span><span class="p">();</span> <span class="c1">// Generate a unique ID for this task</span>
+<span class="kd">const</span> <span class="nx">params</span><span class="p">:</span> <span class="nx">TaskSendParams</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="na">id</span><span class="p">:</span> <span class="nx">taskId</span><span class="p">,</span>
+  <span class="na">message</span><span class="p">:</span> <span class="p">{</span>
+    <span class="na">role</span><span class="p">:</span> <span class="dl">"</span><span class="s2">user</span><span class="dl">"</span><span class="p">,</span>
+    <span class="na">parts</span><span class="p">:</span> <span class="p">[{</span> <span class="na">type</span><span class="p">:</span> <span class="dl">"</span><span class="s2">text</span><span class="dl">"</span><span class="p">,</span> <span class="na">text</span><span class="p">:</span> <span class="nx">userInput</span> <span class="p">}],</span> <span class="c1">// The user's message</span>
+  <span class="p">},</span>
+<span class="p">};</span>
+
+<span class="c1">// 3. Send the request and handle the streaming response</span>
+<span class="k">async</span> <span class="kd">function</span> <span class="nx">sendMessage</span><span class="p">()</span> <span class="p">{</span>
+  <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">`Sending task </span><span class="p">${</span><span class="nx">taskId</span><span class="p">}</span><span class="s2"> to </span><span class="p">${</span><span class="nx">serverUrl</span><span class="p">}</span><span class="s2">...`</span><span class="p">);</span>
+  <span class="k">try</span> <span class="p">{</span>
+    <span class="c1">// Use sendTaskSubscribe for agents that support streaming</span>
+    <span class="kd">const</span> <span class="nx">stream</span> <span class="o">=</span> <span class="nx">client</span><span class="p">.</span><span class="nx">sendTaskSubscribe</span><span class="p">(</span><span class="nx">params</span><span class="p">);</span>
+
+    <span class="c1">// Loop through the events received from the server</span>
+    <span class="k">for</span> <span class="k">await</span> <span class="p">(</span><span class="kd">const</span> <span class="nx">event</span> <span class="k">of</span> <span class="nx">stream</span><span class="p">)</span> <span class="p">{</span>
+      <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="dl">"</span><span class="s2">Received Agent Event:</span><span class="dl">"</span><span class="p">,</span> <span class="nx">event</span><span class="p">);</span>
+      <span class="c1">// (In a real app, you'd parse 'event' which could be</span>
+      <span class="c1">// TaskStatusUpdateEvent or TaskArtifactUpdateEvent)</span>
+    <span class="p">}</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="dl">"</span><span class="s2">Agent stream finished.</span><span class="dl">"</span><span class="p">);</span>
+
+  <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nx">error</span><span class="p">:</span> <span class="kr">any</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="dl">"</span><span class="s2">Error talking to agent:</span><span class="dl">"</span><span class="p">,</span> <span class="nx">error</span><span class="p">.</span><span class="nx">message</span> <span class="o">||</span> <span class="nx">error</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nx">sendMessage</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Create Client:</strong> We import <code class="language-plaintext highlighter-rouge">A2AClient</code> and create an instance, telling it the URL of the agent server we want to talk to.</li>
+  <li><strong>Prepare Request:</strong> We gather the necessary information for our request: a unique <code class="language-plaintext highlighter-rouge">taskId</code> and the <code class="language-plaintext highlighter-rouge">message</code> containing the user’s input, formatted according to the A2A <code class="language-plaintext highlighter-rouge">TaskSendParams</code> structure (<a href="03_a2a_protocol___core_types.md">Chapter 3</a>).</li>
+  <li><strong>Send &amp; Handle Stream:</strong> We call <code class="language-plaintext highlighter-rouge">client.sendTaskSubscribe(params)</code>. This method handles formatting the JSON-RPC request, sending the HTTP POST, and processing the Server-Sent Events (SSE) stream from the server (<a href="07_streaming_communication__sse_.md">Chapter 7: Streaming Communication (SSE)</a>). We use a <code class="language-plaintext highlighter-rouge">for await...of</code> loop to process each event as it arrives from the agent.</li>
+</ol>
+
+<p><strong>Example Output (Conceptual):</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Sending task abc-123 to http://localhost:4000...
+Received Agent Event: { status: { state: 'working', message: { role: 'agent', parts: [ { text: 'Echoing...' } ] } } }
+Received Agent Event: { status: { state: 'completed', message: { role: 'agent', parts: [ { text: 'You said: Hello Echo Agent!' } ] } } }
+Agent stream finished.
+</code></pre></div></div>
+
+<p>The client library takes care of the underlying network communication and event parsing.</p>
+
+<h3 id="python-example-using-a2aclient-from-the-library">Python Example (using <code class="language-plaintext highlighter-rouge">A2AClient</code> from the library)</h3>
+
+<p>Let’s create a similar command-line tool in Python (<code class="language-plaintext highlighter-rouge">cli/__main__.py</code>) talking to an agent at <code class="language-plaintext highlighter-rouge">http://localhost:5000</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: samples/python/hosts/cli/__main__.py (Simplified Snippet)
+</span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">uuid</span> <span class="kn">import</span> <span class="n">uuid4</span>
+<span class="kn">from</span> <span class="nn">common.client</span> <span class="kn">import</span> <span class="n">A2AClient</span> <span class="c1"># The client library
+# Assume 'card' is the AgentCard fetched previously (see Chapter 1)
+# card = A2ACardResolver("http://localhost:5000").get_agent_card()
+</span>
+<span class="c1"># 1. Create a client instance using the agent's card or URL
+# client = A2AClient(agent_card=card)
+</span><span class="n">client</span> <span class="o">=</span> <span class="n">A2AClient</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"http://localhost:5000"</span><span class="p">)</span> <span class="c1"># Or directly use URL
+</span>
+<span class="c1"># User input
+</span><span class="n">user_input</span> <span class="o">=</span> <span class="s">"Hi Python Agent!"</span>
+
+<span class="c1"># 2. Prepare the payload (parameters) for the request
+</span><span class="n">task_id</span> <span class="o">=</span> <span class="n">uuid4</span><span class="p">().</span><span class="nb">hex</span> <span class="c1"># Generate a unique Task ID
+</span><span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">"id"</span><span class="p">:</span> <span class="n">task_id</span><span class="p">,</span>
+    <span class="s">"message"</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s">"role"</span><span class="p">:</span> <span class="s">"user"</span><span class="p">,</span>
+        <span class="s">"parts"</span><span class="p">:</span> <span class="p">[{</span><span class="s">"type"</span><span class="p">:</span> <span class="s">"text"</span><span class="p">,</span> <span class="s">"text"</span><span class="p">:</span> <span class="n">user_input</span><span class="p">}],</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+
+<span class="c1"># 3. Send the request and handle the response
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">send_message</span><span class="p">():</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Sending task </span><span class="si">{</span><span class="n">task_id</span><span class="si">}</span><span class="s"> to </span><span class="si">{</span><span class="n">client</span><span class="p">.</span><span class="n">url</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Use send_task_streaming if agent supports it (check card.capabilities.streaming)
+</span>        <span class="c1"># Assuming streaming is supported here:
+</span>        <span class="n">response_stream</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="n">send_task_streaming</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+        <span class="k">async</span> <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">response_stream</span><span class="p">:</span>
+             <span class="c1"># result is already parsed SendTaskStreamingResponse object
+</span>            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Received Agent Event: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">model_dump_json</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+        <span class="k">print</span><span class="p">(</span><span class="s">"Agent stream finished."</span><span class="p">)</span>
+
+        <span class="c1"># If NOT streaming, you'd use send_task:
+</span>        <span class="c1"># task_result = await client.send_task(payload)
+</span>        <span class="c1"># print(f"Received Agent Response: {task_result.model_dump_json(exclude_none=True)}")
+</span>
+    <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error talking to agent: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">send_message</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Create Client:</strong> We import <code class="language-plaintext highlighter-rouge">A2AClient</code> and create an instance, providing the agent’s <code class="language-plaintext highlighter-rouge">url</code>.</li>
+  <li><strong>Prepare Payload:</strong> We create a Python dictionary <code class="language-plaintext highlighter-rouge">payload</code> containing the <code class="language-plaintext highlighter-rouge">id</code> and <code class="language-plaintext highlighter-rouge">message</code> parameters for the <code class="language-plaintext highlighter-rouge">tasks/send</code> or <code class="language-plaintext highlighter-rouge">tasks/sendSubscribe</code> method.</li>
+  <li><strong>Send &amp; Handle Stream:</strong> We call <code class="language-plaintext highlighter-rouge">client.send_task_streaming(payload)</code>. Similar to the JS version, this handles the JSON-RPC formatting, HTTP POST, and returns an asynchronous iterator. We loop through it using <code class="language-plaintext highlighter-rouge">async for</code> to get parsed response objects (like <code class="language-plaintext highlighter-rouge">SendTaskStreamingResponse</code>) for each event. The library hides the complexity of parsing the SSE stream. If the agent didn’t support streaming, we would call <code class="language-plaintext highlighter-rouge">client.send_task(payload)</code> instead, which would return the final <code class="language-plaintext highlighter-rouge">Task</code> object directly after the agent finishes.</li>
+</ol>
+
+<p><strong>Example Output (Conceptual, streaming):</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Sending task def-456 to http://localhost:5000...
+Received Agent Event: {"jsonrpc": "2.0", "result": {"status": {"state": "working", "message": {"role": "agent", "parts": [{"type": "text", "text": "Echoing..."}]}}}}
+Received Agent Event: {"jsonrpc": "2.0", "result": {"status": {"state": "completed", "message": {"role": "agent", "parts": [{"type": "text", "text": "You said: Hi Python Agent!"}]}}}}
+Agent stream finished.
+</code></pre></div></div>
+
+<p>In both examples, the <code class="language-plaintext highlighter-rouge">A2AClient</code> library provides a high-level interface (<code class="language-plaintext highlighter-rouge">sendTaskSubscribe</code>, <code class="language-plaintext highlighter-rouge">send_task_streaming</code>, <code class="language-plaintext highlighter-rouge">sendTask</code>, <code class="language-plaintext highlighter-rouge">send_task</code>) that simplifies the process of communicating with an A2A server.</p>
+
+<h2 id="under-the-hood-how-the-client-works">Under the Hood: How the Client Works</h2>
+
+<p>What’s happening inside the <code class="language-plaintext highlighter-rouge">A2AClient</code> library when you call a method like <code class="language-plaintext highlighter-rouge">sendTaskSubscribe</code>?</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant App as Your Application (e.g., CLI)
+    participant Lib as A2AClient Library
+    participant Net as Network (HTTP)
+    participant Srv as A2A Agent Server
+
+    App-&gt;&gt;Lib: Call client.sendTaskSubscribe(params)
+    Note right of Lib: Generates JSON-RPC ID, Method='tasks/sendSubscribe'
+    Lib-&gt;&gt;Lib: Format JSON-RPC Request Body (using params)
+    Note right of Lib: {jsonrpc:"2.0", id:"req-1", method:"...", params:{...}}
+
+    Lib-&gt;&gt;Net: Send HTTP POST Request to Agent URL
+    Note over Net,Srv: Request travels over the internet
+
+    Net-&gt;&gt;Srv: Delivers HTTP POST Request
+    Note right of Srv: Server receives request, parses JSON-RPC
+
+    Srv-&gt;&gt;Srv: Processes Task (Starts internal logic)
+    Note right of Srv: Switches to streaming mode (SSE)
+
+    Srv--&gt;&gt;Net: Send HTTP Response (Status 200 OK, Content-Type: text/event-stream)
+    Srv--&gt;&gt;Net: Send SSE Event 1 (e.g., 'working' status)
+    Srv--&gt;&gt;Net: Send SSE Event 2 (e.g., 'completed' status)
+    Note right of Srv: Stream ends
+
+    Net--&gt;&gt;Lib: Delivers HTTP Response &amp; SSE Events
+    Note right of Lib: Receives streaming response
+
+    Lib-&gt;&gt;Lib: Parse SSE Events (Extract JSON data from 'data:' lines)
+    Lib--&gt;&gt;App: Yield Parsed Event 1 (as object)
+    Lib--&gt;&gt;App: Yield Parsed Event 2 (as object)
+    Note left of App: Application processes each event in the loop
+
+    App-&gt;&gt;App: Loop finishes when stream ends
+</code></pre>
+
+<p><strong>Steps:</strong></p>
+
+<ol>
+  <li><strong>Application Call:</strong> Your code calls a method on the <code class="language-plaintext highlighter-rouge">A2AClient</code> instance (e.g., <code class="language-plaintext highlighter-rouge">sendTaskSubscribe</code>).</li>
+  <li><strong>Format Request:</strong> The library takes your parameters (<code class="language-plaintext highlighter-rouge">params</code>), generates a unique request ID, and constructs the full JSON-RPC request payload (a JSON object).</li>
+  <li><strong>Send HTTP Request:</strong> The library uses an underlying HTTP client (like <code class="language-plaintext highlighter-rouge">fetch</code> in browsers/Node.js or <code class="language-plaintext highlighter-rouge">httpx</code> in Python) to send an HTTP POST request to the agent server’s URL. It sets the correct headers (<code class="language-plaintext highlighter-rouge">Content-Type: application/json</code>, <code class="language-plaintext highlighter-rouge">Accept: text/event-stream</code> for streaming).</li>
+  <li><strong>Server Processing:</strong> The A2A server receives the request, processes it (as described in <a href="04_a2a_server_implementation.md">Chapter 4</a>), and starts sending back a response. For streaming, this is an HTTP response with a <code class="language-plaintext highlighter-rouge">text/event-stream</code> content type, followed by individual Server-Sent Events (SSE).</li>
+  <li><strong>Receive Response:</strong> The client library’s HTTP client receives the response.</li>
+  <li><strong>Parse Response/Stream:</strong>
+    <ul>
+      <li><strong>Non-streaming (<code class="language-plaintext highlighter-rouge">sendTask</code>):</strong> It waits for the full response, parses the JSON body, checks for JSON-RPC level errors, and extracts the <code class="language-plaintext highlighter-rouge">result</code> field (e.g., the final <code class="language-plaintext highlighter-rouge">Task</code> object).</li>
+      <li><strong>Streaming (<code class="language-plaintext highlighter-rouge">sendTaskSubscribe</code>):</strong> It processes the incoming SSE stream, parsing the <code class="language-plaintext highlighter-rouge">data:</code> lines from each event, converting the JSON text into objects, and yielding these objects back to your application code via the async iterator.</li>
+    </ul>
+  </li>
+  <li><strong>Return/Yield Result:</strong> The library returns the parsed result (for non-streaming) or yields the parsed events (for streaming) to your application code.</li>
+</ol>
+
+<p>The client libraries (like <code class="language-plaintext highlighter-rouge">samples/js/src/client/client.ts</code> and <code class="language-plaintext highlighter-rouge">samples/python/common/client/client.py</code>) contain internal helper functions (e.g., <code class="language-plaintext highlighter-rouge">_makeHttpRequest</code>, <code class="language-plaintext highlighter-rouge">_handleJsonResponse</code>, <code class="language-plaintext highlighter-rouge">_handleStreamingResponse</code> in the JS client; <code class="language-plaintext highlighter-rouge">_send_request</code> in the Python client) to manage these steps.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <strong>A2A Client</strong> is the component that <em>initiates</em> conversations with A2A agent servers. It acts on behalf of your application or another agent, translating simple method calls (like “send this message”) into correctly formatted A2A protocol requests (JSON-RPC over HTTP).</p>
+
+<p>It handles the complexities of:</p>
+
+<ul>
+  <li>Knowing the agent’s address (<code class="language-plaintext highlighter-rouge">url</code>).</li>
+  <li>Formatting requests (<code class="language-plaintext highlighter-rouge">tasks/send</code>, <code class="language-plaintext highlighter-rouge">tasks/sendSubscribe</code>).</li>
+  <li>Sending them over the network.</li>
+  <li>Parsing responses (JSON results or streaming SSE events).</li>
+  <li>Handling errors.</li>
+</ul>
+
+<p>By using the provided <code class="language-plaintext highlighter-rouge">A2AClient</code> libraries, you can easily integrate A2A communication into your applications without needing deep knowledge of the underlying protocol mechanics. You create a client, prepare your data, and call the appropriate method.</p>
+
+<p>Now that we’ve seen both the server (<a href="04_a2a_server_implementation.md">Chapter 4</a>) and the client side of the A2A interaction, let’s dive deeper into how the <em>server</em> actually processes the tasks it receives from the client.</p>
+
+<p><strong>Next:</strong> <a href="06_task_handling_logic__server_side_.md">Chapter 6: Task Handling Logic (Server-side)</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

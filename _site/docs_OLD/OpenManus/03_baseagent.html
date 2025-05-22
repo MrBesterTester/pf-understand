@@ -1,0 +1,240 @@
+<h1 id="chapter-3-baseagent---the-agent-blueprint">Chapter 3: BaseAgent - The Agent Blueprint</h1>
+
+<p>In the previous chapters, we learned about the “brain” (<a href="01_llm.md">Chapter 1: The LLM</a>) that powers our agents and how they remember conversations using <a href="02_message___memory.md">Chapter 2: Message / Memory</a>. Now, let’s talk about the agent itself!</p>
+
+<p>Imagine you want to build different kinds of digital helpers: one that can browse the web, one that can write code, and maybe one that just answers questions. While they have different jobs, they probably share some basic features, right? They all need a name, a way to remember things, a way to know if they are busy or waiting, and a process to follow when doing their work.</p>
+
+<h2 id="what-problem-does-baseagent-solve">What Problem Does <code class="language-plaintext highlighter-rouge">BaseAgent</code> Solve?</h2>
+
+<p>Building every agent from scratch, defining these common features over and over again, would be tedious and error-prone. It’s like designing a completely new car frame, engine, and wheels every time you want to build a new car model (a sports car, a truck, a sedan). It’s inefficient!</p>
+
+<p>This is where <code class="language-plaintext highlighter-rouge">BaseAgent</code> comes in. Think of it as the <strong>master blueprint</strong> or the standard <strong>chassis and engine design</strong> for <em>all</em> agents in OpenManus.</p>
+
+<p><strong>Use Case:</strong> Let’s say we want to create a simple “EchoAgent” that just repeats back whatever the user says. Even this simple agent needs:</p>
+<ul>
+  <li>A name (e.g., “EchoBot”).</li>
+  <li>Memory to store what the user said.</li>
+  <li>A state (is it idle, or is it working on echoing?).</li>
+  <li>A way to run and perform its simple “echo” task.</li>
+</ul>
+
+<p>Instead of defining all these basics for EchoAgent, and then again for a “WeatherAgent”, and again for a “CodeWriterAgent”, we define them <em>once</em> in <code class="language-plaintext highlighter-rouge">BaseAgent</code>.</p>
+
+<h2 id="key-concepts-the-building-blocks-of-an-agent">Key Concepts: The Building Blocks of an Agent</h2>
+
+<p><code class="language-plaintext highlighter-rouge">BaseAgent</code> (<code class="language-plaintext highlighter-rouge">app/agent/base.py</code>) defines the fundamental properties and abilities that <em>all</em> agents built using OpenManus must have. It ensures consistency and saves us from repeating code. Here are the essential parts:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">name</code> (str):</strong> A unique name to identify the agent (e.g., “browser_agent”, “code_writer”).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">description</code> (Optional[str]):</strong> A short explanation of what the agent does.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">state</code> (AgentState):</strong> The agent’s current status. Is it doing nothing (<code class="language-plaintext highlighter-rouge">IDLE</code>), actively working (<code class="language-plaintext highlighter-rouge">RUNNING</code>), finished its task (<code class="language-plaintext highlighter-rouge">FINISHED</code>), or encountered a problem (<code class="language-plaintext highlighter-rouge">ERROR</code>)?</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">memory</code> (Memory):</strong> An instance of the <code class="language-plaintext highlighter-rouge">Memory</code> class we learned about in <a href="02_message___memory.md">Chapter 2: Message / Memory</a>. This is where the agent stores the conversation history (<code class="language-plaintext highlighter-rouge">Message</code> objects).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">llm</code> (LLM):</strong> An instance of the <code class="language-plaintext highlighter-rouge">LLM</code> class from <a href="01_llm.md">Chapter 1: The LLM - Your Agent’s Brainpower</a>. This gives the agent access to the language model for “thinking”.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">run()</code> method:</strong> The main function you call to start the agent’s work. It manages the overall process, like changing the state to <code class="language-plaintext highlighter-rouge">RUNNING</code> and repeatedly calling the <code class="language-plaintext highlighter-rouge">step()</code> method.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">step()</code> method:</strong> This is the crucial part! <code class="language-plaintext highlighter-rouge">BaseAgent</code> defines <em>that</em> agents must have a <code class="language-plaintext highlighter-rouge">step</code> method, but it doesn’t say <em>what</em> the step does. It’s marked as <code class="language-plaintext highlighter-rouge">abstract</code>, meaning <strong>each specific agent type (like our EchoAgent or a BrowserAgent) must provide its own implementation of <code class="language-plaintext highlighter-rouge">step()</code></strong>. This method defines the actual work the agent performs in a single cycle.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">max_steps</code> (int):</strong> A safety limit on how many <code class="language-plaintext highlighter-rouge">step</code> cycles the agent can run before stopping automatically. This prevents agents from running forever if they get stuck.</li>
+</ol>
+
+<p>Think of it like this:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">BaseAgent</code> provides the car chassis (<code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">state</code>), the engine (<code class="language-plaintext highlighter-rouge">llm</code>), the fuel tank (<code class="language-plaintext highlighter-rouge">memory</code>), and the ignition key (<code class="language-plaintext highlighter-rouge">run()</code>).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">step()</code> method is like the specific driving instructions (turn left, accelerate, brake) that make a sports car drive differently from a truck, even though they share the same basic parts.</li>
+</ul>
+
+<h2 id="how-do-we-use-baseagent">How Do We Use <code class="language-plaintext highlighter-rouge">BaseAgent</code>?</h2>
+
+<p>You typically don’t use <code class="language-plaintext highlighter-rouge">BaseAgent</code> directly. It’s an <strong>abstract</strong> class, meaning it’s a template, not a finished product. You <strong>build upon it</strong> by creating new classes that <em>inherit</em> from <code class="language-plaintext highlighter-rouge">BaseAgent</code>.</p>
+
+<p>Let’s imagine creating our simple <code class="language-plaintext highlighter-rouge">EchoAgent</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Conceptual Example - Not runnable code, just for illustration
+</span>
+<span class="c1"># Import BaseAgent and necessary components
+</span><span class="kn">from</span> <span class="nn">app.agent.base</span> <span class="kn">import</span> <span class="n">BaseAgent</span>
+<span class="kn">from</span> <span class="nn">app.schema</span> <span class="kn">import</span> <span class="n">Message</span>
+
+<span class="k">class</span> <span class="nc">EchoAgent</span><span class="p">(</span><span class="n">BaseAgent</span><span class="p">):</span> <span class="c1"># Inherits from BaseAgent!
+</span>    <span class="s">"""A simple agent that echoes the last user message."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"EchoBot"</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"Repeats the last thing the user said."</span>
+
+    <span class="c1"># THIS IS THE IMPORTANT PART - We implement the abstract 'step' method
+</span>    <span class="k">async</span> <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="s">"""Perform one step: find the last user message and echo it."""</span>
+
+        <span class="n">last_user_message</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="c1"># Look backwards through memory to find the last user message
+</span>        <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">memory</span><span class="p">.</span><span class="n">messages</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">msg</span><span class="p">.</span><span class="n">role</span> <span class="o">==</span> <span class="s">"user"</span><span class="p">:</span>
+                <span class="n">last_user_message</span> <span class="o">=</span> <span class="n">msg</span>
+                <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">last_user_message</span> <span class="ow">and</span> <span class="n">last_user_message</span><span class="p">.</span><span class="n">content</span><span class="p">:</span>
+            <span class="n">echo_content</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"You said: </span><span class="si">{</span><span class="n">last_user_message</span><span class="p">.</span><span class="n">content</span><span class="si">}</span><span class="s">"</span>
+            <span class="c1"># Add the echo response to memory as an 'assistant' message
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">update_memory</span><span class="p">(</span><span class="s">"assistant"</span><span class="p">,</span> <span class="n">echo_content</span><span class="p">)</span>
+            <span class="c1"># The state will be set to FINISHED after this step by run()
+</span>            <span class="c1"># (Simplified: a real agent might need more complex logic)
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">AgentState</span><span class="p">.</span><span class="n">FINISHED</span> <span class="c1"># Indicate task is done
+</span>            <span class="k">return</span> <span class="n">echo_content</span> <span class="c1"># Return the result of this step
+</span>        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">AgentState</span><span class="p">.</span><span class="n">FINISHED</span> <span class="c1"># Nothing to echo, finish
+</span>            <span class="k">return</span> <span class="s">"I didn't hear anything from the user to echo."</span>
+
+<span class="c1"># How you might conceptually use it:
+# echo_bot = EchoAgent()
+# # Add a user message to its memory
+# echo_bot.update_memory("user", "Hello there!")
+# # Start the agent's run loop
+# result = await echo_bot.run()
+# print(result) # Output would contain: "Step 1: You said: Hello there!"
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">class EchoAgent(BaseAgent):</code> - We declare that <code class="language-plaintext highlighter-rouge">EchoAgent</code> is a <em>type of</em> <code class="language-plaintext highlighter-rouge">BaseAgent</code>. It automatically gets all the standard parts like <code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">memory</code>, <code class="language-plaintext highlighter-rouge">llm</code>, <code class="language-plaintext highlighter-rouge">state</code>, and the <code class="language-plaintext highlighter-rouge">run()</code> method.</li>
+  <li>We provide a specific <code class="language-plaintext highlighter-rouge">name</code> and <code class="language-plaintext highlighter-rouge">description</code>.</li>
+  <li>Crucially, we define <code class="language-plaintext highlighter-rouge">async def step(self) -&gt; str:</code>. This is <em>our</em> specific logic for the <code class="language-plaintext highlighter-rouge">EchoAgent</code>. In this case, it looks through the <code class="language-plaintext highlighter-rouge">memory</code> (inherited from <code class="language-plaintext highlighter-rouge">BaseAgent</code>), finds the last user message, and prepares an echo response.</li>
+  <li>It uses <code class="language-plaintext highlighter-rouge">self.update_memory(...)</code> (a helper method provided by <code class="language-plaintext highlighter-rouge">BaseAgent</code>) to add its response to the memory.</li>
+  <li>It sets its <code class="language-plaintext highlighter-rouge">self.state</code> to <code class="language-plaintext highlighter-rouge">FINISHED</code> to signal that its job is done after this one step.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">run()</code> method (which we didn’t have to write, it’s inherited from <code class="language-plaintext highlighter-rouge">BaseAgent</code>) would handle starting the process, calling our <code class="language-plaintext highlighter-rouge">step()</code> method, and returning the final result.</li>
+</ol>
+
+<p>This way, we only had to focus on the unique part – the echoing logic inside <code class="language-plaintext highlighter-rouge">step()</code> – while <code class="language-plaintext highlighter-rouge">BaseAgent</code> handled the common structure. More complex agents like <code class="language-plaintext highlighter-rouge">BrowserAgent</code> or <code class="language-plaintext highlighter-rouge">ToolCallAgent</code> (found in <code class="language-plaintext highlighter-rouge">app/agent/</code>) follow the same principle but have much more sophisticated <code class="language-plaintext highlighter-rouge">step()</code> methods, often involving thinking with the <a href="01_llm.md">LLM</a> and using <a href="04_tool___toolcollection.md">Tools</a>.</p>
+
+<h2 id="under-the-hood-the-run-loop">Under the Hood: The <code class="language-plaintext highlighter-rouge">run()</code> Loop</h2>
+
+<p>What actually happens when you call <code class="language-plaintext highlighter-rouge">agent.run()</code>? The <code class="language-plaintext highlighter-rouge">BaseAgent</code> provides a standard execution loop:</p>
+
+<ol>
+  <li><strong>Check State:</strong> It makes sure the agent is <code class="language-plaintext highlighter-rouge">IDLE</code> before starting. You can’t run an agent that’s already running or has finished.</li>
+  <li><strong>Set State:</strong> It changes the agent’s state to <code class="language-plaintext highlighter-rouge">RUNNING</code>. It uses a safety mechanism (<code class="language-plaintext highlighter-rouge">state_context</code>) to ensure the state is handled correctly, even if errors occur.</li>
+  <li><strong>Initialize:</strong> If you provided an initial request (e.g., <code class="language-plaintext highlighter-rouge">agent.run("What's the weather?")</code>), it adds that as the first <code class="language-plaintext highlighter-rouge">user</code> message to the <code class="language-plaintext highlighter-rouge">memory</code>.</li>
+  <li><strong>Loop:</strong> It enters a loop that continues as long as:
+    <ul>
+      <li>The agent hasn’t reached its <code class="language-plaintext highlighter-rouge">max_steps</code> limit.</li>
+      <li>The agent’s state is still <code class="language-plaintext highlighter-rouge">RUNNING</code> (i.e., it hasn’t set itself to <code class="language-plaintext highlighter-rouge">FINISHED</code> or <code class="language-plaintext highlighter-rouge">ERROR</code> inside its <code class="language-plaintext highlighter-rouge">step()</code> method).</li>
+    </ul>
+  </li>
+  <li><strong>Increment Step Counter:</strong> It increases <code class="language-plaintext highlighter-rouge">current_step</code>.</li>
+  <li><strong>Execute <code class="language-plaintext highlighter-rouge">step()</code>:</strong> This is where it calls the specific <code class="language-plaintext highlighter-rouge">step()</code> method implemented by the subclass (like our <code class="language-plaintext highlighter-rouge">EchoAgent.step()</code>). <strong>This is the core of the agent’s unique behavior.</strong></li>
+  <li><strong>Record Result:</strong> It stores the string returned by <code class="language-plaintext highlighter-rouge">step()</code>.</li>
+  <li><strong>Repeat:</strong> It goes back to step 4 until the loop condition is false.</li>
+  <li><strong>Finalize:</strong> Once the loop finishes (either <code class="language-plaintext highlighter-rouge">max_steps</code> reached or state changed to <code class="language-plaintext highlighter-rouge">FINISHED</code>/<code class="language-plaintext highlighter-rouge">ERROR</code>), it sets the state back to <code class="language-plaintext highlighter-rouge">IDLE</code> (unless it ended in <code class="language-plaintext highlighter-rouge">ERROR</code>).</li>
+  <li><strong>Return Results:</strong> It returns a string summarizing the results from all the steps.</li>
+</ol>
+
+<p>Here’s a simplified diagram showing the flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant MyAgent as MySpecificAgent (e.g., EchoAgent)
+    participant BaseRun as BaseAgent.run()
+    participant MyStep as MySpecificAgent.step()
+
+    User-&gt;&gt;+MyAgent: Calls run("Initial Request")
+    MyAgent-&gt;&gt;+BaseRun: run("Initial Request")
+    BaseRun-&gt;&gt;BaseRun: Check state (must be IDLE)
+    BaseRun-&gt;&gt;MyAgent: Set state = RUNNING
+    BaseRun-&gt;&gt;MyAgent: Add "Initial Request" to memory
+    Note over BaseRun, MyStep: Loop starts (while step &lt; max_steps AND state == RUNNING)
+    loop Execution Loop
+        BaseRun-&gt;&gt;BaseRun: Increment current_step
+        BaseRun-&gt;&gt;+MyStep: Calls step()
+        MyStep-&gt;&gt;MyStep: Executes specific logic (e.g., reads memory, calls LLM, adds response to memory)
+        MyStep-&gt;&gt;MyAgent: Maybe sets state = FINISHED
+        MyStep--&gt;&gt;-BaseRun: Returns step_result (string)
+        BaseRun-&gt;&gt;BaseRun: Record step_result
+        BaseRun-&gt;&gt;BaseRun: Check loop condition (step &lt; max_steps AND state == RUNNING?)
+    end
+    Note over BaseRun: Loop ends
+    BaseRun-&gt;&gt;MyAgent: Set state = IDLE (or keep ERROR)
+    BaseRun--&gt;&gt;-MyAgent: Returns combined results
+    MyAgent--&gt;&gt;-User: Returns final result string
+</code></pre>
+
+<h2 id="code-glimpse-inside-appagentbasepy">Code Glimpse: Inside <code class="language-plaintext highlighter-rouge">app/agent/base.py</code></h2>
+
+<p>Let’s peek at the <code class="language-plaintext highlighter-rouge">BaseAgent</code> definition itself.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified snippet from app/agent/base.py
+</span>
+<span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span> <span class="c1"># Needed for abstract classes/methods
+</span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+<span class="kn">from</span> <span class="nn">app.llm</span> <span class="kn">import</span> <span class="n">LLM</span>
+<span class="kn">from</span> <span class="nn">app.schema</span> <span class="kn">import</span> <span class="n">AgentState</span><span class="p">,</span> <span class="n">Memory</span><span class="p">,</span> <span class="n">Message</span>
+
+<span class="k">class</span> <span class="nc">BaseAgent</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">ABC</span><span class="p">):</span> <span class="c1"># Inherits from Pydantic's BaseModel and ABC
+</span>    <span class="s">"""Abstract base class for managing agent state and execution."""</span>
+
+    <span class="c1"># Core attributes defined here
+</span>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(...,</span> <span class="n">description</span><span class="o">=</span><span class="s">"Unique name"</span><span class="p">)</span>
+    <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+    <span class="n">state</span><span class="p">:</span> <span class="n">AgentState</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">AgentState</span><span class="p">.</span><span class="n">IDLE</span><span class="p">)</span>
+    <span class="n">memory</span><span class="p">:</span> <span class="n">Memory</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">Memory</span><span class="p">)</span> <span class="c1"># Gets a Memory instance
+</span>    <span class="n">llm</span><span class="p">:</span> <span class="n">LLM</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">LLM</span><span class="p">)</span> <span class="c1"># Gets an LLM instance
+</span>    <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+    <span class="n">current_step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># ... other config and helper methods like update_memory ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="s">"""Execute the agent's main loop asynchronously."""</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">state</span> <span class="o">!=</span> <span class="n">AgentState</span><span class="p">.</span><span class="n">IDLE</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="nb">RuntimeError</span><span class="p">(</span><span class="s">"Agent not IDLE"</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">request</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">update_memory</span><span class="p">(</span><span class="s">"user"</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span> <span class="c1"># Add initial request
+</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c1"># Simplified: using a context manager for state changes
+</span>        <span class="c1"># async with self.state_context(AgentState.RUNNING):
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">AgentState</span><span class="p">.</span><span class="n">RUNNING</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">while</span> <span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">current_step</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="p">.</span><span class="n">max_steps</span> <span class="ow">and</span> <span class="bp">self</span><span class="p">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">AgentState</span><span class="p">.</span><span class="n">RUNNING</span><span class="p">):</span>
+                <span class="bp">self</span><span class="p">.</span><span class="n">current_step</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="c1"># ====&gt; THE CORE CALL &lt;====
+</span>                <span class="n">step_result</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">step</span><span class="p">()</span> <span class="c1"># Calls the subclass's step method
+</span>                <span class="n">results</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s">"Step </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">current_step</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="n">step_result</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+                <span class="c1"># (Simplified: actual code has more checks)
+</span>        <span class="k">finally</span><span class="p">:</span>
+            <span class="c1"># Reset state after loop finishes or if error occurs
+</span>            <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">state</span> <span class="o">!=</span> <span class="n">AgentState</span><span class="p">.</span><span class="n">ERROR</span><span class="p">:</span>
+                <span class="bp">self</span><span class="p">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">AgentState</span><span class="p">.</span><span class="n">IDLE</span>
+
+        <span class="k">return</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="o">@</span><span class="n">abstractmethod</span> <span class="c1"># Marks this method as needing implementation by subclasses
+</span>    <span class="k">async</span> <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="s">"""Execute a single step in the agent's workflow. Must be implemented by subclasses."""</span>
+        <span class="k">pass</span> <span class="c1"># BaseAgent provides no implementation for step()
+</span>
+    <span class="k">def</span> <span class="nf">update_memory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">content</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="s">"""Helper to add messages to self.memory easily."""</span>
+        <span class="c1"># ... implementation uses Message.user_message etc. ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">memory</span><span class="p">.</span><span class="n">add_message</span><span class="p">(...)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">class BaseAgent(BaseModel, ABC):</code> declares it as both a Pydantic model (for data validation) and an Abstract Base Class.</li>
+  <li>Fields like <code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">state</code>, <code class="language-plaintext highlighter-rouge">memory</code>, <code class="language-plaintext highlighter-rouge">llm</code>, <code class="language-plaintext highlighter-rouge">max_steps</code> are defined. <code class="language-plaintext highlighter-rouge">default_factory=Memory</code> means each agent gets its own fresh <code class="language-plaintext highlighter-rouge">Memory</code> instance when created.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">run()</code> method contains the loop logic we discussed, crucially calling <code class="language-plaintext highlighter-rouge">await self.step()</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">@abstractmethod</code> above <code class="language-plaintext highlighter-rouge">async def step(self) -&gt; str:</code> signals that any class inheriting from <code class="language-plaintext highlighter-rouge">BaseAgent</code> <em>must</em> provide its own version of the <code class="language-plaintext highlighter-rouge">step</code> method. <code class="language-plaintext highlighter-rouge">BaseAgent</code> itself just puts <code class="language-plaintext highlighter-rouge">pass</code> (do nothing) there.</li>
+  <li>Helper methods like <code class="language-plaintext highlighter-rouge">update_memory</code> are provided for convenience.</li>
+</ul>
+
+<h2 id="wrapping-up-chapter-3">Wrapping Up Chapter 3</h2>
+
+<p>We’ve learned about <code class="language-plaintext highlighter-rouge">BaseAgent</code>, the fundamental blueprint for all agents in OpenManus. It provides the common structure (<code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">state</code>, <code class="language-plaintext highlighter-rouge">memory</code>, <code class="language-plaintext highlighter-rouge">llm</code>) and the core execution loop (<code class="language-plaintext highlighter-rouge">run()</code>), freeing us to focus on the unique logic of each agent by implementing the <code class="language-plaintext highlighter-rouge">step()</code> method. It acts as the chassis upon which specialized agents are built.</p>
+
+<p>Now that we have the agent structure, how do agents gain specific skills beyond just talking to the LLM? How can they browse the web, run code, or interact with files? They use <strong>Tools</strong>!</p>
+
+<p>Let’s move on to <a href="04_tool___toolcollection.md">Chapter 4: Tool / ToolCollection</a> to explore how we give agents capabilities to interact with the world.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

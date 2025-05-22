@@ -1,0 +1,290 @@
+<h1 id="chapter-8-knowledge---providing-external-information">Chapter 8: Knowledge - Providing External Information</h1>
+
+<p>In <a href="07_memory.md">Chapter 7: Memory</a>, we learned how to give our <a href="01_crew.md">Crew</a> the ability to remember past interactions and details using <code class="language-plaintext highlighter-rouge">Memory</code>. This helps them maintain context within a single run and potentially across runs.</p>
+
+<p>But what if your <a href="02_agent.md">Agent</a> needs access to a large body of <em>existing</em> information that isn’t derived from its own conversations? Think about company documents, technical manuals, specific research papers, or a product catalog. This information exists <em>before</em> the Crew starts working. How do we give our agents access to this specific library of information?</p>
+
+<p>That’s where <strong><code class="language-plaintext highlighter-rouge">Knowledge</code></strong> comes in!</p>
+
+<h2 id="why-do-we-need-knowledge">Why Do We Need Knowledge?</h2>
+
+<p>Imagine you have an <a href="02_agent.md">Agent</a> whose job is to answer customer questions about a specific product, “Widget Pro”. You want this agent to <em>only</em> use the official “Widget Pro User Manual” to answer questions, not its general knowledge from the internet (which might be outdated or wrong).</p>
+
+<p>Without a way to provide the manual, the agent might hallucinate answers or use incorrect information. <code class="language-plaintext highlighter-rouge">Knowledge</code> allows us to load specific documents (like the user manual), process them, and make them searchable for our agents.</p>
+
+<p><strong>Problem Solved:</strong> <code class="language-plaintext highlighter-rouge">Knowledge</code> provides your <a href="02_agent.md">Agent</a>s with access to specific, pre-defined external information sources (like documents or databases), allowing them to retrieve relevant context to enhance their understanding and task execution based on that specific information.</p>
+
+<h2 id="what-is-knowledge">What is Knowledge?</h2>
+
+<p>Think of <code class="language-plaintext highlighter-rouge">Knowledge</code> as giving your <a href="01_crew.md">Crew</a> access to a <strong>specialized, private library</strong> full of specific documents or information. It consists of a few key parts:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">KnowledgeSource</code></strong>: This represents the actual <em>source</em> of the information. It could be:
+    <ul>
+      <li>A local file (PDF, DOCX, TXT, etc.)</li>
+      <li>A website URL</li>
+      <li>A database connection (more advanced)
+CrewAI uses helpful classes like <code class="language-plaintext highlighter-rouge">CrewDoclingSource</code> to easily handle various file types and web content. You tell the <code class="language-plaintext highlighter-rouge">KnowledgeSource</code> <em>where</em> the information is (e.g., the file path to your user manual).</li>
+    </ul>
+  </li>
+  <li><strong>Processing &amp; Embedding</strong>: When you create a <code class="language-plaintext highlighter-rouge">Knowledge</code> object with sources, the information is automatically:
+    <ul>
+      <li><strong>Loaded</strong>: The content is read from the source (e.g., text extracted from the PDF).</li>
+      <li><strong>Chunked</strong>: The long text is broken down into smaller, manageable pieces (chunks).</li>
+      <li><strong>Embedded</strong>: Each chunk is converted into a numerical representation (an embedding vector) that captures its meaning. This is done using an embedding model (often specified via the <code class="language-plaintext highlighter-rouge">embedder</code> configuration).</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">KnowledgeStorage</code> (Vector Database)</strong>: These embedded chunks are then stored in a special kind of database called a vector database. CrewAI typically uses <strong>ChromaDB</strong> by default for this.
+    <ul>
+      <li><strong>Why?</strong> Vector databases are optimized for finding information based on <em>semantic similarity</em>. When an agent asks a question related to a topic, the database can quickly find the text chunks whose meanings (embeddings) are closest to the meaning of the question.</li>
+    </ul>
+  </li>
+  <li><strong>Retrieval</strong>: When an <a href="02_agent.md">Agent</a> needs information for its <a href="03_task.md">Task</a>, it queries the <code class="language-plaintext highlighter-rouge">Knowledge</code> object. This query is also embedded, and the <code class="language-plaintext highlighter-rouge">KnowledgeStorage</code> efficiently retrieves the most relevant text chunks from the original documents. These chunks are then provided to the agent as context.</li>
+</ol>
+
+<p>In short: <code class="language-plaintext highlighter-rouge">Knowledge</code> = Specific Info Sources + Processing/Embedding + Vector Storage + Retrieval.</p>
+
+<h2 id="using-knowledge-in-your-crew">Using Knowledge in Your Crew</h2>
+
+<p>Let’s give our ‘Product Support Agent’ access to a hypothetical “widget_pro_manual.txt” file.</p>
+
+<p><strong>1. Prepare Your Knowledge Source File:</strong></p>
+
+<p>Make sure you have a directory named <code class="language-plaintext highlighter-rouge">knowledge</code> in your project’s root folder. Place your file (e.g., <code class="language-plaintext highlighter-rouge">widget_pro_manual.txt</code>) inside this directory.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>your_project_root/
+├── knowledge/
+│   └── widget_pro_manual.txt
+└── your_crewai_script.py
+</code></pre></div></div>
+
+<p><em>(Make sure <code class="language-plaintext highlighter-rouge">widget_pro_manual.txt</code> contains some text about Widget Pro.)</em></p>
+
+<p><strong>2. Define the Knowledge Source and Knowledge Object:</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Make sure you have docling installed for file handling: pip install docling
+</span><span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Task</span><span class="p">,</span> <span class="n">Crew</span><span class="p">,</span> <span class="n">Process</span><span class="p">,</span> <span class="n">Knowledge</span>
+<span class="kn">from</span> <span class="nn">crewai.knowledge.source.crew_docling_source</span> <span class="kn">import</span> <span class="n">CrewDoclingSource</span>
+<span class="c1"># Assume an LLM is configured (e.g., via environment variables or passed to Agent/Crew)
+# from langchain_openai import ChatOpenAI
+</span>
+<span class="c1"># Define the knowledge source - point to the file inside the 'knowledge' directory
+# Use the relative path from within the 'knowledge' directory
+</span><span class="n">manual_source</span> <span class="o">=</span> <span class="n">CrewDoclingSource</span><span class="p">(</span><span class="n">file_paths</span><span class="o">=</span><span class="p">[</span><span class="s">"widget_pro_manual.txt"</span><span class="p">])</span>
+
+<span class="c1"># Create the Knowledge object, give it a name and pass the sources
+# This will load, chunk, embed, and store the manual's content
+</span><span class="n">product_knowledge</span> <span class="o">=</span> <span class="n">Knowledge</span><span class="p">(</span>
+    <span class="n">collection_name</span><span class="o">=</span><span class="s">"widget_pro_manual"</span><span class="p">,</span> <span class="c1"># Name for the storage collection
+</span>    <span class="n">sources</span><span class="o">=</span><span class="p">[</span><span class="n">manual_source</span><span class="p">],</span>
+    <span class="c1"># embedder=... # Optional: specify embedding config, otherwise uses default
+</span>    <span class="c1"># storage=... # Optional: specify storage config, otherwise uses default ChromaDB
+</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We import <code class="language-plaintext highlighter-rouge">Knowledge</code> and <code class="language-plaintext highlighter-rouge">CrewDoclingSource</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">CrewDoclingSource(file_paths=["widget_pro_manual.txt"])</code>: We create a source pointing to our file. Note: The path is relative <em>within</em> the <code class="language-plaintext highlighter-rouge">knowledge</code> directory. <code class="language-plaintext highlighter-rouge">CrewDoclingSource</code> handles loading various file types.</li>
+  <li><code class="language-plaintext highlighter-rouge">Knowledge(collection_name="widget_pro_manual", sources=[manual_source])</code>: We create the main <code class="language-plaintext highlighter-rouge">Knowledge</code> object.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">collection_name</code>: A unique name for this set of knowledge in the vector database.</li>
+      <li><code class="language-plaintext highlighter-rouge">sources</code>: A list containing the <code class="language-plaintext highlighter-rouge">manual_source</code> we defined.</li>
+      <li>When this line runs, CrewAI automatically processes <code class="language-plaintext highlighter-rouge">widget_pro_manual.txt</code> and stores it in the vector database under the collection “widget_pro_manual”.</li>
+    </ul>
+  </li>
+</ul>
+
+<p><strong>3. Equip an Agent with Knowledge:</strong></p>
+
+<p>You can add the <code class="language-plaintext highlighter-rouge">Knowledge</code> object directly to an agent.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Define the agent and give it the knowledge base
+</span><span class="n">support_agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+    <span class="n">role</span><span class="o">=</span><span class="s">'Product Support Specialist'</span><span class="p">,</span>
+    <span class="n">goal</span><span class="o">=</span><span class="s">'Answer customer questions accurately based ONLY on the Widget Pro manual.'</span><span class="p">,</span>
+    <span class="n">backstory</span><span class="o">=</span><span class="s">'You are an expert support agent with deep knowledge of the Widget Pro, derived exclusively from its official manual.'</span><span class="p">,</span>
+    <span class="n">knowledge</span><span class="o">=</span><span class="n">product_knowledge</span><span class="p">,</span> <span class="c1"># &lt;-- Assign the knowledge here!
+</span>    <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">allow_delegation</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+    <span class="c1"># llm=ChatOpenAI(model="gpt-4") # Example LLM
+</span><span class="p">)</span>
+
+<span class="c1"># Define a task for the agent
+</span><span class="n">support_task</span> <span class="o">=</span> <span class="n">Task</span><span class="p">(</span>
+    <span class="n">description</span><span class="o">=</span><span class="s">"The customer asks: 'How do I reset my Widget Pro?' Use the manual to find the answer."</span><span class="p">,</span>
+    <span class="n">expected_output</span><span class="o">=</span><span class="s">"A clear, step-by-step answer based solely on the provided manual content."</span><span class="p">,</span>
+    <span class="n">agent</span><span class="o">=</span><span class="n">support_agent</span>
+<span class="p">)</span>
+
+<span class="c1"># Create and run the crew
+</span><span class="n">support_crew</span> <span class="o">=</span> <span class="n">Crew</span><span class="p">(</span>
+    <span class="n">agents</span><span class="o">=</span><span class="p">[</span><span class="n">support_agent</span><span class="p">],</span>
+    <span class="n">tasks</span><span class="o">=</span><span class="p">[</span><span class="n">support_task</span><span class="p">],</span>
+    <span class="n">process</span><span class="o">=</span><span class="n">Process</span><span class="p">.</span><span class="n">sequential</span>
+<span class="p">)</span>
+
+<span class="c1"># result = support_crew.kickoff()
+# print(result)
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>When defining <code class="language-plaintext highlighter-rouge">support_agent</code>, we pass our <code class="language-plaintext highlighter-rouge">product_knowledge</code> object to the <code class="language-plaintext highlighter-rouge">knowledge</code> parameter: <code class="language-plaintext highlighter-rouge">knowledge=product_knowledge</code>.</li>
+  <li>Now, whenever <code class="language-plaintext highlighter-rouge">support_agent</code> works on a <code class="language-plaintext highlighter-rouge">Task</code>, it will automatically query the <code class="language-plaintext highlighter-rouge">product_knowledge</code> base for relevant information <em>before</em> calling its <a href="06_llm.md">LLM</a>.</li>
+  <li>The retrieved text chunks from <code class="language-plaintext highlighter-rouge">widget_pro_manual.txt</code> will be added to the context given to the <a href="06_llm.md">LLM</a>, strongly guiding it to answer based on the manual.</li>
+</ul>
+
+<p><strong>Expected Outcome (Conceptual):</strong></p>
+
+<p>When <code class="language-plaintext highlighter-rouge">support_crew.kickoff()</code> runs:</p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">support_agent</code> receives <code class="language-plaintext highlighter-rouge">support_task</code>.</li>
+  <li>The agent (internally) queries <code class="language-plaintext highlighter-rouge">product_knowledge</code> with something like “How do I reset my Widget Pro?”.</li>
+  <li>The vector database finds chunks from <code class="language-plaintext highlighter-rouge">widget_pro_manual.txt</code> that are semantically similar (e.g., sections describing the reset procedure).</li>
+  <li>These relevant text chunks are retrieved.</li>
+  <li>The agent’s <a href="06_llm.md">LLM</a> receives the task description <em>plus</em> the retrieved manual excerpts as context.</li>
+  <li>The <a href="06_llm.md">LLM</a> generates the answer based heavily on the provided manual text.</li>
+  <li>The final <code class="language-plaintext highlighter-rouge">result</code> will be the step-by-step reset instructions derived from the manual.</li>
+</ol>
+
+<p><em>(Alternatively, you can assign <code class="language-plaintext highlighter-rouge">Knowledge</code> at the <code class="language-plaintext highlighter-rouge">Crew</code> level using the <code class="language-plaintext highlighter-rouge">knowledge</code> parameter, making it available to all agents in the crew.)</em></p>
+
+<h2 id="how-knowledge-retrieval-works-internally">How Knowledge Retrieval Works Internally</h2>
+
+<p>When an <a href="02_agent.md">Agent</a> with assigned <code class="language-plaintext highlighter-rouge">Knowledge</code> executes a <a href="03_task.md">Task</a>:</p>
+
+<ol>
+  <li><strong>Task Start:</strong> The agent begins processing the task.</li>
+  <li><strong>Context Building:</strong> The agent prepares the information needed for its <a href="06_llm.md">LLM</a>. This includes the task description, its role/goal/backstory, and any context from <code class="language-plaintext highlighter-rouge">Memory</code> (if enabled).</li>
+  <li><strong>Knowledge Query:</strong> The agent identifies the need for information related to the task. It formulates a query (often based on the task description or key terms) and sends it to its assigned <code class="language-plaintext highlighter-rouge">Knowledge</code> object.</li>
+  <li><strong>Storage Search:</strong> The <code class="language-plaintext highlighter-rouge">Knowledge</code> object passes the query to its underlying <code class="language-plaintext highlighter-rouge">KnowledgeStorage</code> (the vector database, e.g., ChromaDB).</li>
+  <li><strong>Vector Similarity Search:</strong> The vector database converts the query into an embedding and searches for stored text chunks whose embeddings are closest (most similar) to the query embedding.</li>
+  <li><strong>Retrieve Chunks:</strong> The database returns the top N most relevant text chunks (along with metadata and scores).</li>
+  <li><strong>Augment Prompt:</strong> The agent takes these retrieved text chunks and adds them as specific context to the prompt it’s preparing for the <a href="06_llm.md">LLM</a>. The prompt might now look something like: “Your task is: […task description…]. Here is relevant information from the knowledge base: […retrieved chunk 1…] […retrieved chunk 2…] Now, provide the final answer.”</li>
+  <li><strong>LLM Call:</strong> The agent sends this augmented prompt to its <a href="06_llm.md">LLM</a>.</li>
+  <li><strong>Generate Response:</strong> The <a href="06_llm.md">LLM</a>, now equipped with highly relevant context directly from the specified knowledge source, generates a more accurate and grounded response.</li>
+</ol>
+
+<p>Let’s visualize this retrieval process:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant A as Agent
+    participant K as Knowledge Object
+    participant KS as KnowledgeStorage (Vector DB)
+    participant LLM as Agent's LLM
+
+    A-&gt;&gt;A: Start Task ('How to reset Widget Pro?')
+    A-&gt;&gt;A: Prepare base prompt (Task, Role, Goal...)
+    A-&gt;&gt;K: Query('How to reset Widget Pro?')
+    K-&gt;&gt;KS: Search(query='How to reset Widget Pro?')
+    Note right of KS: Finds similar chunks via embeddings
+    KS--&gt;&gt;K: Return relevant chunks from manual
+    K--&gt;&gt;A: Provide relevant chunks
+    A-&gt;&gt;A: Augment prompt with retrieved chunks
+    A-&gt;&gt;LLM: Send augmented prompt
+    LLM--&gt;&gt;A: Generate answer based on task + manual excerpts
+    A-&gt;&gt;A: Final Answer (Steps from manual)
+</code></pre>
+
+<h2 id="diving-into-the-code-high-level">Diving into the Code (High Level)</h2>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">crewai/knowledge/knowledge.py</code></strong>:
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">Knowledge</code> class holds the list of <code class="language-plaintext highlighter-rouge">sources</code> and the <code class="language-plaintext highlighter-rouge">storage</code> object.</li>
+      <li>Its <code class="language-plaintext highlighter-rouge">__init__</code> method initializes the <code class="language-plaintext highlighter-rouge">KnowledgeStorage</code> (creating a default ChromaDB instance if none is provided) and then iterates through the <code class="language-plaintext highlighter-rouge">sources</code>, telling each one to <code class="language-plaintext highlighter-rouge">add()</code> its content to the storage.</li>
+      <li>The <code class="language-plaintext highlighter-rouge">query()</code> method simply delegates the search request to the <code class="language-plaintext highlighter-rouge">self.storage.search()</code> method.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from crewai/knowledge/knowledge.py
+</span><span class="k">class</span> <span class="nc">Knowledge</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">sources</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">BaseKnowledgeSource</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">storage</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">KnowledgeStorage</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+    <span class="n">embedder</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="n">collection_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">collection_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sources</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">BaseKnowledgeSource</span><span class="p">],</span> <span class="p">...):</span>
+        <span class="c1"># ... setup storage (e.g., KnowledgeStorage(...)) ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">sources</span> <span class="o">=</span> <span class="n">sources</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">storage</span><span class="p">.</span><span class="n">initialize_knowledge_storage</span><span class="p">()</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_add_sources</span><span class="p">()</span> <span class="c1"># Tell sources to load/chunk/embed/save
+</span>
+    <span class="k">def</span> <span class="nf">query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">storage</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">raise</span> <span class="nb">ValueError</span><span class="p">(</span><span class="s">"Storage not initialized."</span><span class="p">)</span>
+        <span class="c1"># Delegate search to the storage object
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">storage</span><span class="p">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_add_sources</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">sources</span><span class="p">:</span>
+            <span class="n">source</span><span class="p">.</span><span class="n">storage</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">storage</span> <span class="c1"># Give source access to storage
+</span>            <span class="n">source</span><span class="p">.</span><span class="n">add</span><span class="p">()</span> <span class="c1"># Source loads, chunks, embeds, and saves
+</span></code></pre></div>    </div>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">crewai/knowledge/source/</code></strong>: Contains different <code class="language-plaintext highlighter-rouge">KnowledgeSource</code> implementations.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">base_knowledge_source.py</code>: Defines the <code class="language-plaintext highlighter-rouge">BaseKnowledgeSource</code> abstract class, including the <code class="language-plaintext highlighter-rouge">add()</code> method placeholder and helper methods like <code class="language-plaintext highlighter-rouge">_chunk_text()</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">crew_docling_source.py</code>: Implements loading from files and URLs using the <code class="language-plaintext highlighter-rouge">docling</code> library. Its <code class="language-plaintext highlighter-rouge">add()</code> method loads content, chunks it, and calls <code class="language-plaintext highlighter-rouge">self._save_documents()</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">_save_documents()</code> (in <code class="language-plaintext highlighter-rouge">base_knowledge_source.py</code> or subclasses) typically calls <code class="language-plaintext highlighter-rouge">self.storage.save(self.chunks)</code>.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">crewai/knowledge/storage/knowledge_storage.py</code></strong>:
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">KnowledgeStorage</code> class acts as a wrapper around the actual vector database (ChromaDB by default).</li>
+      <li><code class="language-plaintext highlighter-rouge">initialize_knowledge_storage()</code>: Sets up the connection to ChromaDB and gets/creates the specified collection.</li>
+      <li><code class="language-plaintext highlighter-rouge">save()</code>: Takes the text chunks, gets their embeddings using the configured <code class="language-plaintext highlighter-rouge">embedder</code>, and <code class="language-plaintext highlighter-rouge">upsert</code>s them into the ChromaDB collection.</li>
+      <li><code class="language-plaintext highlighter-rouge">search()</code>: Takes a query, gets its embedding, and uses the ChromaDB collection’s <code class="language-plaintext highlighter-rouge">query()</code> method to find and return similar documents.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">crewai/agent.py</code></strong>:
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">Agent</code> class has an optional <code class="language-plaintext highlighter-rouge">knowledge: Knowledge</code> attribute.</li>
+      <li>In the <code class="language-plaintext highlighter-rouge">execute_task</code> method, before calling the LLM, if <code class="language-plaintext highlighter-rouge">self.knowledge</code> exists, it calls <code class="language-plaintext highlighter-rouge">self.knowledge.query()</code> using the task prompt (or parts of it) as the query.</li>
+      <li>The results from <code class="language-plaintext highlighter-rouge">knowledge.query()</code> are formatted and added to the task prompt as additional context.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from crewai/agent.py
+</span><span class="k">class</span> <span class="nc">Agent</span><span class="p">(</span><span class="n">BaseAgent</span><span class="p">):</span>
+    <span class="n">knowledge</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Knowledge</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="p">...)</span>
+    <span class="c1"># ... other fields ...
+</span>
+    <span class="k">def</span> <span class="nf">execute_task</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">:</span> <span class="n">Task</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">task_prompt</span> <span class="o">=</span> <span class="n">task</span><span class="p">.</span><span class="n">prompt</span><span class="p">()</span>
+        <span class="c1"># ... add memory context if applicable ...
+</span>
+        <span class="c1"># === KNOWLEDGE RETRIEVAL ===
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">knowledge</span><span class="p">:</span>
+            <span class="c1"># Query the knowledge base using the task prompt
+</span>            <span class="n">agent_knowledge_snippets</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">knowledge</span><span class="p">.</span><span class="n">query</span><span class="p">([</span><span class="n">task_prompt</span><span class="p">])</span> <span class="c1"># Or task.description
+</span>            <span class="k">if</span> <span class="n">agent_knowledge_snippets</span><span class="p">:</span>
+                <span class="c1"># Format the snippets into context string
+</span>                <span class="n">agent_knowledge_context</span> <span class="o">=</span> <span class="n">extract_knowledge_context</span><span class="p">(</span><span class="n">agent_knowledge_snippets</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">agent_knowledge_context</span><span class="p">:</span>
+                    <span class="c1"># Add knowledge context to the prompt
+</span>                    <span class="n">task_prompt</span> <span class="o">+=</span> <span class="n">agent_knowledge_context</span>
+        <span class="c1"># ===========================
+</span>
+        <span class="c1"># ... add crew knowledge context if applicable ...
+</span>        <span class="c1"># ... prepare tools, create agent_executor ...
+</span>
+        <span class="c1"># Call the LLM via agent_executor with the augmented task_prompt
+</span>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">agent_executor</span><span class="p">.</span><span class="n">invoke</span><span class="p">({</span><span class="s">"input"</span><span class="p">:</span> <span class="n">task_prompt</span><span class="p">,</span> <span class="p">...})[</span><span class="s">"output"</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">result</span>
+</code></pre></div>    </div>
+  </li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now learned about <strong><code class="language-plaintext highlighter-rouge">Knowledge</code></strong> in CrewAI! It’s the mechanism for providing your agents with access to specific, pre-existing external information sources like documents or websites. By defining <code class="language-plaintext highlighter-rouge">KnowledgeSource</code>s, creating a <code class="language-plaintext highlighter-rouge">Knowledge</code> object, and assigning it to an <a href="02_agent.md">Agent</a> or <a href="01_crew.md">Crew</a>, you enable your agents to retrieve relevant context from these sources using vector search. This makes their responses more accurate, grounded, and aligned with the specific information you provide, distinct from the general interaction history managed by <a href="07_memory.md">Memory</a>.</p>
+
+<p>This concludes our introductory tour of the core concepts in CrewAI! You’ve learned about managing the team (<a href="01_crew.md">Crew</a>), defining specialized workers (<a href="02_agent.md">Agent</a>), assigning work (<a href="03_task.md">Task</a>), equipping agents with abilities (<a href="04_tool.md">Tool</a>), setting the workflow (<a href="05_process.md">Process</a>), powering the agent’s thinking (<a href="06_llm.md">LLM</a>), giving them recall (<a href="07_memory.md">Memory</a>), and providing external information (<a href="08_knowledge.md">Knowledge</a>).</p>
+
+<p>With these building blocks, you’re ready to start creating sophisticated AI crews to tackle complex challenges! Happy building!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

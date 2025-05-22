@@ -1,0 +1,276 @@
+<h1 id="chapter-5-context---the-commands-nervous-system">Chapter 5: Context - The Command’s Nervous System</h1>
+
+<p>In the last chapter, <a href="04_paramtype.md">ParamType</a>, we saw how Click helps validate and convert user input into the right Python types, making our commands more robust. We used types like <code class="language-plaintext highlighter-rouge">click.INT</code> and <code class="language-plaintext highlighter-rouge">click.Path</code> to ensure data correctness.</p>
+
+<p>But what happens <em>while</em> a command is running? How does Click keep track of which command is being executed, what parameters were passed, or even shared information between different commands in a nested structure (like <code class="language-plaintext highlighter-rouge">git remote add ...</code>)?</p>
+
+<p>This is where the <strong>Context</strong> object, often referred to as <code class="language-plaintext highlighter-rouge">ctx</code>, comes into play. Think of the Context as the central nervous system for a single command invocation. It carries all the vital information about the current state of execution.</p>
+
+<h2 id="why-do-we-need-a-context">Why Do We Need a Context?</h2>
+
+<p>Imagine you have a command that needs to behave differently based on a global configuration, maybe a <code class="language-plaintext highlighter-rouge">--verbose</code> flag set on the main application group. Or perhaps one command needs to call another command within the same application. How do they communicate?</p>
+
+<p>The Context object solves these problems by providing a central place to:</p>
+
+<ul>
+  <li>Access parameters passed to the <em>current</em> command.</li>
+  <li>Access parameters or settings from <em>parent</em> commands.</li>
+  <li>Share application-level objects (like configuration settings or database connections) between commands.</li>
+  <li>Manage resources that need cleanup (like automatically closing files opened with <code class="language-plaintext highlighter-rouge">click.File</code>).</li>
+  <li>Invoke other commands programmatically.</li>
+</ul>
+
+<p>Let’s explore how to access and use this powerful object.</p>
+
+<h2 id="getting-the-context-pass_context">Getting the Context: <code class="language-plaintext highlighter-rouge">@pass_context</code></h2>
+
+<p>Click doesn’t automatically pass the Context object to your command function. You need to explicitly ask for it using a special decorator: <code class="language-plaintext highlighter-rouge">@click.pass_context</code>.</p>
+
+<p>When you add <code class="language-plaintext highlighter-rouge">@click.pass_context</code> <em>above</em> your function definition (but typically <em>below</em> the <code class="language-plaintext highlighter-rouge">@click.command</code> or <code class="language-plaintext highlighter-rouge">@click.option</code> decorators), Click will automatically <strong>inject</strong> the <code class="language-plaintext highlighter-rouge">Context</code> object as the <strong>very first argument</strong> to your function.</p>
+
+<p>Let’s see a simple example:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># context_basics.py
+</span><span class="kn">import</span> <span class="nn">click</span>
+
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">group</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">pass_context</span> <span class="c1"># Request the context for the group function
+</span><span class="k">def</span> <span class="nf">cli</span><span class="p">(</span><span class="n">ctx</span><span class="p">):</span>
+  <span class="s">"""A simple CLI with context."""</span>
+  <span class="c1"># We can store arbitrary data on the context's 'obj' attribute
+</span>  <span class="n">ctx</span><span class="p">.</span><span class="n">obj</span> <span class="o">=</span> <span class="p">{</span><span class="s">'verbose'</span><span class="p">:</span> <span class="bp">False</span><span class="p">}</span> <span class="c1"># Initialize a shared dictionary
+</span>
+<span class="o">@</span><span class="n">cli</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">option</span><span class="p">(</span><span class="s">'--verbose'</span><span class="p">,</span> <span class="n">is_flag</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">'Enable verbose mode.'</span><span class="p">)</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">pass_context</span> <span class="c1"># Request the context for the command function
+</span><span class="k">def</span> <span class="nf">info</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">verbose</span><span class="p">):</span>
+  <span class="s">"""Prints info, possibly verbosely."""</span>
+  <span class="c1"># Access the command name from the context
+</span>  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s">"Executing command: </span><span class="si">{</span><span class="n">ctx</span><span class="p">.</span><span class="n">command</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+  <span class="c1"># Access parameters passed to *this* command
+</span>  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s">"Verbose flag (local): </span><span class="si">{</span><span class="n">verbose</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+  <span class="c1"># We can modify the shared object from the parent context
+</span>  <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+    <span class="n">ctx</span><span class="p">.</span><span class="n">obj</span><span class="p">[</span><span class="s">'verbose'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+
+  <span class="c1"># Access the shared object from the parent context
+</span>  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s">"Verbose setting (shared): </span><span class="si">{</span><span class="n">ctx</span><span class="p">.</span><span class="n">obj</span><span class="p">[</span><span class="s">'verbose'</span><span class="p">]</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+  <span class="n">cli</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Let’s break it down:</p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">@click.pass_context</code>: We apply this decorator to both the <code class="language-plaintext highlighter-rouge">cli</code> group function and the <code class="language-plaintext highlighter-rouge">info</code> command function.</li>
+  <li><code class="language-plaintext highlighter-rouge">def cli(ctx): ...</code>: Because of <code class="language-plaintext highlighter-rouge">@pass_context</code>, the <code class="language-plaintext highlighter-rouge">cli</code> function now receives the <code class="language-plaintext highlighter-rouge">Context</code> object as its first argument, which we’ve named <code class="language-plaintext highlighter-rouge">ctx</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.obj = {'verbose': False}</code>: The <code class="language-plaintext highlighter-rouge">ctx.obj</code> attribute is a special place designed for you to store and share <em>your own</em> application data. Here, the main <code class="language-plaintext highlighter-rouge">cli</code> group initializes it as a dictionary. This object will be automatically inherited by child command contexts.</li>
+  <li><code class="language-plaintext highlighter-rouge">def info(ctx, verbose): ...</code>: The <code class="language-plaintext highlighter-rouge">info</code> command function also receives the <code class="language-plaintext highlighter-rouge">Context</code> (<code class="language-plaintext highlighter-rouge">ctx</code>) as its first argument, followed by its own parameters (<code class="language-plaintext highlighter-rouge">verbose</code>).</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.command.name</code>: We access the <code class="language-plaintext highlighter-rouge">Command</code> object associated with the current context via <code class="language-plaintext highlighter-rouge">ctx.command</code> and get its name.</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.obj['verbose'] = True</code>: We can <em>modify</em> the shared <code class="language-plaintext highlighter-rouge">ctx.obj</code> from within the subcommand.</li>
+  <li><code class="language-plaintext highlighter-rouge">click.echo(f"Verbose setting (shared): {ctx.obj['verbose']}")</code>: We access the potentially modified shared state.</li>
+</ol>
+
+<p><strong>Run it!</strong></p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>python context_basics.py info
+Executing <span class="nb">command</span>: info
+Verbose flag <span class="o">(</span><span class="nb">local</span><span class="o">)</span>: False
+Verbose setting <span class="o">(</span>shared<span class="o">)</span>: False
+
+<span class="nv">$ </span>python context_basics.py info <span class="nt">--verbose</span>
+Executing <span class="nb">command</span>: info
+Verbose flag <span class="o">(</span><span class="nb">local</span><span class="o">)</span>: True
+Verbose setting <span class="o">(</span>shared<span class="o">)</span>: True
+</code></pre></div></div>
+
+<p>You can see how <code class="language-plaintext highlighter-rouge">@pass_context</code> gives us access to the runtime environment (<code class="language-plaintext highlighter-rouge">ctx.command.name</code>) and allows us to use <code class="language-plaintext highlighter-rouge">ctx.obj</code> to share state between the parent group (<code class="language-plaintext highlighter-rouge">cli</code>) and the subcommand (<code class="language-plaintext highlighter-rouge">info</code>).</p>
+
+<h2 id="key-context-attributes">Key Context Attributes</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">Context</code> object has several useful attributes:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">ctx.command</code>: The <a href="01_command___group.md">Command</a> object that this context belongs to. You can get its name (<code class="language-plaintext highlighter-rouge">ctx.command.name</code>), parameters, etc.</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.parent</code>: The context of the invoking command. If this is the top-level command, <code class="language-plaintext highlighter-rouge">ctx.parent</code> will be <code class="language-plaintext highlighter-rouge">None</code>. This forms a linked list or chain back to the root context.</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.params</code>: A dictionary mapping parameter names to the <em>final</em> values passed to the command, after parsing, type conversion, and defaults have been applied.
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># access_params.py
+</span><span class="kn">import</span> <span class="nn">click</span>
+
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">option</span><span class="p">(</span><span class="s">'--name'</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">'Guest'</span><span class="p">)</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">pass_context</span>
+<span class="k">def</span> <span class="nf">hello</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s">"Hello, </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">!"</span><span class="p">)</span>
+  <span class="c1"># Access the parameter value directly via ctx.params
+</span>  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s">"(Value from ctx.params: </span><span class="si">{</span><span class="n">ctx</span><span class="p">.</span><span class="n">params</span><span class="p">[</span><span class="s">'name'</span><span class="p">]</span><span class="si">}</span><span class="s">)"</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+  <span class="n">hello</span><span class="p">()</span>
+</code></pre></div>    </div>
+    <p>Running <code class="language-plaintext highlighter-rouge">python access_params.py --name Alice</code> would show <code class="language-plaintext highlighter-rouge">Hello, Alice!</code> and <code class="language-plaintext highlighter-rouge">(Value from ctx.params: Alice)</code>.</p>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.obj</code>: As seen before, this is an arbitrary object that gets passed down the context chain. It’s commonly used for shared configuration, database connections, or other application-level state. You can also use <code class="language-plaintext highlighter-rouge">@click.pass_obj</code> as a shortcut if you <em>only</em> need <code class="language-plaintext highlighter-rouge">ctx.obj</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.info_name</code>: The name that was used on the command line to invoke this command or group (e.g., <code class="language-plaintext highlighter-rouge">info</code> in <code class="language-plaintext highlighter-rouge">python context_basics.py info</code>).</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.invoked_subcommand</code>: For groups, this holds the name of the subcommand that was invoked (or <code class="language-plaintext highlighter-rouge">None</code> if no subcommand was called).</li>
+</ul>
+
+<h2 id="calling-other-commands">Calling Other Commands</h2>
+
+<p>Sometimes, you want one command to trigger another. The Context provides methods for this:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">ctx.invoke(other_command, **params)</code>: Calls another Click command (<code class="language-plaintext highlighter-rouge">other_command</code>), passing the current context’s parent (<code class="language-plaintext highlighter-rouge">ctx.parent</code>) as the new command’s parent. It uses the provided <code class="language-plaintext highlighter-rouge">params</code> for the call.</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.forward(other_command)</code>: Similar to <code class="language-plaintext highlighter-rouge">invoke</code>, but it automatically passes all parameters from the <em>current</em> context (<code class="language-plaintext highlighter-rouge">ctx.params</code>) to the <code class="language-plaintext highlighter-rouge">other_command</code>. This is useful for creating alias commands.</li>
+</ul>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># invoke_example.py
+</span><span class="kn">import</span> <span class="nn">click</span>
+
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">group</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">cli</span><span class="p">():</span>
+  <span class="k">pass</span>
+
+<span class="o">@</span><span class="n">cli</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">argument</span><span class="p">(</span><span class="s">'text'</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">print_it</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+  <span class="s">"""Prints the given text."""</span>
+  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s">"Printing: </span><span class="si">{</span><span class="n">text</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="o">@</span><span class="n">cli</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">argument</span><span class="p">(</span><span class="s">'message'</span><span class="p">)</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">pass_context</span> <span class="c1"># Need context to call invoke
+</span><span class="k">def</span> <span class="nf">shout</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+  <span class="s">"""Shouts the message by calling print_it."""</span>
+  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="s">"About to invoke print_it..."</span><span class="p">)</span>
+  <span class="c1"># Call the 'print_it' command, passing the uppercased message
+</span>  <span class="n">ctx</span><span class="p">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">print_it</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="n">message</span><span class="p">.</span><span class="n">upper</span><span class="p">())</span>
+  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="s">"Finished invoking print_it."</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+  <span class="n">cli</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Running <code class="language-plaintext highlighter-rouge">python invoke_example.py shout "hello world"</code> will output:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>About to invoke print_it...
+Printing: HELLO WORLD
+Finished invoking print_it.
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">shout</code> command successfully called the <code class="language-plaintext highlighter-rouge">print_it</code> command programmatically using <code class="language-plaintext highlighter-rouge">ctx.invoke()</code>.</p>
+
+<h2 id="resource-management-ctxcall_on_close">Resource Management (<code class="language-plaintext highlighter-rouge">ctx.call_on_close</code>)</h2>
+
+<p>Click uses the context internally to manage resources. For instance, when you use <code class="language-plaintext highlighter-rouge">type=click.File('w')</code>, Click opens the file and registers a cleanup function using <code class="language-plaintext highlighter-rouge">ctx.call_on_close(file.close)</code>. This ensures the file is closed when the context is finished, even if errors occur.</p>
+
+<p>You can use this mechanism yourself if you need custom resource cleanup tied to the command’s lifecycle.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># resource_management.py
+</span><span class="kn">import</span> <span class="nn">click</span>
+
+<span class="k">class</span> <span class="nc">MockResource</span><span class="p">:</span>
+  <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+    <span class="bp">self</span><span class="p">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+    <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s">"Resource '</span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">' opened."</span><span class="p">)</span>
+  <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s">"Resource '</span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">' closed."</span><span class="p">)</span>
+
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">pass_context</span>
+<span class="k">def</span> <span class="nf">process</span><span class="p">(</span><span class="n">ctx</span><span class="p">):</span>
+  <span class="s">"""Opens and closes a mock resource."""</span>
+  <span class="n">res</span> <span class="o">=</span> <span class="n">MockResource</span><span class="p">(</span><span class="s">"DataFile"</span><span class="p">)</span>
+  <span class="c1"># Register the close method to be called when the context ends
+</span>  <span class="n">ctx</span><span class="p">.</span><span class="n">call_on_close</span><span class="p">(</span><span class="n">res</span><span class="p">.</span><span class="n">close</span><span class="p">)</span>
+  <span class="n">click</span><span class="p">.</span><span class="n">echo</span><span class="p">(</span><span class="s">"Processing with resource..."</span><span class="p">)</span>
+  <span class="c1"># Function ends, context tears down, call_on_close triggers
+</span>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+  <span class="n">process</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Running this script will show:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Resource 'DataFile' opened.
+Processing with resource...
+Resource 'DataFile' closed.
+</code></pre></div></div>
+
+<p>The resource was automatically closed because we registered its <code class="language-plaintext highlighter-rouge">close</code> method with <code class="language-plaintext highlighter-rouge">ctx.call_on_close</code>.</p>
+
+<h2 id="how-context-works-under-the-hood">How Context Works Under the Hood</h2>
+
+<ol>
+  <li><strong>Initial Context:</strong> When you run your Click application (e.g., by calling <code class="language-plaintext highlighter-rouge">cli()</code>), Click creates the first <code class="language-plaintext highlighter-rouge">Context</code> object associated with the top-level command or group (<code class="language-plaintext highlighter-rouge">cli</code> in our examples).</li>
+  <li><strong>Parsing and Subcommand:</strong> Click parses the command-line arguments. If a subcommand is identified (like <code class="language-plaintext highlighter-rouge">info</code> in <code class="language-plaintext highlighter-rouge">python context_basics.py info</code>), Click finds the corresponding <code class="language-plaintext highlighter-rouge">Command</code> object.</li>
+  <li><strong>Child Context Creation:</strong> Before executing the subcommand’s callback function, Click creates a <em>new</em> <code class="language-plaintext highlighter-rouge">Context</code> object for the subcommand. Crucially, it sets the <code class="language-plaintext highlighter-rouge">parent</code> attribute of this new context to the context of the invoking command (the <code class="language-plaintext highlighter-rouge">cli</code> context in our example).</li>
+  <li><strong>Object Inheritance:</strong> The <code class="language-plaintext highlighter-rouge">ctx.obj</code> attribute is automatically passed down from the parent context to the child context <em>by reference</em> (unless the child explicitly sets its own <code class="language-plaintext highlighter-rouge">ctx.obj</code>).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">@pass_context</code> Decorator:</strong> This decorator (defined in <code class="language-plaintext highlighter-rouge">decorators.py</code>) wraps your callback function. When the wrapped function is called, the decorator uses <code class="language-plaintext highlighter-rouge">click.globals.get_current_context()</code> (which accesses a thread-local stack of contexts) to fetch the <em>currently active</em> context and inserts it as the first argument before calling your original function.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">ctx.invoke</code>:</strong> When you call <code class="language-plaintext highlighter-rouge">ctx.invoke(other_cmd, ...)</code>, Click finds the <code class="language-plaintext highlighter-rouge">other_cmd</code> object, creates a <em>new</em> context for it (setting its parent to <code class="language-plaintext highlighter-rouge">ctx.parent</code>), populates its <code class="language-plaintext highlighter-rouge">params</code> from the arguments you provided, and then executes <code class="language-plaintext highlighter-rouge">other_cmd</code>’s callback within that new context.</li>
+  <li><strong>Cleanup:</strong> Once a command function finishes (or raises an exception that Click handles), its corresponding context is “torn down”. This is when any functions registered with <code class="language-plaintext highlighter-rouge">ctx.call_on_close</code> are executed.</li>
+</ol>
+
+<p>Here’s a simplified diagram showing context creation and <code class="language-plaintext highlighter-rouge">ctx.obj</code> flow for <code class="language-plaintext highlighter-rouge">python context_basics.py info --verbose</code>:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant CLI as python context_basics.py
+    participant ClickRuntime
+    participant cli_ctx as cli Context
+    participant info_ctx as info Context
+    participant cli_func as cli(ctx)
+    participant info_func as info(ctx, verbose)
+
+    User-&gt;&gt;CLI: info --verbose
+    CLI-&gt;&gt;ClickRuntime: Calls cli() entry point
+    ClickRuntime-&gt;&gt;cli_ctx: Creates root context for 'cli' group
+    Note over ClickRuntime, cli_func: ClickRuntime calls cli's callback (due to @click.group)
+    ClickRuntime-&gt;&gt;cli_func: cli(ctx=cli_ctx)
+    cli_func-&gt;&gt;cli_ctx: Sets ctx.obj = {'verbose': False}
+    cli_func--&gt;&gt;ClickRuntime: Returns
+    ClickRuntime-&gt;&gt;ClickRuntime: Parses args, finds 'info' subcommand, '--verbose' option
+    ClickRuntime-&gt;&gt;info_ctx: Creates child context for 'info' command
+    info_ctx-&gt;&gt;cli_ctx: Sets info_ctx.parent = cli_ctx
+    info_ctx-&gt;&gt;info_ctx: Inherits ctx.obj from parent (value = {'verbose': False})
+    Note over ClickRuntime, info_func: ClickRuntime prepares to call info's callback
+    ClickRuntime-&gt;&gt;ClickRuntime: Uses @pass_context to get info_ctx
+    ClickRuntime-&gt;&gt;info_func: info(ctx=info_ctx, verbose=True)
+    info_func-&gt;&gt;info_ctx: Accesses ctx.command.name
+    info_func-&gt;&gt;info_ctx: Accesses ctx.params['verbose'] (or local 'verbose')
+    info_func-&gt;&gt;info_ctx: Modifies ctx.obj['verbose'] = True
+    info_func-&gt;&gt;info_ctx: Accesses ctx.obj['verbose'] (now True)
+    info_func--&gt;&gt;ClickRuntime: Returns
+    ClickRuntime-&gt;&gt;info_ctx: Tears down info_ctx (runs call_on_close)
+    ClickRuntime-&gt;&gt;cli_ctx: Tears down cli_ctx (runs call_on_close)
+    ClickRuntime--&gt;&gt;CLI: Exits
+</code></pre>
+
+<p>The core <code class="language-plaintext highlighter-rouge">Context</code> class is defined in <code class="language-plaintext highlighter-rouge">click/core.py</code>. The decorators <code class="language-plaintext highlighter-rouge">pass_context</code> and <code class="language-plaintext highlighter-rouge">pass_obj</code> are in <code class="language-plaintext highlighter-rouge">click/decorators.py</code>, and the mechanism for tracking the current context is in <code class="language-plaintext highlighter-rouge">click/globals.py</code>.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">Context</code> (<code class="language-plaintext highlighter-rouge">ctx</code>) is a cornerstone concept in Click, acting as the runtime carrier of information for a command invocation.</p>
+
+<p>You’ve learned:</p>
+
+<ul>
+  <li>The Context holds data like the current command, parameters, parent context, and shared application objects (<code class="language-plaintext highlighter-rouge">ctx.obj</code>).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">@click.pass_context</code> decorator injects the current Context into your command function.</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.obj</code> is essential for sharing state between nested commands.</li>
+  <li><code class="language-plaintext highlighter-rouge">ctx.invoke()</code> and <code class="language-plaintext highlighter-rouge">ctx.forward()</code> allow commands to call each other programmatically.</li>
+  <li>Click uses the context for resource management (<code class="language-plaintext highlighter-rouge">ctx.call_on_close</code>), ensuring cleanup.</li>
+</ul>
+
+<p>Understanding the Context is key to building more complex Click applications where commands need to interact with each other or with shared application state. It provides the structure and communication channels necessary for sophisticated CLI tools.</p>
+
+<p>So far, we’ve focused on the logic and structure of commands. But how can we make the interaction in the terminal itself more engaging? How do we prompt users for input, show progress bars, or display colored output? Let’s explore Click’s terminal UI capabilities next!</p>
+
+<p>Next up: <a href="06_term_ui__terminal_user_interface_.md">Chapter 6: Term UI (Terminal User Interface)</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

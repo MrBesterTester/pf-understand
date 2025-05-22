@@ -1,0 +1,208 @@
+<h1 id="chapter-1-the-llm---your-agents-brainpower">Chapter 1: The LLM - Your Agent’s Brainpower</h1>
+
+<p>Welcome to the OpenManus tutorial! We’re thrilled to have you on board. Let’s start with the absolute core of any intelligent agent: the “brain” that does the thinking and understanding. In OpenManus, this brainpower comes from something called a <strong>Large Language Model (LLM)</strong>, and we interact with it using our <code class="language-plaintext highlighter-rouge">LLM</code> class.</p>
+
+<h2 id="whats-the-big-deal-with-llms">What’s the Big Deal with LLMs?</h2>
+
+<p>Imagine you have access to an incredibly smart expert who understands language, can reason, write, summarize, and even generate creative ideas. That’s kind of what an LLM (like GPT-4, Claude, or Llama) is! These are massive AI models trained on vast amounts of text and data, making them capable of understanding and generating human-like text.</p>
+
+<p>They are the engine that drives the “intelligence” in AI applications like chatbots, writing assistants, and, of course, the agents you’ll build with OpenManus.</p>
+
+<h2 id="why-do-we-need-an-llm-class">Why Do We Need an <code class="language-plaintext highlighter-rouge">LLM</code> Class?</h2>
+
+<p>Okay, so LLMs are powerful. Can’t our agent just talk directly to them?</p>
+
+<p>Well, it’s a bit more complicated than a casual chat. Talking to these big AI models usually involves:</p>
+
+<ol>
+  <li><strong>Complex APIs:</strong> Each LLM provider (like OpenAI, Anthropic, Google, AWS) has its own specific way (an API or Application Programming Interface) to send requests and get responses. It’s like needing different phone numbers and dialing procedures for different experts.</li>
+  <li><strong>API Keys:</strong> You need secret keys to prove you’re allowed to use the service (and get billed for it!). Managing these securely is important.</li>
+  <li><strong>Formatting:</strong> You need to structure your questions (prompts) and conversation history in a very specific format the LLM understands.</li>
+  <li><strong>Errors &amp; Retries:</strong> Sometimes network connections hiccup, or the LLM service is busy. You need a way to handle these errors gracefully, maybe by trying again.</li>
+  <li><strong>Tracking Usage (Tokens):</strong> Using these powerful models costs money, often based on how much text you send and receive (measured in “tokens”). You need to keep track of this.</li>
+</ol>
+
+<p>Doing all this <em>every time</em> an agent needs to think would be repetitive and messy!</p>
+
+<p><strong>This is where the <code class="language-plaintext highlighter-rouge">LLM</code> class comes in.</strong> Think of it as a super-helpful <strong>translator and network manager</strong> rolled into one.</p>
+
+<ul>
+  <li>It knows how to talk to different LLM APIs.</li>
+  <li>It securely handles your API keys (using settings from the <a href="07_configuration__config_.md">Configuration</a>).</li>
+  <li>It formats your messages correctly.</li>
+  <li>It automatically retries if there’s a temporary glitch.</li>
+  <li>It helps count the “tokens” used.</li>
+</ul>
+
+<p>It hides all that complexity, giving your agent a simple way to “ask” the LLM something.</p>
+
+<p><strong>Use Case:</strong> Let’s say we want our agent to simply answer the question: “What is the capital of France?” The <code class="language-plaintext highlighter-rouge">LLM</code> class will handle all the background work to get that answer from the actual AI model.</p>
+
+<h2 id="how-do-agents-use-the-llm-class">How Do Agents Use the <code class="language-plaintext highlighter-rouge">LLM</code> Class?</h2>
+
+<p>In OpenManus, agents (which we’ll learn more about in <a href="03_baseagent.md">Chapter 3: BaseAgent</a>) have an <code class="language-plaintext highlighter-rouge">llm</code> component built-in. Usually, you don’t even need to create it manually; the agent does it for you when it starts up, using settings from your configuration file (<code class="language-plaintext highlighter-rouge">config/config.toml</code>).</p>
+
+<p>The primary way an agent uses the <code class="language-plaintext highlighter-rouge">LLM</code> class is through its <code class="language-plaintext highlighter-rouge">ask</code> method.</p>
+
+<p>Let’s look at a simplified example of how you might use the <code class="language-plaintext highlighter-rouge">LLM</code> class directly (though usually, your agent handles this):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Import necessary classes
+</span><span class="kn">from</span> <span class="nn">app.llm</span> <span class="kn">import</span> <span class="n">LLM</span>
+<span class="kn">from</span> <span class="nn">app.schema</span> <span class="kn">import</span> <span class="n">Message</span>
+<span class="kn">import</span> <span class="nn">asyncio</span> <span class="c1"># Needed to run asynchronous code
+</span>
+<span class="c1"># Assume configuration is already loaded (API keys, model name, etc.)
+# Create an instance of the LLM class (using default settings)
+</span><span class="n">llm_interface</span> <span class="o">=</span> <span class="n">LLM</span><span class="p">()</span>
+
+<span class="c1"># Prepare the question as a list of messages
+# (We'll learn more about Messages in Chapter 2)
+</span><span class="n">conversation</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">Message</span><span class="p">.</span><span class="n">user_message</span><span class="p">(</span><span class="s">"What is the capital of France?"</span><span class="p">)</span>
+<span class="p">]</span>
+
+<span class="c1"># Define an async function to ask the question
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">ask_question</span><span class="p">():</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Asking the LLM..."</span><span class="p">)</span>
+    <span class="c1"># Use the 'ask' method to send the conversation
+</span>    <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">llm_interface</span><span class="p">.</span><span class="n">ask</span><span class="p">(</span><span class="n">messages</span><span class="o">=</span><span class="n">conversation</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"LLM Response: </span><span class="si">{</span><span class="n">response</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Run the async function
+</span><span class="n">asyncio</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">ask_question</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>We import the <code class="language-plaintext highlighter-rouge">LLM</code> class and the <code class="language-plaintext highlighter-rouge">Message</code> class (more on <code class="language-plaintext highlighter-rouge">Message</code> in the <a href="02_message___memory.md">next chapter</a>).</li>
+  <li>We create <code class="language-plaintext highlighter-rouge">llm_interface = LLM()</code>. This sets up our connection to the LLM using settings found in the configuration.</li>
+  <li>We create a <code class="language-plaintext highlighter-rouge">conversation</code> list containing our question, formatted as a <code class="language-plaintext highlighter-rouge">Message</code> object. The <code class="language-plaintext highlighter-rouge">LLM</code> class needs the input in this list-of-messages format.</li>
+  <li>We call <code class="language-plaintext highlighter-rouge">await llm_interface.ask(messages=conversation)</code>. This is the core action! We send our message list to the LLM via our interface. The <code class="language-plaintext highlighter-rouge">await</code> keyword is used because communicating over the network takes time, so we wait for the response asynchronously.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">ask</code> method returns the LLM’s text response as a string.</li>
+</ol>
+
+<p><strong>Example Output (might vary slightly):</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Asking the LLM...
+LLM Response: The capital of France is Paris.
+</code></pre></div></div>
+
+<p>See? We just asked a question and got an answer, without worrying about API keys, JSON formatting, or network errors! The <code class="language-plaintext highlighter-rouge">LLM</code> class handled it all.</p>
+
+<p>There’s also a more advanced method called <code class="language-plaintext highlighter-rouge">ask_tool</code>, which allows the LLM to use specific <a href="04_tool___toolcollection.md">Tools</a>, but we’ll cover that later. For now, <code class="language-plaintext highlighter-rouge">ask</code> is the main way to get text responses.</p>
+
+<h2 id="under-the-hood-what-happens-when-you-ask">Under the Hood: What Happens When You <code class="language-plaintext highlighter-rouge">ask</code>?</h2>
+
+<p>Let’s peek behind the curtain. When your agent calls <code class="language-plaintext highlighter-rouge">llm.ask(...)</code>, several things happen in sequence:</p>
+
+<ol>
+  <li><strong>Format Messages:</strong> The <code class="language-plaintext highlighter-rouge">LLM</code> class takes your list of <code class="language-plaintext highlighter-rouge">Message</code> objects and converts them into the exact dictionary format the specific LLM API (like OpenAI’s or AWS Bedrock’s) expects. This might involve adding special tags or structuring image data if needed (<code class="language-plaintext highlighter-rouge">llm.py: format_messages</code>).</li>
+  <li><strong>Count Tokens:</strong> It calculates roughly how many “tokens” your input messages will use (<code class="language-plaintext highlighter-rouge">llm.py: count_message_tokens</code>).</li>
+  <li><strong>Check Limits:</strong> It checks if sending this request would exceed any configured token limits (<code class="language-plaintext highlighter-rouge">llm.py: check_token_limit</code>). If it does, it raises a specific <code class="language-plaintext highlighter-rouge">TokenLimitExceeded</code> error <em>before</em> making the expensive API call.</li>
+  <li><strong>Send Request:</strong> It sends the formatted messages and other parameters (like the desired model, <code class="language-plaintext highlighter-rouge">max_tokens</code>) to the LLM’s API endpoint over the internet (<code class="language-plaintext highlighter-rouge">llm.py: client.chat.completions.create</code> or similar for AWS Bedrock in <code class="language-plaintext highlighter-rouge">bedrock.py</code>).</li>
+  <li><strong>Handle Glitches (Retry):</strong> If the API call fails due to a temporary issue (like a network timeout or the service being momentarily busy), the <code class="language-plaintext highlighter-rouge">LLM</code> class automatically waits a bit and tries again, up to a few times (thanks to the <code class="language-plaintext highlighter-rouge">@retry</code> decorator in <code class="language-plaintext highlighter-rouge">llm.py</code>).</li>
+  <li><strong>Receive Response:</strong> Once successful, it receives the response from the LLM API.</li>
+  <li><strong>Extract Answer:</strong> It pulls out the actual text content from the API response.</li>
+  <li><strong>Update Counts:</strong> It records the number of input tokens used and the number of tokens in the received response (<code class="language-plaintext highlighter-rouge">llm.py: update_token_count</code>).</li>
+  <li><strong>Return Result:</strong> Finally, it returns the LLM’s text answer back to your agent.</li>
+</ol>
+
+<p>Here’s a simplified diagram showing the flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent
+    participant LLMClass as LLM Class (app/llm.py)
+    participant TokenCounter as Token Counter (app/llm.py)
+    participant OpenAIClient as OpenAI/Bedrock Client (app/llm.py, app/bedrock.py)
+    participant LLM_API as Actual LLM API (e.g., OpenAI, AWS Bedrock)
+
+    Agent-&gt;&gt;+LLMClass: ask(messages)
+    LLMClass-&gt;&gt;LLMClass: format_messages(messages)
+    LLMClass-&gt;&gt;+TokenCounter: count_message_tokens(formatted_messages)
+    TokenCounter--&gt;&gt;-LLMClass: input_token_count
+    LLMClass-&gt;&gt;LLMClass: check_token_limit(input_token_count)
+    Note over LLMClass: If limit exceeded, raise Error.
+    LLMClass-&gt;&gt;+OpenAIClient: create_completion(formatted_messages, model, ...)
+    Note right of OpenAIClient: Handles retries on network errors etc.
+    OpenAIClient-&gt;&gt;+LLM_API: Send HTTP Request
+    LLM_API--&gt;&gt;-OpenAIClient: Receive HTTP Response
+    OpenAIClient--&gt;&gt;-LLMClass: completion_response
+    LLMClass-&gt;&gt;LLMClass: extract_content(completion_response)
+    LLMClass-&gt;&gt;+TokenCounter: update_token_count(input_tokens, completion_tokens)
+    TokenCounter--&gt;&gt;-LLMClass: 
+    LLMClass--&gt;&gt;-Agent: llm_answer (string)
+
+</code></pre>
+
+<p>Let’s look at a tiny piece of the <code class="language-plaintext highlighter-rouge">ask</code> method in <code class="language-plaintext highlighter-rouge">app/llm.py</code> to see the retry mechanism:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified snippet from app/llm.py
+</span>
+<span class="kn">from</span> <span class="nn">tenacity</span> <span class="kn">import</span> <span class="n">retry</span><span class="p">,</span> <span class="n">wait_random_exponential</span><span class="p">,</span> <span class="n">stop_after_attempt</span><span class="p">,</span> <span class="n">retry_if_exception_type</span>
+<span class="kn">from</span> <span class="nn">openai</span> <span class="kn">import</span> <span class="n">OpenAIError</span>
+
+<span class="c1"># ... other imports ...
+</span>
+<span class="k">class</span> <span class="nc">LLM</span><span class="p">:</span>
+    <span class="c1"># ... other methods like __init__, format_messages ...
+</span>
+    <span class="o">@</span><span class="n">retry</span><span class="p">(</span> <span class="c1"># This decorator handles retries!
+</span>        <span class="n">wait</span><span class="o">=</span><span class="n">wait_random_exponential</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">60</span><span class="p">),</span> <span class="c1"># Wait 1-60s between tries
+</span>        <span class="n">stop</span><span class="o">=</span><span class="n">stop_after_attempt</span><span class="p">(</span><span class="mi">6</span><span class="p">),</span> <span class="c1"># Give up after 6 tries
+</span>        <span class="n">retry</span><span class="o">=</span><span class="n">retry_if_exception_type</span><span class="p">((</span><span class="n">OpenAIError</span><span class="p">,</span> <span class="nb">Exception</span><span class="p">))</span> <span class="c1"># Retry on these errors
+</span>    <span class="p">)</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">ask</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">messages</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="n">Message</span><span class="p">]],</span>
+        <span class="c1"># ... other parameters ...
+</span>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># 1. Format messages (simplified)
+</span>            <span class="n">formatted_msgs</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">format_messages</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
+
+            <span class="c1"># 2. Count tokens &amp; Check limits (simplified)
+</span>            <span class="n">input_tokens</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">count_message_tokens</span><span class="p">(</span><span class="n">formatted_msgs</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="p">.</span><span class="n">check_token_limit</span><span class="p">(</span><span class="n">input_tokens</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">TokenLimitExceeded</span><span class="p">(...)</span> <span class="c1"># Special error, not retried
+</span>
+            <span class="c1"># 3. Prepare API call parameters (simplified)
+</span>            <span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="s">"model"</span><span class="p">:</span> <span class="bp">self</span><span class="p">.</span><span class="n">model</span><span class="p">,</span> <span class="s">"messages"</span><span class="p">:</span> <span class="n">formatted_msgs</span><span class="p">,</span> <span class="p">...}</span>
+
+            <span class="c1"># 4. Make the actual API call (simplified)
+</span>            <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">client</span><span class="p">.</span><span class="n">chat</span><span class="p">.</span><span class="n">completions</span><span class="p">.</span><span class="n">create</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
+
+            <span class="c1"># 5. Process response &amp; update tokens (simplified)
+</span>            <span class="n">answer</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">message</span><span class="p">.</span><span class="n">content</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">update_token_count</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">usage</span><span class="p">.</span><span class="n">prompt_tokens</span><span class="p">,</span> <span class="p">...)</span>
+
+            <span class="k">return</span> <span class="n">answer</span>
+        <span class="k">except</span> <span class="n">TokenLimitExceeded</span><span class="p">:</span>
+             <span class="k">raise</span> <span class="c1"># Don't retry token limits
+</span>        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+             <span class="n">logger</span><span class="p">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s">"LLM ask failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+             <span class="k">raise</span> <span class="c1"># Let the @retry decorator handle retrying other errors
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">@retry(...)</code> part <em>above</em> the <code class="language-plaintext highlighter-rouge">async def ask(...)</code> line is key. It tells Python: “If the code inside this <code class="language-plaintext highlighter-rouge">ask</code> function fails with certain errors (like <code class="language-plaintext highlighter-rouge">OpenAIError</code>), wait a bit and try running it again, up to 6 times.”</li>
+  <li>Inside the <code class="language-plaintext highlighter-rouge">try...except</code> block, the code performs the steps we discussed: format, count, check, call the API (<code class="language-plaintext highlighter-rouge">self.client.chat.completions.create</code>), and process the result.</li>
+  <li>Crucially, it catches the <code class="language-plaintext highlighter-rouge">TokenLimitExceeded</code> error separately and <code class="language-plaintext highlighter-rouge">raise</code>s it again immediately – we <em>don’t</em> want to retry if we know we’ve run out of tokens!</li>
+  <li>Other errors will be caught by the final <code class="language-plaintext highlighter-rouge">except Exception</code>, logged, and re-raised, allowing the <code class="language-plaintext highlighter-rouge">@retry</code> mechanism to decide whether to try again.</li>
+</ul>
+
+<p>This shows how the <code class="language-plaintext highlighter-rouge">LLM</code> class uses libraries like <code class="language-plaintext highlighter-rouge">tenacity</code> to add resilience without cluttering the main logic of your agent.</p>
+
+<h2 id="wrapping-up-chapter-1">Wrapping Up Chapter 1</h2>
+
+<p>You’ve learned about the core “brain” – the Large Language Model (LLM) – and why we need the <code class="language-plaintext highlighter-rouge">LLM</code> class in OpenManus to interact with it smoothly. This class acts as a vital interface, handling API complexities, errors, and token counting, providing your agents with simple <code class="language-plaintext highlighter-rouge">ask</code> (and <code class="language-plaintext highlighter-rouge">ask_tool</code>) methods.</p>
+
+<p>Now that we understand how to communicate with the LLM, we need a way to structure the conversation – keeping track of who said what. That’s where Messages and Memory come in.</p>
+
+<p>Let’s move on to <a href="02_message___memory.md">Chapter 2: Message / Memory</a> to explore how we represent and store conversations for our agents.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

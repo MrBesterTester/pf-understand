@@ -1,0 +1,240 @@
+<h1 id="chapter-2-routing-system">Chapter 2: Routing System</h1>
+
+<p>Welcome back! In <a href="01_application_object___flask__.md">Chapter 1: Application Object (<code class="language-plaintext highlighter-rouge">Flask</code>)</a>, we learned how to create the central <code class="language-plaintext highlighter-rouge">app</code> object, the control tower for our Flask application. We even added a simple “Hello, World!” page using <code class="language-plaintext highlighter-rouge">@app.route('/')</code>.</p>
+
+<p>But how did Flask know that visiting the homepage (<code class="language-plaintext highlighter-rouge">/</code>) should run our <code class="language-plaintext highlighter-rouge">index()</code> function? And how can we create more pages, like an “About Us” page at <code class="language-plaintext highlighter-rouge">/about</code>? That’s where the <strong>Routing System</strong> comes in.</p>
+
+<h2 id="what-problem-does-it-solve-the-need-for-directions">What Problem Does It Solve? The Need for Directions</h2>
+
+<p>Imagine you have a website with multiple pages: a homepage, an about page, a contact page, maybe even pages for individual user profiles. When a user types a URL like <code class="language-plaintext highlighter-rouge">http://yourwebsite.com/about</code> into their browser, how does your Flask application know <em>which</em> piece of Python code should handle this request and generate the “About Us” content?</p>
+
+<p>You need a system to map these incoming URLs to the specific Python functions that generate the response for each page. Think of it like a city map’s index:</p>
+
+<ul>
+  <li><strong>URL:</strong> The street address you want to find (e.g., <code class="language-plaintext highlighter-rouge">/about</code>).</li>
+  <li><strong>Routing System:</strong> The index in the map book.</li>
+  <li><strong>View Function:</strong> The specific page number in the map book that shows the details for that address.</li>
+</ul>
+
+<p>Flask’s routing system, largely powered by a library called Werkzeug, acts as this index. It lets you define URL patterns (like <code class="language-plaintext highlighter-rouge">/</code> or <code class="language-plaintext highlighter-rouge">/about</code> or <code class="language-plaintext highlighter-rouge">/user/&lt;username&gt;</code>) and connect them to your Python functions (called <strong>view functions</strong>).</p>
+
+<h2 id="defining-routes-with-approute">Defining Routes with <code class="language-plaintext highlighter-rouge">@app.route()</code></h2>
+
+<p>In Flask, the most common way to define these URL-to-function mappings is using the <code class="language-plaintext highlighter-rouge">@app.route()</code> decorator, which we briefly saw in Chapter 1.</p>
+
+<p>Let’s revisit our <code class="language-plaintext highlighter-rouge">hello.py</code> and add an “About” page.</p>
+
+<ol>
+  <li>We keep the route for the homepage (<code class="language-plaintext highlighter-rouge">/</code>).</li>
+  <li>We add a <em>new</em> route for <code class="language-plaintext highlighter-rouge">/about</code>.</li>
+</ol>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># hello.py
+</span>
+<span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">Flask</span>
+
+<span class="c1"># Create the application object from Chapter 1
+</span><span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="n">__name__</span><span class="p">)</span>
+
+<span class="c1"># Route for the homepage
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="s">'/'</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">index</span><span class="p">():</span>
+  <span class="k">return</span> <span class="s">'Welcome to the Homepage!'</span>
+
+<span class="c1"># NEW: Route for the about page
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="s">'/about'</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">about</span><span class="p">():</span>
+  <span class="k">return</span> <span class="s">'This is the About Us page.'</span>
+
+<span class="c1"># Code to run the app (from Chapter 1)
+</span><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+  <span class="n">app</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">debug</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">@app.route('/')</code>: This tells Flask: “If a request comes in for the URL path <code class="language-plaintext highlighter-rouge">/</code>, execute the function directly below (<code class="language-plaintext highlighter-rouge">index</code>).”</li>
+  <li><code class="language-plaintext highlighter-rouge">@app.route('/about')</code>: This tells Flask: “If a request comes in for the URL path <code class="language-plaintext highlighter-rouge">/about</code>, execute the function directly below (<code class="language-plaintext highlighter-rouge">about</code>).”</li>
+  <li><code class="language-plaintext highlighter-rouge">def index(): ...</code> and <code class="language-plaintext highlighter-rouge">def about(): ...</code>: These are our <strong>view functions</strong>. They contain the Python code that runs for their respective routes and must return the response to send back to the browser.</li>
+</ul>
+
+<p><strong>Running this:</strong></p>
+
+<ol>
+  <li>Save the code as <code class="language-plaintext highlighter-rouge">hello.py</code>.</li>
+  <li>Run <code class="language-plaintext highlighter-rouge">python hello.py</code> in your terminal.</li>
+  <li>Visit <code class="language-plaintext highlighter-rouge">http://127.0.0.1:5000/</code> in your browser. You should see “Welcome to the Homepage!”.</li>
+  <li>Visit <code class="language-plaintext highlighter-rouge">http://127.0.0.1:5000/about</code>. You should see “This is the About Us page.”.</li>
+</ol>
+
+<p>See? The routing system directed each URL to the correct view function!</p>
+
+<h2 id="dynamic-routes-using-variables-in-urls">Dynamic Routes: Using Variables in URLs</h2>
+
+<p>What if you want pages that change based on the URL? For example, a profile page for different users like <code class="language-plaintext highlighter-rouge">/user/alice</code> and <code class="language-plaintext highlighter-rouge">/user/bob</code>. You don’t want to write a new view function for every single user!</p>
+
+<p>Flask allows you to define <em>variable parts</em> in your URL rules using angle brackets <code class="language-plaintext highlighter-rouge">&lt; &gt;</code>.</p>
+
+<p>Let’s create a dynamic route to greet users:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># hello.py (continued)
+</span>
+<span class="c1"># ... (keep Flask import, app creation, index, and about routes) ...
+</span>
+<span class="c1"># NEW: Dynamic route for user profiles
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="s">'/user/&lt;username&gt;'</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">show_user_profile</span><span class="p">(</span><span class="n">username</span><span class="p">):</span>
+  <span class="c1"># The 'username' variable from the URL is passed to the function!
+</span>  <span class="k">return</span> <span class="sa">f</span><span class="s">'Hello, </span><span class="si">{</span><span class="n">username</span><span class="si">}</span><span class="s">!'</span>
+
+<span class="c1"># ... (keep the if __name__ == '__main__': block) ...
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">@app.route('/user/&lt;username&gt;')</code>:
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">/user/</code> part is fixed.</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;username&gt;</code> is a <strong>variable placeholder</strong>. Flask will match any text here (like <code class="language-plaintext highlighter-rouge">alice</code>, <code class="language-plaintext highlighter-rouge">bob</code>, <code class="language-plaintext highlighter-rouge">123</code>) and capture it.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">def show_user_profile(username):</code>:
+    <ul>
+      <li>Notice the function now accepts an argument named <code class="language-plaintext highlighter-rouge">username</code>. This <strong>must match</strong> the variable name used in the angle brackets in the route.</li>
+      <li>Flask automatically passes the value captured from the URL to this argument.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">return f'Hello, {username}!'</code>: We use an f-string to include the captured username in the response.</li>
+</ul>
+
+<p><strong>Running this:</strong></p>
+
+<ol>
+  <li>Save the updated <code class="language-plaintext highlighter-rouge">hello.py</code> (make sure <code class="language-plaintext highlighter-rouge">debug=True</code> is still set so the server restarts).</li>
+  <li>Visit <code class="language-plaintext highlighter-rouge">http://127.0.0.1:5000/user/Alice</code>. You should see “Hello, Alice!”.</li>
+  <li>Visit <code class="language-plaintext highlighter-rouge">http://127.0.0.1:5000/user/Bob</code>. You should see “Hello, Bob!”.</li>
+</ol>
+
+<p>Flask’s routing system matched both URLs to the same rule (<code class="language-plaintext highlighter-rouge">/user/&lt;username&gt;</code>) and passed the different usernames (<code class="language-plaintext highlighter-rouge">'Alice'</code>, <code class="language-plaintext highlighter-rouge">'Bob'</code>) to the <code class="language-plaintext highlighter-rouge">show_user_profile</code> function.</p>
+
+<h2 id="specifying-data-types-converters">Specifying Data Types: Converters</h2>
+
+<p>By default, variables captured from the URL are treated as strings. But what if you need a number? For example, displaying blog post number 5 at <code class="language-plaintext highlighter-rouge">/post/5</code>. You might want Flask to ensure that only numbers are accepted for that part of the URL.</p>
+
+<p>You can specify a <strong>converter</strong> inside the angle brackets using <code class="language-plaintext highlighter-rouge">&lt;converter:variable_name&gt;</code>.</p>
+
+<p>Let’s add a route for blog posts using the <code class="language-plaintext highlighter-rouge">int</code> converter:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># hello.py (continued)
+</span>
+<span class="c1"># ... (keep previous code) ...
+</span>
+<span class="c1"># NEW: Route for displaying a specific blog post by ID
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="s">'/post/&lt;int:post_id&gt;'</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">show_post</span><span class="p">(</span><span class="n">post_id</span><span class="p">):</span>
+  <span class="c1"># Flask ensures post_id is an integer and passes it here
+</span>  <span class="c1"># Note: We are just showing the ID, not actually fetching a post
+</span>  <span class="k">return</span> <span class="sa">f</span><span class="s">'Showing Post Number: </span><span class="si">{</span><span class="n">post_id</span><span class="si">}</span><span class="s"> (Type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">post_id</span><span class="p">).</span><span class="n">__name__</span><span class="si">}</span><span class="s">)'</span>
+
+<span class="c1"># ... (keep the if __name__ == '__main__': block) ...
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">@app.route('/post/&lt;int:post_id&gt;')</code>:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">&lt;int:post_id&gt;</code> tells Flask: “Match this part of the URL, but only if it looks like an integer. Convert it to an integer and pass it as the <code class="language-plaintext highlighter-rouge">post_id</code> variable.”</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">def show_post(post_id):</code>: The <code class="language-plaintext highlighter-rouge">post_id</code> argument will now receive an actual Python <code class="language-plaintext highlighter-rouge">int</code>.</li>
+</ul>
+
+<p><strong>Running this:</strong></p>
+
+<ol>
+  <li>Save the updated <code class="language-plaintext highlighter-rouge">hello.py</code>.</li>
+  <li>Visit <code class="language-plaintext highlighter-rouge">http://127.0.0.1:5000/post/123</code>. You should see “Showing Post Number: 123 (Type: int)”.</li>
+  <li>Visit <code class="language-plaintext highlighter-rouge">http://127.0.0.1:5000/post/abc</code>. You’ll get a “Not Found” error! Why? Because <code class="language-plaintext highlighter-rouge">abc</code> doesn’t match the <code class="language-plaintext highlighter-rouge">int</code> converter, so Flask doesn’t consider this URL to match the rule.</li>
+</ol>
+
+<p>Common converters include:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">string</code>: (Default) Accepts any text without a slash.</li>
+  <li><code class="language-plaintext highlighter-rouge">int</code>: Accepts positive integers.</li>
+  <li><code class="language-plaintext highlighter-rouge">float</code>: Accepts positive floating-point values.</li>
+  <li><code class="language-plaintext highlighter-rouge">path</code>: Like <code class="language-plaintext highlighter-rouge">string</code> but also accepts slashes (useful for matching file paths).</li>
+  <li><code class="language-plaintext highlighter-rouge">uuid</code>: Accepts UUID strings.</li>
+</ul>
+
+<h2 id="under-the-hood-how-does-routing-work">Under the Hood: How Does Routing Work?</h2>
+
+<p>You don’t <em>need</em> to know the deep internals, but understanding the basics helps.</p>
+
+<p>When you define routes using <code class="language-plaintext highlighter-rouge">@app.route()</code>, Flask doesn’t immediately check URLs. Instead, it builds a map, like pre-compiling that map index we talked about.</p>
+
+<ol>
+  <li><strong>Building the Map:</strong>
+    <ul>
+      <li>When you create your <code class="language-plaintext highlighter-rouge">app = Flask(__name__)</code> (<a href="01_application_object___flask__.md">Chapter 1</a>), Flask initializes an empty <code class="language-plaintext highlighter-rouge">URLMap</code> object (from the Werkzeug library, stored in <code class="language-plaintext highlighter-rouge">app.url_map</code>). See <code class="language-plaintext highlighter-rouge">Flask.__init__</code> in <code class="language-plaintext highlighter-rouge">app.py</code> which calls <code class="language-plaintext highlighter-rouge">super().__init__</code> in <code class="language-plaintext highlighter-rouge">sansio/app.py</code>, which creates the <code class="language-plaintext highlighter-rouge">self.url_map</code>.</li>
+      <li>Each time you use <code class="language-plaintext highlighter-rouge">@app.route('/some/rule', ...)</code> or directly call <code class="language-plaintext highlighter-rouge">app.add_url_rule(...)</code> (see <code class="language-plaintext highlighter-rouge">sansio/scaffold.py</code>), Flask creates a <code class="language-plaintext highlighter-rouge">Rule</code> object (like <code class="language-plaintext highlighter-rouge">Rule('/user/&lt;username&gt;')</code>) describing the pattern, the allowed HTTP methods (GET, POST, etc.), the endpoint name (usually the function name), and any converters.</li>
+      <li>This <code class="language-plaintext highlighter-rouge">Rule</code> object is added to the <code class="language-plaintext highlighter-rouge">app.url_map</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Matching a Request:</strong>
+    <ul>
+      <li>When a request like <code class="language-plaintext highlighter-rouge">GET /user/Alice</code> arrives, Flask’s <code class="language-plaintext highlighter-rouge">wsgi_app</code> method (in <code class="language-plaintext highlighter-rouge">app.py</code>) gets called.</li>
+      <li>It uses the <code class="language-plaintext highlighter-rouge">app.url_map</code> and the incoming request environment (URL path, HTTP method) to find a matching <code class="language-plaintext highlighter-rouge">Rule</code>. Werkzeug’s <code class="language-plaintext highlighter-rouge">MapAdapter.match()</code> method (created via <code class="language-plaintext highlighter-rouge">app.create_url_adapter</code> which calls <code class="language-plaintext highlighter-rouge">url_map.bind_to_environ</code>) does the heavy lifting here.</li>
+      <li>If a match is found for <code class="language-plaintext highlighter-rouge">/user/&lt;username&gt;</code>, <code class="language-plaintext highlighter-rouge">match()</code> returns the endpoint name (e.g., <code class="language-plaintext highlighter-rouge">'show_user_profile'</code>) and a dictionary of the extracted variables (e.g., <code class="language-plaintext highlighter-rouge">{'username': 'Alice'}</code>). These get stored on the <code class="language-plaintext highlighter-rouge">request</code> object (<a href="03_request_and_response_objects.md">Chapter 3</a>) as <code class="language-plaintext highlighter-rouge">request.url_rule</code> and <code class="language-plaintext highlighter-rouge">request.view_args</code>.</li>
+      <li>If no rule matches, a “Not Found” (404) error is raised.</li>
+    </ul>
+  </li>
+  <li><strong>Dispatching to the View Function:</strong>
+    <ul>
+      <li>Flask’s <code class="language-plaintext highlighter-rouge">app.dispatch_request()</code> method (in <code class="language-plaintext highlighter-rouge">app.py</code>) takes the endpoint name from <code class="language-plaintext highlighter-rouge">request.url_rule.endpoint</code>.</li>
+      <li>It looks up the actual Python view function associated with that endpoint name in the <code class="language-plaintext highlighter-rouge">app.view_functions</code> dictionary (which <code class="language-plaintext highlighter-rouge">@app.route</code> also populated).</li>
+      <li>It calls the view function, passing the extracted variables from <code class="language-plaintext highlighter-rouge">request.view_args</code> as keyword arguments (e.g., <code class="language-plaintext highlighter-rouge">show_user_profile(username='Alice')</code>).</li>
+      <li>The return value of the view function becomes the response.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Here’s a simplified diagram of the matching process:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Browser
+    participant FlaskApp as app.wsgi_app
+    participant URLMap as url_map.bind(...).match()
+    participant ViewFunc as show_user_profile()
+
+    Browser-&gt;&gt;+FlaskApp: GET /user/Alice
+    FlaskApp-&gt;&gt;+URLMap: Match path '/user/Alice' and method 'GET'?
+    URLMap--&gt;&gt;-FlaskApp: Match found! Endpoint='show_user_profile', Args={'username': 'Alice'}
+    FlaskApp-&gt;&gt;+ViewFunc: Call show_user_profile(username='Alice')
+    ViewFunc--&gt;&gt;-FlaskApp: Return 'Hello, Alice!'
+    FlaskApp--&gt;&gt;-Browser: Send response 'Hello, Alice!'
+</code></pre>
+
+<p>The key takeaway is that <code class="language-plaintext highlighter-rouge">@app.route</code> builds a map upfront, and Werkzeug efficiently searches this map for each incoming request to find the right function and extract any variable parts.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned how Flask’s <strong>Routing System</strong> acts as a map between URLs and the Python functions (view functions) that handle them.</p>
+
+<ul>
+  <li>We use the <code class="language-plaintext highlighter-rouge">@app.route()</code> decorator to define URL rules.</li>
+  <li>We can create static routes (like <code class="language-plaintext highlighter-rouge">/about</code>) and dynamic routes using variables (<code class="language-plaintext highlighter-rouge">/user/&lt;username&gt;</code>).</li>
+  <li>Converters (<code class="language-plaintext highlighter-rouge">&lt;int:post_id&gt;</code>) allow us to specify the expected data type for URL variables, providing automatic validation and conversion.</li>
+  <li>Under the hood, Flask and Werkzeug build a <code class="language-plaintext highlighter-rouge">URLMap</code> from these rules and use it to efficiently dispatch incoming requests to the correct view function.</li>
+</ul>
+
+<p>Now that we know how to direct requests to the right functions, what information comes <em>with</em> a request (like form data or query parameters)? And how do we properly format the data we send <em>back</em>? That’s where the Request and Response objects come in.</p>
+
+<p>Let’s dive into <a href="03_request_and_response_objects.md">Chapter 3: Request and Response Objects</a>.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

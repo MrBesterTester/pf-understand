@@ -1,0 +1,34 @@
+<h1 id="tutorial-mcp-python-sdk">Tutorial: MCP Python SDK</h1>
+
+<blockquote>
+  <p>This tutorial is AI-generated! To learn more, check out <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>
+</blockquote>
+
+<p>The <strong>MCP Python SDK</strong><sup><a href="https://github.com/modelcontextprotocol/python-sdk/tree/d788424caa43599de38cee2f70233282d83e3a34/src/mcp">View Repo</a></sup> helps developers build applications (clients and servers) that talk to each other using the <em>Model Context Protocol (MCP)</em> specification.
+It simplifies communication by handling the low-level details like standard <strong>message formats</strong> (Abstraction 0), connection <strong>sessions</strong> (Abstraction 1), and different ways to send/receive data (<strong>transports</strong>, Abstraction 2).
+It also provides a high-level framework, <strong><code class="language-plaintext highlighter-rouge">FastMCP</code></strong> (Abstraction 3), making it easy to create servers that expose <strong>tools</strong> (Abstraction 5), <strong>resources</strong> (Abstraction 4), and <strong>prompts</strong> (Abstraction 6) to clients.
+The SDK includes <strong>command-line tools</strong> (Abstraction 8) for running and managing these servers.</p>
+
+<pre><code class="language-mermaid">flowchart TD
+    A0["MCP Protocol Types"]
+    A1["Client/Server Sessions"]
+    A2["Communication Transports"]
+    A3["FastMCP Server"]
+    A4["FastMCP Resources"]
+    A5["FastMCP Tools"]
+    A6["FastMCP Prompts"]
+    A7["FastMCP Context"]
+    A8["CLI"]
+    A1 -- "Uses MCP Types" --&gt; A0
+    A1 -- "Operates Over Transport" --&gt; A2
+    A2 -- "Serializes/Deserializes MCP..." --&gt; A0
+    A3 -- "Uses Session Logic" --&gt; A1
+    A3 -- "Manages Resources" --&gt; A4
+    A3 -- "Manages Tools" --&gt; A5
+    A3 -- "Manages Prompts" --&gt; A6
+    A8 -- "Runs/Configures Server" --&gt; A3
+    A5 -- "Handlers Can Use Context" --&gt; A7
+    A4 -- "Handlers Can Use Context" --&gt; A7
+    A7 -- "Provides Access To Session" --&gt; A1
+    A7 -- "Provides Access To Server" --&gt; A3
+</code></pre>

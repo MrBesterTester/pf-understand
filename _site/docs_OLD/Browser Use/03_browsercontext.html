@@ -1,0 +1,302 @@
+<h1 id="chapter-3-browsercontext---the-agents-isolated-workspace">Chapter 3: BrowserContext - The Agent’s Isolated Workspace</h1>
+
+<p>In the <a href="02_system_prompt.md">previous chapter</a>, we learned how the <code class="language-plaintext highlighter-rouge">System Prompt</code> acts as the rulebook for the AI assistant (LLM) that guides our <code class="language-plaintext highlighter-rouge">Agent</code>. We know the Agent uses the LLM to decide <em>what</em> to do next based on the current situation in the browser.</p>
+
+<p>But <em>where</em> does the Agent actually “see” the webpage and perform its actions? How does it keep track of the current website address (URL), the page content, and things like cookies, all while staying focused on its specific task without getting mixed up with your other browsing?</p>
+
+<p>This is where the <strong>BrowserContext</strong> comes in.</p>
+
+<h2 id="what-problem-does-browsercontext-solve">What Problem Does BrowserContext Solve?</h2>
+
+<p>Imagine you ask your <code class="language-plaintext highlighter-rouge">Agent</code> to log into a specific online shopping website and check your order status. You might already be logged into that same website in your regular browser window with your personal account.</p>
+
+<p>If the Agent just used your main browser window, it might:</p>
+<ol>
+  <li>Get confused by your existing login.</li>
+  <li>Accidentally use your personal cookies or saved passwords.</li>
+  <li>Interfere with other tabs you have open.</li>
+</ol>
+
+<p>We need a way to give the Agent its <em>own</em>, clean, separate browsing environment for each task. It needs an isolated “workspace” where it can open websites, log in, click buttons, and manage its own cookies without affecting anything else.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">BrowserContext</code> solves this by representing a single, isolated browser session.</p>
+
+<h2 id="meet-the-browsercontext-your-agents-private-browser-window">Meet the BrowserContext: Your Agent’s Private Browser Window</h2>
+
+<p>Think of a <code class="language-plaintext highlighter-rouge">BrowserContext</code> like opening a brand new <strong>Incognito Window</strong> or creating a <strong>separate User Profile</strong> in your web browser (like Chrome or Firefox).</p>
+
+<ul>
+  <li><strong>It’s Isolated:</strong> What happens in one <code class="language-plaintext highlighter-rouge">BrowserContext</code> doesn’t affect others or your main browser session. It has its own cookies, its own history (for that session), and its own set of tabs.</li>
+  <li><strong>It Manages State:</strong> It keeps track of everything important about the current web session the Agent is working on:
+    <ul>
+      <li>The current URL.</li>
+      <li>Which tabs are open within its “window”.</li>
+      <li>Cookies specific to that session.</li>
+      <li>The structure and content of the current webpage (the DOM - Document Object Model, which we’ll explore in the <a href="04_dom_representation.md">next chapter</a>).</li>
+    </ul>
+  </li>
+  <li><strong>It’s the Agent’s Viewport:</strong> The <code class="language-plaintext highlighter-rouge">Agent</code> looks through the <code class="language-plaintext highlighter-rouge">BrowserContext</code> to “see” the current state of the webpage. When the Agent decides to perform an action (like clicking a button), it tells the <a href="05_action_controller___registry.md">Action Controller</a> to perform it <em>within</em> that specific <code class="language-plaintext highlighter-rouge">BrowserContext</code>.</li>
+</ul>
+
+<p>Essentially, the <code class="language-plaintext highlighter-rouge">BrowserContext</code> is like a dedicated, clean desk or workspace given to the Agent for its specific job.</p>
+
+<h2 id="using-the-browsercontext">Using the BrowserContext</h2>
+
+<p>Before we can have an isolated session (<code class="language-plaintext highlighter-rouge">BrowserContext</code>), we first need the main browser application itself. This is handled by the <code class="language-plaintext highlighter-rouge">Browser</code> class. Think of <code class="language-plaintext highlighter-rouge">Browser</code> as the entire Chrome or Firefox application installed on your computer, while <code class="language-plaintext highlighter-rouge">BrowserContext</code> is just one window or profile within that application.</p>
+
+<p>Here’s a simplified example of how you might set up a <code class="language-plaintext highlighter-rouge">Browser</code> and then create a <code class="language-plaintext highlighter-rouge">BrowserContext</code> to navigate to a page:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="c1"># Import necessary classes
+</span><span class="kn">from</span> <span class="nn">browser_use</span> <span class="kn">import</span> <span class="n">Browser</span><span class="p">,</span> <span class="n">BrowserConfig</span><span class="p">,</span> <span class="n">BrowserContext</span><span class="p">,</span> <span class="n">BrowserContextConfig</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># 1. Configure the main browser application (optional, defaults are usually fine)
+</span>    <span class="n">browser_config</span> <span class="o">=</span> <span class="n">BrowserConfig</span><span class="p">(</span><span class="n">headless</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span> <span class="c1"># Show the browser window
+</span>
+    <span class="c1"># 2. Create the main Browser instance
+</span>    <span class="c1"># This might launch a browser application in the background (or connect to one)
+</span>    <span class="n">browser</span> <span class="o">=</span> <span class="n">Browser</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">browser_config</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Browser application instance created."</span><span class="p">)</span>
+
+    <span class="c1"># 3. Configure the specific session/window (optional)
+</span>    <span class="n">context_config</span> <span class="o">=</span> <span class="n">BrowserContextConfig</span><span class="p">(</span>
+        <span class="n">user_agent</span><span class="o">=</span><span class="s">"MyCoolAgent/1.0"</span><span class="p">,</span> <span class="c1"># Example: Set a custom user agent
+</span>        <span class="n">cookies_file</span><span class="o">=</span><span class="s">"my_session_cookies.json"</span> <span class="c1"># Example: Save/load cookies
+</span>    <span class="p">)</span>
+
+    <span class="c1"># 4. Create the isolated BrowserContext (like opening an incognito window)
+</span>    <span class="c1"># We use 'async with' to ensure it cleans up automatically afterwards
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">browser</span><span class="p">.</span><span class="n">new_context</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">context_config</span><span class="p">)</span> <span class="k">as</span> <span class="n">browser_context</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"BrowserContext created (ID: </span><span class="si">{</span><span class="n">browser_context</span><span class="p">.</span><span class="n">context_id</span><span class="si">}</span><span class="s">)."</span><span class="p">)</span>
+
+        <span class="c1"># 5. Use the context to interact with the browser session
+</span>        <span class="n">start_url</span> <span class="o">=</span> <span class="s">"https://example.com"</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Navigating to: </span><span class="si">{</span><span class="n">start_url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">browser_context</span><span class="p">.</span><span class="n">navigate_to</span><span class="p">(</span><span class="n">start_url</span><span class="p">)</span>
+
+        <span class="c1"># 6. Get information *from* the context
+</span>        <span class="n">current_state</span> <span class="o">=</span> <span class="k">await</span> <span class="n">browser_context</span><span class="p">.</span><span class="n">get_state</span><span class="p">()</span> <span class="c1"># Get current page info
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Current page title: </span><span class="si">{</span><span class="n">current_state</span><span class="p">.</span><span class="n">title</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Current page URL: </span><span class="si">{</span><span class="n">current_state</span><span class="p">.</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+        <span class="c1"># The Agent would use this 'browser_context' object to see the page
+</span>        <span class="c1"># and tell the Controller to perform actions within it.
+</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"BrowserContext closed automatically."</span><span class="p">)</span>
+
+    <span class="c1"># 7. Close the main browser application when done
+</span>    <span class="k">await</span> <span class="n">browser</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Browser application closed."</span><span class="p">)</span>
+
+<span class="c1"># Run the asynchronous code
+</span><span class="n">asyncio</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p><strong>What happens here?</strong></p>
+
+<ol>
+  <li>We set up a <code class="language-plaintext highlighter-rouge">BrowserConfig</code> (telling it <em>not</em> to run headless so we can see the window).</li>
+  <li>We create a <code class="language-plaintext highlighter-rouge">Browser</code> instance, which represents the overall browser program.</li>
+  <li>We create a <code class="language-plaintext highlighter-rouge">BrowserContextConfig</code> to specify settings for our isolated session (like a custom name or where to save cookies).</li>
+  <li>Crucially, <code class="language-plaintext highlighter-rouge">browser.new_context(...)</code> creates our isolated session. The <code class="language-plaintext highlighter-rouge">async with</code> block ensures this session is properly closed later.</li>
+  <li>We use methods <em>on the <code class="language-plaintext highlighter-rouge">browser_context</code> object</em> like <code class="language-plaintext highlighter-rouge">navigate_to()</code> to control <em>this specific session</em>.</li>
+  <li>We use <code class="language-plaintext highlighter-rouge">browser_context.get_state()</code> to get information about the current page within <em>this session</em>. The <code class="language-plaintext highlighter-rouge">Agent</code> heavily relies on this method.</li>
+  <li>After the <code class="language-plaintext highlighter-rouge">async with</code> block finishes, the <code class="language-plaintext highlighter-rouge">browser_context</code> is closed (like closing the incognito window), and finally, we close the main <code class="language-plaintext highlighter-rouge">browser</code> application.</li>
+</ol>
+
+<h2 id="how-it-works-under-the-hood">How it Works Under the Hood</h2>
+
+<p>When the <code class="language-plaintext highlighter-rouge">Agent</code> needs to understand the current situation to decide the next step, it asks the <code class="language-plaintext highlighter-rouge">BrowserContext</code> for the latest state using the <code class="language-plaintext highlighter-rouge">get_state()</code> method. What happens then?</p>
+
+<ol>
+  <li><strong>Wait for Stability:</strong> The <code class="language-plaintext highlighter-rouge">BrowserContext</code> first waits for the webpage to finish loading and for network activity to settle down (<code class="language-plaintext highlighter-rouge">_wait_for_page_and_frames_load</code>). This prevents the Agent from acting on an incomplete page.</li>
+  <li><strong>Analyze the Page:</strong> It then uses the <a href="04_dom_representation.md">DOM Representation</a> service (<code class="language-plaintext highlighter-rouge">DomService</code>) to analyze the current HTML structure of the page. This service figures out which elements are visible, interactive (buttons, links, input fields), and where they are.</li>
+  <li><strong>Capture Visuals:</strong> It often takes a screenshot of the current view (<code class="language-plaintext highlighter-rouge">take_screenshot</code>). This can be helpful for advanced agents or debugging.</li>
+  <li><strong>Gather Metadata:</strong> It gets the current URL, page title, and information about any other tabs open <em>within this context</em>.</li>
+  <li><strong>Package the State:</strong> All this information (DOM structure, URL, title, screenshot, etc.) is bundled into a <code class="language-plaintext highlighter-rouge">BrowserState</code> object.</li>
+  <li><strong>Return to Agent:</strong> The <code class="language-plaintext highlighter-rouge">BrowserContext</code> returns this <code class="language-plaintext highlighter-rouge">BrowserState</code> object to the <code class="language-plaintext highlighter-rouge">Agent</code>. The Agent then uses this information (often sending it to the LLM) to plan its next action.</li>
+</ol>
+
+<p>Here’s a simplified diagram of the <code class="language-plaintext highlighter-rouge">get_state()</code> process:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent
+    participant BC as BrowserContext
+    participant PlaywrightPage as Underlying Browser Page
+    participant DomService as DOM Service
+
+    Agent-&gt;&gt;BC: get_state()
+    Note over BC: Wait for page to be ready...
+    BC-&gt;&gt;PlaywrightPage: Ensure page/network is stable
+    PlaywrightPage--&gt;&gt;BC: Page is ready
+    Note over BC: Analyze the page content...
+    BC-&gt;&gt;DomService: Get simplified DOM structure + interactive elements
+    DomService--&gt;&gt;BC: DOMState (element tree, etc.)
+    Note over BC: Get visuals and metadata...
+    BC-&gt;&gt;PlaywrightPage: Take screenshot()
+    PlaywrightPage--&gt;&gt;BC: Screenshot data
+    BC-&gt;&gt;PlaywrightPage: Get URL, Title
+    PlaywrightPage--&gt;&gt;BC: URL, Title data
+    Note over BC: Combine everything...
+    BC-&gt;&gt;BC: Create BrowserState object
+    BC--&gt;&gt;Agent: Return BrowserState
+</code></pre>
+
+<p>Let’s look at some simplified code snippets from the library.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">BrowserContext</code> is initialized (<code class="language-plaintext highlighter-rouge">__init__</code> in <code class="language-plaintext highlighter-rouge">browser/context.py</code>) with its configuration and a reference to the main <code class="language-plaintext highlighter-rouge">Browser</code> instance that created it.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: browser/context.py (Simplified __init__) ---
+</span><span class="kn">import</span> <span class="nn">uuid</span>
+<span class="c1"># ... other imports ...
+</span><span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">browser_use.browser.browser</span> <span class="kn">import</span> <span class="n">Browser</span> <span class="c1"># Link to the Browser class
+</span>
+<span class="o">@</span><span class="n">dataclass</span>
+<span class="k">class</span> <span class="nc">BrowserContextConfig</span><span class="p">:</span> <span class="c1"># Configuration settings
+</span>    <span class="c1"># ... various settings like user_agent, cookies_file, window_size ...
+</span>    <span class="k">pass</span>
+
+<span class="o">@</span><span class="n">dataclass</span>
+<span class="k">class</span> <span class="nc">BrowserSession</span><span class="p">:</span> <span class="c1"># Holds the actual Playwright context
+</span>    <span class="n">context</span><span class="p">:</span> <span class="n">PlaywrightBrowserContext</span> <span class="c1"># The underlying Playwright object
+</span>    <span class="n">cached_state</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BrowserState</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># Stores the last known state
+</span>
+<span class="k">class</span> <span class="nc">BrowserContext</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">browser</span><span class="p">:</span> <span class="s">'Browser'</span><span class="p">,</span> <span class="c1"># Reference to the main Browser instance
+</span>        <span class="n">config</span><span class="p">:</span> <span class="n">BrowserContextConfig</span> <span class="o">=</span> <span class="n">BrowserContextConfig</span><span class="p">(),</span>
+        <span class="c1"># ... other optional state ...
+</span>    <span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">context_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="p">.</span><span class="n">uuid4</span><span class="p">())</span> <span class="c1"># Unique ID for this session
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span> <span class="c1"># Store the configuration
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">browser</span> <span class="o">=</span> <span class="n">browser</span> <span class="c1"># Store the reference to the parent Browser
+</span>
+        <span class="c1"># The actual Playwright session is created later, when needed
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">session</span><span class="p">:</span> <span class="n">BrowserSession</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"BrowserContext object created (ID: </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">context_id</span><span class="si">}</span><span class="s">). Session not yet initialized."</span><span class="p">)</span>
+
+    <span class="c1"># The 'async with' statement calls __aenter__ which initializes the session
+</span>    <span class="k">async</span> <span class="k">def</span> <span class="nf">__aenter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_initialize_session</span><span class="p">()</span> <span class="c1"># Creates the actual browser window/tab
+</span>        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_initialize_session</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># ... (complex setup code happens here) ...
+</span>        <span class="c1"># Gets the main Playwright browser from self.browser
+</span>        <span class="n">playwright_browser</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">browser</span><span class="p">.</span><span class="n">get_playwright_browser</span><span class="p">()</span>
+        <span class="c1"># Creates the isolated Playwright context (like the incognito window)
+</span>        <span class="n">context</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_create_context</span><span class="p">(</span><span class="n">playwright_browser</span><span class="p">)</span>
+        <span class="c1"># Creates the BrowserSession to hold the context and state
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">session</span> <span class="o">=</span> <span class="n">BrowserSession</span><span class="p">(</span><span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">,</span> <span class="n">cached_state</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"BrowserContext session initialized (ID: </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">context_id</span><span class="si">}</span><span class="s">)."</span><span class="p">)</span>
+        <span class="c1"># ... (sets up the initial page) ...
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">session</span>
+
+    <span class="c1"># ... other methods like navigate_to, close, etc. ...
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">get_state</code> method orchestrates fetching the current information from the browser session.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: browser/context.py (Simplified get_state and helpers) ---
+# ... other imports ...
+</span><span class="kn">from</span> <span class="nn">browser_use.dom.service</span> <span class="kn">import</span> <span class="n">DomService</span> <span class="c1"># Imports the DOM analyzer
+</span><span class="kn">from</span> <span class="nn">browser_use.browser.views</span> <span class="kn">import</span> <span class="n">BrowserState</span> <span class="c1"># Imports the state structure
+</span>
+<span class="k">class</span> <span class="nc">BrowserContext</span><span class="p">:</span>
+    <span class="c1"># ... (init, aenter, etc.) ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">get_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BrowserState</span><span class="p">:</span>
+        <span class="s">"""Get the current state of the browser session."""</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"Getting state for context </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">context_id</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+        <span class="c1"># 1. Make sure the page is loaded and stable
+</span>        <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_wait_for_page_and_frames_load</span><span class="p">()</span>
+
+        <span class="c1"># 2. Get the actual Playwright session object
+</span>        <span class="n">session</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_session</span><span class="p">()</span>
+
+        <span class="c1"># 3. Update the state (this does the heavy lifting)
+</span>        <span class="n">session</span><span class="p">.</span><span class="n">cached_state</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_update_state</span><span class="p">()</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"State update complete for </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">context_id</span><span class="si">}</span><span class="s">."</span><span class="p">)</span>
+
+        <span class="c1"># 4. Optionally save cookies if configured
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">config</span><span class="p">.</span><span class="n">cookies_file</span><span class="p">:</span>
+            <span class="n">asyncio</span><span class="p">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">save_cookies</span><span class="p">())</span>
+
+        <span class="k">return</span> <span class="n">session</span><span class="p">.</span><span class="n">cached_state</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_wait_for_page_and_frames_load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout_overwrite</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+         <span class="s">"""Ensures page is fully loaded before continuing."""</span>
+         <span class="c1"># ... (complex logic to wait for network idle, minimum times) ...
+</span>         <span class="n">page</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_current_page</span><span class="p">()</span>
+         <span class="k">await</span> <span class="n">page</span><span class="p">.</span><span class="n">wait_for_load_state</span><span class="p">(</span><span class="s">'load'</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">5000</span><span class="p">)</span> <span class="c1"># Simplified wait
+</span>         <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="s">"Page load/network stability checks passed."</span><span class="p">)</span>
+         <span class="k">await</span> <span class="n">asyncio</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">config</span><span class="p">.</span><span class="n">minimum_wait_page_load_time</span><span class="p">)</span> <span class="c1"># Ensure minimum wait
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_update_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BrowserState</span><span class="p">:</span>
+        <span class="s">"""Fetches all info and builds the BrowserState."""</span>
+        <span class="n">session</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_session</span><span class="p">()</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_current_page</span><span class="p">()</span> <span class="c1"># Get the active Playwright page object
+</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Use DomService to analyze the page content
+</span>            <span class="n">dom_service</span> <span class="o">=</span> <span class="n">DomService</span><span class="p">(</span><span class="n">page</span><span class="p">)</span>
+            <span class="c1"># Get the simplified DOM tree and interactive elements map
+</span>            <span class="n">content_info</span> <span class="o">=</span> <span class="k">await</span> <span class="n">dom_service</span><span class="p">.</span><span class="n">get_clickable_elements</span><span class="p">(</span>
+                <span class="n">highlight_elements</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">config</span><span class="p">.</span><span class="n">highlight_elements</span><span class="p">,</span>
+                <span class="c1"># ... other DOM options ...
+</span>            <span class="p">)</span>
+
+            <span class="c1"># Take a screenshot
+</span>            <span class="n">screenshot_b64</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">take_screenshot</span><span class="p">()</span>
+
+            <span class="c1"># Get URL, Title, Tabs, Scroll info etc.
+</span>            <span class="n">url</span> <span class="o">=</span> <span class="n">page</span><span class="p">.</span><span class="n">url</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">page</span><span class="p">.</span><span class="n">title</span><span class="p">()</span>
+            <span class="n">tabs</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_tabs_info</span><span class="p">()</span>
+            <span class="n">pixels_above</span><span class="p">,</span> <span class="n">pixels_below</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_scroll_info</span><span class="p">(</span><span class="n">page</span><span class="p">)</span>
+
+            <span class="c1"># Create the BrowserState object
+</span>            <span class="n">browser_state</span> <span class="o">=</span> <span class="n">BrowserState</span><span class="p">(</span>
+                <span class="n">element_tree</span><span class="o">=</span><span class="n">content_info</span><span class="p">.</span><span class="n">element_tree</span><span class="p">,</span>
+                <span class="n">selector_map</span><span class="o">=</span><span class="n">content_info</span><span class="p">.</span><span class="n">selector_map</span><span class="p">,</span>
+                <span class="n">url</span><span class="o">=</span><span class="n">url</span><span class="p">,</span>
+                <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">,</span>
+                <span class="n">tabs</span><span class="o">=</span><span class="n">tabs</span><span class="p">,</span>
+                <span class="n">screenshot</span><span class="o">=</span><span class="n">screenshot_b64</span><span class="p">,</span>
+                <span class="n">pixels_above</span><span class="o">=</span><span class="n">pixels_above</span><span class="p">,</span>
+                <span class="n">pixels_below</span><span class="o">=</span><span class="n">pixels_below</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">browser_state</span>
+
+        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s">'Failed to update state: </span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s">'</span><span class="p">)</span>
+            <span class="c1"># Maybe return old state or raise error
+</span>            <span class="k">raise</span> <span class="n">BrowserError</span><span class="p">(</span><span class="s">"Failed to get browser state"</span><span class="p">)</span> <span class="k">from</span> <span class="n">e</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">take_screenshot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">full_page</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="bp">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="s">"""Takes a screenshot and returns base64 encoded string."""</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_current_page</span><span class="p">()</span>
+        <span class="n">screenshot_bytes</span> <span class="o">=</span> <span class="k">await</span> <span class="n">page</span><span class="p">.</span><span class="n">screenshot</span><span class="p">(</span><span class="n">full_page</span><span class="o">=</span><span class="n">full_page</span><span class="p">,</span> <span class="n">animations</span><span class="o">=</span><span class="s">'disabled'</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">base64</span><span class="p">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">screenshot_bytes</span><span class="p">).</span><span class="n">decode</span><span class="p">(</span><span class="s">'utf-8'</span><span class="p">)</span>
+
+    <span class="c1"># ... many other helper methods (_get_current_page, get_tabs_info, etc.) ...
+</span>
+</code></pre></div></div>
+<p>This shows how <code class="language-plaintext highlighter-rouge">BrowserContext</code> acts as a manager for a specific browser session, using underlying tools (like Playwright and <code class="language-plaintext highlighter-rouge">DomService</code>) to gather the necessary information (<code class="language-plaintext highlighter-rouge">BrowserState</code>) that the <code class="language-plaintext highlighter-rouge">Agent</code> needs to operate.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">BrowserContext</code> is a fundamental concept in <code class="language-plaintext highlighter-rouge">Browser Use</code>. It provides the necessary <strong>isolated environment</strong> for the <code class="language-plaintext highlighter-rouge">Agent</code> to perform its tasks, much like an incognito window or a separate browser profile. It manages the session’s state (URL, cookies, tabs, page content) and provides the <code class="language-plaintext highlighter-rouge">Agent</code> with a snapshot of the current situation via the <code class="language-plaintext highlighter-rouge">get_state()</code> method.</p>
+
+<p>Understanding the <code class="language-plaintext highlighter-rouge">BrowserContext</code> helps clarify <em>where</em> the Agent works. Now, how does the Agent actually understand the <em>content</em> of the webpage within that context? How is the complex structure of a webpage represented in a way the Agent (and the LLM) can understand?</p>
+
+<p>In the next chapter, we’ll dive into exactly that: the <a href="04_dom_representation.md">DOM Representation</a>.</p>
+
+<p><a href="04_dom_representation.md">Next Chapter: DOM Representation</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

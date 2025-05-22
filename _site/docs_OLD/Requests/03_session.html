@@ -1,0 +1,336 @@
+<h1 id="chapter-3-remembering-things---the-session-object">Chapter 3: Remembering Things - The Session Object</h1>
+
+<p>In <a href="01_functional_api.md">Chapter 1</a>, we learned the easiest way to make web requests using functions like <code class="language-plaintext highlighter-rouge">requests.get()</code>. In <a href="02_request___response_models.md">Chapter 2</a>, we looked at the <code class="language-plaintext highlighter-rouge">Request</code> and <code class="language-plaintext highlighter-rouge">Response</code> objects that structure our communication with web servers.</p>
+
+<p>We also saw that the simple functional API methods like <code class="language-plaintext highlighter-rouge">requests.get()</code> are great for single, one-off requests. But what if you need to talk to the <em>same website</em> multiple times? For example, maybe you need to:</p>
+
+<ol>
+  <li>Log in to a website (which gives you a “session cookie” to prove you’re logged in).</li>
+  <li>Make several requests to access different pages that <em>require</em> you to be logged in (using that cookie).</li>
+</ol>
+
+<p>If you use <code class="language-plaintext highlighter-rouge">requests.get()</code> for each step, you’ll have a problem. Remember how <code class="language-plaintext highlighter-rouge">requests.get()</code> creates a <em>temporary</em> setup for each call and then throws it away? This means it forgets the login cookie immediately after the login request! Your next request will be like visiting the site as a brand new, logged-out user.</p>
+
+<p>How can we make <code class="language-plaintext highlighter-rouge">Requests</code> remember things between requests, just like your web browser does when you navigate around a logged-in site?</p>
+
+<h2 id="meet-the-session-object-your-persistent-browser-tab">Meet the <code class="language-plaintext highlighter-rouge">Session</code> Object: Your Persistent Browser Tab</h2>
+
+<p>This is where the <code class="language-plaintext highlighter-rouge">requests.Session</code> object comes in!</p>
+
+<p>Think of a <code class="language-plaintext highlighter-rouge">Session</code> object as a dedicated browser tab you’ve opened just for interacting with a specific website or web service. What does a browser tab do?</p>
+
+<ul>
+  <li><strong>Remembers Cookies:</strong> If you log in on a website in one tab, that tab remembers your login cookie. When you click a link <em>within that same tab</em>, the browser automatically sends the cookie back, keeping you logged in.</li>
+  <li><strong>Keeps Connections Warm:</strong> Your browser often keeps the underlying network connection (TCP connection) to the website open for a little while. This makes clicking links and loading subsequent pages much faster because it doesn’t have to establish a new connection every single time. This is called <strong>connection pooling</strong>.</li>
+  <li><strong>Applies Consistent Settings:</strong> You might have browser extensions that add specific headers to your requests, or your browser sends a consistent “User-Agent” string identifying itself.</li>
+</ul>
+
+<p>A <code class="language-plaintext highlighter-rouge">requests.Session</code> object does all of these things for your Python script:</p>
+
+<ol>
+  <li><strong>Cookie Persistence:</strong> It automatically stores cookies sent by the server and sends them back on subsequent requests to the same domain.</li>
+  <li><strong>Connection Pooling:</strong> It reuses the underlying TCP connections for requests to the same host, significantly speeding up multiple requests. This is managed by components called <a href="07_transport_adapters.md">Transport Adapters</a>.</li>
+  <li><strong>Default Data:</strong> You can set default headers, authentication details, query parameters, or proxy settings directly on the <code class="language-plaintext highlighter-rouge">Session</code> object, and they will be applied to all requests made through that session.</li>
+</ol>
+
+<h2 id="using-a-session">Using a <code class="language-plaintext highlighter-rouge">Session</code></h2>
+
+<p>Using a <code class="language-plaintext highlighter-rouge">Session</code> is almost as easy as using the functional API. Instead of calling <code class="language-plaintext highlighter-rouge">requests.get()</code>, you first create a <code class="language-plaintext highlighter-rouge">Session</code> object, and then call methods like <code class="language-plaintext highlighter-rouge">get()</code> or <code class="language-plaintext highlighter-rouge">post()</code> on <em>that object</em>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="c1"># 1. Create a Session object
+</span><span class="n">s</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">Session</span><span class="p">()</span>
+
+<span class="c1"># Let's try accessing a page that requires a login (we're not logged in yet)
+</span><span class="n">login_required_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/cookies'</span> <span class="c1"># This page shows cookies sent to it
+</span><span class="k">print</span><span class="p">(</span><span class="s">"Trying to access protected page without login..."</span><span class="p">)</span>
+<span class="n">response1</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">login_required_url</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"Cookies sent (should be none):"</span><span class="p">,</span> <span class="n">response1</span><span class="p">.</span><span class="n">json</span><span class="p">())</span> <span class="c1"># httpbin returns JSON
+</span>
+<span class="c1"># Now, let's simulate 'logging in' by visiting a page that sets a cookie
+</span><span class="n">cookie_setter_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/cookies/set/sessioncookie/123456789'</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Simulating login by getting a cookie..."</span><span class="p">)</span>
+<span class="n">response2</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">cookie_setter_url</span><span class="p">)</span>
+<span class="c1"># The session automatically stored the cookie! Check the session's cookie jar:
+</span><span class="k">print</span><span class="p">(</span><span class="s">"Session cookies after setting:"</span><span class="p">,</span> <span class="n">s</span><span class="p">.</span><span class="n">cookies</span><span class="p">.</span><span class="n">get_dict</span><span class="p">())</span>
+
+<span class="c1"># Now, try accessing the 'protected' page again using the SAME session
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Trying to access protected page AGAIN with the session..."</span><span class="p">)</span>
+<span class="n">response3</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">login_required_url</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"Cookies sent (should have sessioncookie):"</span><span class="p">,</span> <span class="n">response3</span><span class="p">.</span><span class="n">json</span><span class="p">())</span>
+
+<span class="c1"># Compare with using the functional API (which forgets cookies)
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Trying the same with functional API (will fail)..."</span><span class="p">)</span>
+<span class="n">response4</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">cookie_setter_url</span><span class="p">)</span> <span class="c1"># Gets cookie, but immediately forgets
+</span><span class="n">response5</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">login_required_url</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"Cookies sent via functional API (should be none):"</span><span class="p">,</span> <span class="n">response5</span><span class="p">.</span><span class="n">json</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p><strong>What happened here?</strong></p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">s = requests.Session()</code>: We created our “persistent browser tab”.</li>
+  <li><code class="language-plaintext highlighter-rouge">response1 = s.get(login_required_url)</code>: Our first request sent no cookies, as expected.</li>
+  <li><code class="language-plaintext highlighter-rouge">response2 = s.get(cookie_setter_url)</code>: We visited a URL designed to send back a <code class="language-plaintext highlighter-rouge">Set-Cookie</code> header. The <code class="language-plaintext highlighter-rouge">Session</code> object automatically noticed this and stored the <code class="language-plaintext highlighter-rouge">sessioncookie</code> in its internal <a href="04_cookie_jar.md">Cookie Jar</a>.</li>
+  <li><code class="language-plaintext highlighter-rouge">s.cookies.get_dict()</code>: We peeked inside the session’s cookie storage and saw the cookie was indeed saved.</li>
+  <li><code class="language-plaintext highlighter-rouge">response3 = s.get(login_required_url)</code>: We made <em>another</em> request using the <em>same</em> session <code class="language-plaintext highlighter-rouge">s</code>. This time, the session automatically included the <code class="language-plaintext highlighter-rouge">sessioncookie</code> in the request headers. The server received it!</li>
+  <li>The last part shows that if we used <code class="language-plaintext highlighter-rouge">requests.get()</code> instead, the cookie from <code class="language-plaintext highlighter-rouge">response4</code> would be lost, and <code class="language-plaintext highlighter-rouge">response5</code> would fail to send it. The <code class="language-plaintext highlighter-rouge">Session</code> was crucial for remembering the cookie.</li>
+</ol>
+
+<h2 id="persistent-settings-headers-auth-etc">Persistent Settings: Headers, Auth, etc.</h2>
+
+<p>Besides cookies, you can set other things on the <code class="language-plaintext highlighter-rouge">Session</code> that will apply to all its requests.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">import</span> <span class="nn">os</span> <span class="c1"># To get environment variables for auth example
+</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">Session</span><span class="p">()</span>
+
+<span class="c1"># Set a default header for all requests made by this session
+</span><span class="n">s</span><span class="p">.</span><span class="n">headers</span><span class="p">.</span><span class="n">update</span><span class="p">({</span><span class="s">'X-My-Custom-Header'</span><span class="p">:</span> <span class="s">'HelloSession'</span><span class="p">})</span>
+
+<span class="c1"># Set default authentication (using basic auth from environment variables for example)
+# NOTE: Replace with actual username/password or use httpbin's basic-auth endpoint
+# For httpbin, the user/pass is 'user'/'pass'
+# s.auth = ('user', 'passwd') # Set directly if needed
+</span><span class="n">httpbin_user</span> <span class="o">=</span> <span class="n">os</span><span class="p">.</span><span class="n">environ</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"HTTPBIN_USER"</span><span class="p">,</span> <span class="s">"testuser"</span><span class="p">)</span> <span class="c1"># Fake user if not set
+</span><span class="n">httpbin_pass</span> <span class="o">=</span> <span class="n">os</span><span class="p">.</span><span class="n">environ</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"HTTPBIN_PASS"</span><span class="p">,</span> <span class="s">"testpass"</span><span class="p">)</span> <span class="c1"># Fake pass if not set
+</span><span class="n">s</span><span class="p">.</span><span class="n">auth</span> <span class="o">=</span> <span class="p">(</span><span class="n">httpbin_user</span><span class="p">,</span> <span class="n">httpbin_pass</span><span class="p">)</span>
+
+<span class="c1"># Set default query parameters
+</span><span class="n">s</span><span class="p">.</span><span class="n">params</span><span class="p">.</span><span class="n">update</span><span class="p">({</span><span class="s">'session_param'</span><span class="p">:</span> <span class="s">'persistent'</span><span class="p">})</span>
+
+<span class="c1"># Now make a request
+</span><span class="n">url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/get'</span> <span class="c1"># Changed endpoint to see params
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Making request with persistent session settings to: </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Status Code: </span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Check the response (httpbin.org/get echoes back request details)
+</span><span class="n">response_data</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">json</span><span class="p">()</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Headers sent (look for X-My-Custom-Header):"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">response_data</span><span class="p">[</span><span class="s">'headers'</span><span class="p">])</span>
+<span class="c1"># print("\nAuth info sent (if using httpbin basic-auth):")
+# print(response_data.get('authenticated'), response_data.get('user')) # Won't show here for /get
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Query parameters sent (look for session_param):"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">response_data</span><span class="p">[</span><span class="s">'args'</span><span class="p">])</span>
+
+<span class="c1"># Make another request to a different endpoint using the same session
+</span><span class="n">headers_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/headers'</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Making request to </span><span class="si">{</span><span class="n">headers_url</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+<span class="n">response_headers</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">headers_url</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"Headers received by second request (still has custom header):"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">response_headers</span><span class="p">.</span><span class="n">json</span><span class="p">()[</span><span class="s">'headers'</span><span class="p">])</span>
+</code></pre></div></div>
+
+<p><strong>What we see:</strong></p>
+
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">X-My-Custom-Header</code> we set on <code class="language-plaintext highlighter-rouge">s.headers</code> was automatically added to both requests.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">session_param</code> we added to <code class="language-plaintext highlighter-rouge">s.params</code> was included in the query string of the first request.</li>
+  <li>If we had used a real authentication endpoint, the <code class="language-plaintext highlighter-rouge">s.auth</code> details would have been used automatically.</li>
+  <li>We didn’t have to specify these details on each <code class="language-plaintext highlighter-rouge">s.get()</code> call! The <code class="language-plaintext highlighter-rouge">Session</code> handled it.</li>
+</ul>
+
+<h2 id="using-sessions-with-with-context-manager">Using Sessions with <code class="language-plaintext highlighter-rouge">with</code> (Context Manager)</h2>
+
+<p>Sessions manage resources like network connections. It’s good practice to explicitly close them when you’re done. The easiest way to ensure this happens is to use the <code class="language-plaintext highlighter-rouge">Session</code> as a context manager with the <code class="language-plaintext highlighter-rouge">with</code> statement.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="n">url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/cookies'</span>
+
+<span class="c1"># Use the Session as a context manager
+</span><span class="k">with</span> <span class="n">requests</span><span class="p">.</span><span class="n">Session</span><span class="p">()</span> <span class="k">as</span> <span class="n">s</span><span class="p">:</span>
+    <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'https://httpbin.org/cookies/set/contextcookie/abc'</span><span class="p">)</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Cookies sent within 'with' block:"</span><span class="p">,</span> <span class="n">response</span><span class="p">.</span><span class="n">json</span><span class="p">())</span>
+
+<span class="c1"># After the 'with' block, the session 's' is automatically closed.
+# Making a request now might fail or use a new connection pool if s was reused (not recommended)
+# print("\nTrying to use session after 'with' block (might not work as expected)...")
+# try:
+#    response_after = s.get(url)
+#    print(response_after.text)
+# except Exception as e:
+#    print(f"Error using session after close: {e}")
+</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Session automatically closed after 'with' block."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">with</code> statement ensures that <code class="language-plaintext highlighter-rouge">s.close()</code> is called automatically at the end of the block, even if errors occur. This cleans up the underlying connections managed by the <a href="07_transport_adapters.md">Transport Adapters</a>.</p>
+
+<h2 id="how-it-works-internally">How It Works Internally</h2>
+
+<p>So, how does the <code class="language-plaintext highlighter-rouge">Session</code> actually achieve this persistence and efficiency?</p>
+
+<ol>
+  <li><strong>State Storage:</strong> The <code class="language-plaintext highlighter-rouge">Session</code> object itself holds onto configuration like <code class="language-plaintext highlighter-rouge">headers</code>, <code class="language-plaintext highlighter-rouge">cookies</code> (in a <a href="04_cookie_jar.md">Cookie Jar</a>), <code class="language-plaintext highlighter-rouge">auth</code>, <code class="language-plaintext highlighter-rouge">params</code>, etc.</li>
+  <li><strong>Request Preparation:</strong> When you call a method like <code class="language-plaintext highlighter-rouge">s.get(url, headers=...)</code>, the <code class="language-plaintext highlighter-rouge">Session</code> takes your request details <em>and</em> its own stored settings and merges them together. It uses these merged settings to create the <code class="language-plaintext highlighter-rouge">PreparedRequest</code> object we saw in <a href="02_request___response_models.md">Chapter 2</a>. Session cookies and headers get added automatically during this step (<code class="language-plaintext highlighter-rouge">Session.prepare_request</code>).</li>
+  <li><strong>Transport Adapters &amp; Pooling:</strong> The <code class="language-plaintext highlighter-rouge">Session</code> doesn’t directly handle network sockets. It delegates the sending of the <code class="language-plaintext highlighter-rouge">PreparedRequest</code> to a suitable <strong>Transport Adapter</strong> (usually <code class="language-plaintext highlighter-rouge">HTTPAdapter</code> for HTTP/HTTPS). Each <code class="language-plaintext highlighter-rouge">Session</code> typically keeps instances of these adapters. The <em>adapter</em> is responsible for managing the pool of underlying network connections (<code class="language-plaintext highlighter-rouge">urllib3</code>’s connection pool). When you make a request to <code class="language-plaintext highlighter-rouge">https://example.com</code>, the adapter checks if it already has an open, reusable connection to that host in its pool. If yes, it uses it (much faster!). If not, it creates a new one and potentially adds it to the pool for future reuse.</li>
+  <li><strong>Response Processing:</strong> When the adapter receives the response, it builds the <code class="language-plaintext highlighter-rouge">Response</code> object. The <code class="language-plaintext highlighter-rouge">Session</code> then gets the <code class="language-plaintext highlighter-rouge">Response</code> back from the adapter. Crucially, it inspects the response headers (like <code class="language-plaintext highlighter-rouge">Set-Cookie</code>) and updates its own state (e.g., adds new cookies to its <code class="language-plaintext highlighter-rouge">Cookie Jar</code>).</li>
+</ol>
+
+<p>Here’s a simplified diagram showing two requests using a <code class="language-plaintext highlighter-rouge">Session</code>:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User as Your Code
+    participant Sess as Session Object
+    participant PrepReq as PreparedRequest
+    participant Adapter as Transport Adapter (holds connection pool)
+    participant Server as Web Server
+
+    User-&gt;&gt;Sess: Create Session()
+    User-&gt;&gt;Sess: s.get(url1, headers={'User-Header': 'A'})
+    Sess-&gt;&gt;Sess: Merge s.headers, s.cookies, s.auth... with User's headers/data
+    Sess-&gt;&gt;PrepReq: prepare_request(merged_settings)
+    Sess-&gt;&gt;Adapter: send(prepared_request)
+    Adapter-&gt;&gt;Adapter: Get connection from pool (or create new)
+    Adapter-&gt;&gt;Server: Send HTTP Request 1 (with session+user headers, session cookies)
+    Server--&gt;&gt;Adapter: Send HTTP Response 1 (sets cookie 'C')
+    Adapter-&gt;&gt;Sess: Return Response 1
+    Sess-&gt;&gt;Sess: Extract cookie 'C' into s.cookies
+    Sess--&gt;&gt;User: Return Response 1
+
+    User-&gt;&gt;Sess: s.get(url2)
+    Sess-&gt;&gt;Sess: Merge s.headers, s.cookies ('C'), s.auth...
+    Sess-&gt;&gt;PrepReq: prepare_request(merged_settings)
+    Sess-&gt;&gt;Adapter: send(prepared_request)
+    Adapter-&gt;&gt;Adapter: Get REUSED connection from pool
+    Adapter-&gt;&gt;Server: Send HTTP Request 2 (with session headers, cookie 'C')
+    Server--&gt;&gt;Adapter: Send HTTP Response 2
+    Adapter-&gt;&gt;Sess: Return Response 2
+    Sess--&gt;&gt;User: Return Response 2
+</code></pre>
+
+<p>You can see the core logic in <code class="language-plaintext highlighter-rouge">requests/sessions.py</code>. The <code class="language-plaintext highlighter-rouge">Session.request</code> method orchestrates the process:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: requests/sessions.py (Simplified View)
+</span>
+<span class="c1"># [...] imports and helper functions
+</span>
+<span class="k">class</span> <span class="nc">Session</span><span class="p">(</span><span class="n">SessionRedirectMixin</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Stores persistent headers, cookies, auth, etc.
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">default_headers</span><span class="p">()</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">cookies</span> <span class="o">=</span> <span class="n">cookiejar_from_dict</span><span class="p">({})</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">auth</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">params</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># [...] other defaults like verify, proxies, max_redirects
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">adapters</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">()</span> <span class="c1"># Holds Transport Adapters
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">mount</span><span class="p">(</span><span class="s">'https://'</span><span class="p">,</span> <span class="n">HTTPAdapter</span><span class="p">())</span> <span class="c1"># Default adapter for HTTPS
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">mount</span><span class="p">(</span><span class="s">'http://'</span><span class="p">,</span> <span class="n">HTTPAdapter</span><span class="p">())</span>  <span class="c1"># Default adapter for HTTP
+</span>
+    <span class="k">def</span> <span class="nf">prepare_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="s">"""Prepares a Request object with Session settings."""</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">PreparedRequest</span><span class="p">()</span>
+
+        <span class="c1"># MERGE session settings with request settings
+</span>        <span class="n">merged_cookies</span> <span class="o">=</span> <span class="n">merge_cookies</span><span class="p">(</span><span class="n">RequestsCookieJar</span><span class="p">(),</span> <span class="bp">self</span><span class="p">.</span><span class="n">cookies</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">request</span><span class="p">.</span><span class="n">cookies</span><span class="p">:</span>
+            <span class="n">merged_cookies</span> <span class="o">=</span> <span class="n">merge_cookies</span><span class="p">(</span><span class="n">merged_cookies</span><span class="p">,</span> <span class="n">cookiejar_from_dict</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="n">cookies</span><span class="p">))</span>
+
+        <span class="n">merged_headers</span> <span class="o">=</span> <span class="n">merge_setting</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="n">headers</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">headers</span><span class="p">,</span> <span class="n">dict_class</span><span class="o">=</span><span class="n">CaseInsensitiveDict</span><span class="p">)</span>
+        <span class="n">merged_params</span> <span class="o">=</span> <span class="n">merge_setting</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">merged_auth</span> <span class="o">=</span> <span class="n">merge_setting</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="n">auth</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">auth</span><span class="p">)</span>
+        <span class="c1"># [...] merge other settings like hooks
+</span>
+        <span class="n">p</span><span class="p">.</span><span class="n">prepare</span><span class="p">(</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">method</span><span class="p">.</span><span class="n">upper</span><span class="p">(),</span>
+            <span class="n">url</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">url</span><span class="p">,</span>
+            <span class="n">headers</span><span class="o">=</span><span class="n">merged_headers</span><span class="p">,</span>
+            <span class="n">files</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">files</span><span class="p">,</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">data</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">json</span><span class="p">,</span>
+            <span class="n">params</span><span class="o">=</span><span class="n">merged_params</span><span class="p">,</span>
+            <span class="n">auth</span><span class="o">=</span><span class="n">merged_auth</span><span class="p">,</span>
+            <span class="n">cookies</span><span class="o">=</span><span class="n">merged_cookies</span><span class="p">,</span> <span class="c1"># Pass merged cookies to PreparedRequest
+</span>            <span class="n">hooks</span><span class="o">=</span><span class="n">merge_hooks</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="n">hooks</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">hooks</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">p</span>
+
+    <span class="k">def</span> <span class="nf">request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="s">"""Constructs a Request, prepares it, sends it."""</span>
+        <span class="c1"># Create the initial Request object from user args
+</span>        <span class="n">req</span> <span class="o">=</span> <span class="n">Request</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">.</span><span class="n">upper</span><span class="p">(),</span> <span class="n">url</span><span class="o">=</span><span class="n">url</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="c1"># Simplified
+</span>
+        <span class="c1"># Prepare the request, merging session state
+</span>        <span class="n">prep</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">prepare_request</span><span class="p">(</span><span class="n">req</span><span class="p">)</span>
+
+        <span class="c1"># Get environment settings (proxies, verify, cert) merged with session settings
+</span>        <span class="n">proxies</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'proxies'</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">settings</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">merge_environment_settings</span><span class="p">(</span><span class="n">prep</span><span class="p">.</span><span class="n">url</span><span class="p">,</span> <span class="n">proxies</span><span class="p">,</span>
+                                                  <span class="n">kwargs</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'stream'</span><span class="p">),</span>
+                                                  <span class="n">kwargs</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'verify'</span><span class="p">),</span>
+                                                  <span class="n">kwargs</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'cert'</span><span class="p">))</span>
+        <span class="n">send_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s">'timeout'</span><span class="p">:</span> <span class="n">kwargs</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'timeout'</span><span class="p">),</span>
+                       <span class="s">'allow_redirects'</span><span class="p">:</span> <span class="n">kwargs</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'allow_redirects'</span><span class="p">,</span> <span class="bp">True</span><span class="p">)}</span>
+        <span class="n">send_kwargs</span><span class="p">.</span><span class="n">update</span><span class="p">(</span><span class="n">settings</span><span class="p">)</span>
+
+        <span class="c1"># Send the prepared request using the appropriate adapter
+</span>        <span class="n">resp</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">prep</span><span class="p">,</span> <span class="o">**</span><span class="n">send_kwargs</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">resp</span>
+
+    <span class="k">def</span> <span class="nf">send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="s">"""Sends a PreparedRequest object."""</span>
+        <span class="c1"># [...] set default kwargs if needed
+</span>
+        <span class="c1"># Get the right adapter (e.g., HTTPAdapter) based on URL
+</span>        <span class="n">adapter</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_adapter</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">url</span><span class="p">)</span>
+
+        <span class="c1"># The adapter sends the request (using connection pooling)
+</span>        <span class="n">r</span> <span class="o">=</span> <span class="n">adapter</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># [...] response hook processing
+</span>
+        <span class="c1"># IMPORTANT: Extract cookies from the response and store them in the session's cookie jar
+</span>        <span class="n">extract_cookies_to_jar</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">cookies</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">r</span><span class="p">.</span><span class="n">raw</span><span class="p">)</span>
+
+        <span class="c1"># [...] redirect handling (which also extracts cookies)
+</span>
+        <span class="k">return</span> <span class="n">r</span>
+
+    <span class="k">def</span> <span class="nf">get_adapter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+        <span class="s">"""Finds the Transport Adapter for the URL (e.g., HTTPAdapter)."""</span>
+        <span class="c1"># ... loops through self.adapters ...
+</span>        <span class="c1"># Simplified: return self.adapters['http://'] or self.adapters['https://']
+</span>        <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">adapter</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">adapters</span><span class="p">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">url</span><span class="p">.</span><span class="n">lower</span><span class="p">().</span><span class="n">startswith</span><span class="p">(</span><span class="n">prefix</span><span class="p">.</span><span class="n">lower</span><span class="p">()):</span>
+                <span class="k">return</span> <span class="n">adapter</span>
+        <span class="k">raise</span> <span class="n">InvalidSchema</span><span class="p">(</span><span class="sa">f</span><span class="s">"No connection adapters were found for </span><span class="si">{</span><span class="n">url</span><span class="si">!r}</span><span class="s">"</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">mount</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">adapter</span><span class="p">):</span>
+        <span class="s">"""Attaches a Transport Adapter to handle URLs starting with 'prefix'."""</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">adapters</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span> <span class="o">=</span> <span class="n">adapter</span>
+        <span class="c1"># [...] sort adapters by prefix length
+</span>
+    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">"""Closes the session and all its adapters (and connections)."""</span>
+        <span class="k">for</span> <span class="n">adapter</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">adapters</span><span class="p">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">adapter</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="c1"># [...] other methods like get(), post(), put(), delete() which call self.request()
+</span>    <span class="c1"># [...] redirect handling logic in SessionRedirectMixin
+</span></code></pre></div></div>
+
+<p>The key takeaways are:</p>
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">Session</code> object holds the state (<code class="language-plaintext highlighter-rouge">headers</code>, <code class="language-plaintext highlighter-rouge">cookies</code>, <code class="language-plaintext highlighter-rouge">auth</code>).</li>
+  <li><code class="language-plaintext highlighter-rouge">prepare_request</code> merges this state with the details of the specific request you’re making.</li>
+  <li><code class="language-plaintext highlighter-rouge">send</code> uses a <code class="language-plaintext highlighter-rouge">Transport Adapter</code> (like <code class="language-plaintext highlighter-rouge">HTTPAdapter</code>) which handles the actual network communication and connection pooling.</li>
+  <li>After a response is received, <code class="language-plaintext highlighter-rouge">send</code> (and the redirection logic) updates the <code class="language-plaintext highlighter-rouge">Session</code>’s cookies.</li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the <code class="language-plaintext highlighter-rouge">requests.Session</code> object, a powerful tool for making multiple requests to the same host efficiently. You saw how it automatically handles <strong>cookie persistence</strong> and provides significant performance benefits through <strong>connection pooling</strong> (via <a href="07_transport_adapters.md">Transport Adapters</a>). You also learned how to set persistent <code class="language-plaintext highlighter-rouge">headers</code>, <code class="language-plaintext highlighter-rouge">auth</code>, and other settings on a session. Using a <code class="language-plaintext highlighter-rouge">Session</code> is the recommended approach when your script needs to interact with a website more than once.</p>
+
+<p>We mentioned that the <code class="language-plaintext highlighter-rouge">Session</code> stores cookies in a “Cookie Jar”. What exactly is that, and can we interact with it more directly? Let’s find out.</p>
+
+<p><strong>Next:</strong> <a href="04_cookie_jar.md">Chapter 4: The Cookie Jar</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

@@ -1,0 +1,351 @@
+<h1 id="chapter-7-beat-scheduler---celerys-alarm-clock">Chapter 7: Beat (Scheduler) - Celery’s Alarm Clock</h1>
+
+<p>In the last chapter, <a href="06_result_backend.md">Chapter 6: Result Backend</a>, we learned how to track the status and retrieve the results of our background tasks. This is great when we manually trigger tasks from our application. But what if we want tasks to run automatically, without us needing to press a button every time?</p>
+
+<p>Maybe you need to:</p>
+<ul>
+  <li>Send out a newsletter email every Friday morning.</li>
+  <li>Clean up temporary files in your system every night.</li>
+  <li>Check the health of your external services every 5 minutes.</li>
+</ul>
+
+<p>How can you make Celery do these things on a regular schedule? Meet <strong>Celery Beat</strong>.</p>
+
+<h2 id="what-problem-does-beat-solve">What Problem Does Beat Solve?</h2>
+
+<p>Imagine you have a task, say <code class="language-plaintext highlighter-rouge">send_daily_report()</code>, that needs to run every morning at 8:00 AM. How would you achieve this? You could try setting up a system <code class="language-plaintext highlighter-rouge">cron</code> job to call a Python script that sends the Celery task, but that adds another layer of complexity.</p>
+
+<p>Celery provides its own built-in solution: <strong>Beat</strong>.</p>
+
+<p><strong>Beat is Celery’s periodic task scheduler.</strong> Think of it like a dedicated alarm clock or a <code class="language-plaintext highlighter-rouge">cron</code> job system built specifically for triggering Celery tasks. It’s a separate program that you run alongside your workers. Its job is simple:</p>
+
+<ol>
+  <li>Read a list of scheduled tasks (e.g., “run <code class="language-plaintext highlighter-rouge">send_daily_report</code> every day at 8:00 AM”).</li>
+  <li>Keep track of the time.</li>
+  <li>When the time comes for a scheduled task, Beat sends the task message to the <a href="04_broker_connection__amqp_.md">Broker Connection (AMQP)</a>, just as if you had called <code class="language-plaintext highlighter-rouge">.delay()</code> yourself.</li>
+  <li>A regular Celery <a href="05_worker.md">Worker</a> then picks up the task from the broker and executes it.</li>
+</ol>
+
+<p>Beat doesn’t run the tasks itself; it just <em>schedules</em> them by sending the messages at the right time.</p>
+
+<h2 id="key-concepts">Key Concepts</h2>
+
+<ol>
+  <li><strong>Beat Process:</strong> A separate Celery program you run (like <code class="language-plaintext highlighter-rouge">celery -A your_app beat</code>). It needs access to your Celery app’s configuration.</li>
+  <li><strong>Schedule:</strong> A configuration setting (usually <code class="language-plaintext highlighter-rouge">beat_schedule</code> in your Celery config) that defines which tasks should run and when. This schedule can use simple intervals (like every 30 seconds) or cron-like patterns (like “every Monday at 9 AM”).</li>
+  <li><strong>Schedule Storage:</strong> Beat needs to remember when each task was last run so it knows when it’s due again. By default, it saves this information to a local file named <code class="language-plaintext highlighter-rouge">celerybeat-schedule</code> (using Python’s <code class="language-plaintext highlighter-rouge">shelve</code> module).</li>
+  <li><strong>Ticker:</strong> The heart of Beat. It’s an internal loop that wakes up periodically, checks the schedule against the current time, and sends messages for any due tasks.</li>
+</ol>
+
+<h2 id="how-to-use-beat">How to Use Beat</h2>
+
+<p>Let’s schedule two tasks:</p>
+<ul>
+  <li>Our <code class="language-plaintext highlighter-rouge">add</code> task from <a href="03_task.md">Chapter 3: Task</a> to run every 15 seconds.</li>
+  <li>A new (dummy) task <code class="language-plaintext highlighter-rouge">send_report</code> to run every minute.</li>
+</ul>
+
+<p><strong>1. Define the Schedule in Configuration</strong></p>
+
+<p>The best place to define your schedule is in your configuration, either directly on the <code class="language-plaintext highlighter-rouge">app</code> object or in a separate <code class="language-plaintext highlighter-rouge">celeryconfig.py</code> file (see <a href="02_configuration.md">Chapter 2: Configuration</a>). We’ll use a separate file.</p>
+
+<p>First, create the new task in your <code class="language-plaintext highlighter-rouge">tasks.py</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># tasks.py (add this new task)
+</span><span class="kn">from</span> <span class="nn">celery_app</span> <span class="kn">import</span> <span class="n">app</span>
+<span class="kn">import</span> <span class="nn">time</span>
+
+<span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="s">"""A simple task that adds two numbers."""</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Task 'add' starting with (</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s">, </span><span class="si">{</span><span class="n">y</span><span class="si">}</span><span class="s">)"</span><span class="p">)</span>
+    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="c1"># Simulate short work
+</span>    <span class="n">result</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Task 'add' finished with result: </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span>
+
+<span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">send_report</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="s">"""A task simulating sending a report."""</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Task 'send_report' starting for report: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span> <span class="c1"># Simulate longer work
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Report '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">' supposedly sent."</span><span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s">"Report </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s"> sent."</span>
+</code></pre></div></div>
+
+<p>Now, update or create <code class="language-plaintext highlighter-rouge">celeryconfig.py</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># celeryconfig.py
+</span><span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">timedelta</span>
+<span class="kn">from</span> <span class="nn">celery.schedules</span> <span class="kn">import</span> <span class="n">crontab</span>
+
+<span class="c1"># Basic Broker/Backend settings (replace with your actual URLs)
+</span><span class="n">broker_url</span> <span class="o">=</span> <span class="s">'redis://localhost:6379/0'</span>
+<span class="n">result_backend</span> <span class="o">=</span> <span class="s">'redis://localhost:6379/1'</span>
+<span class="n">timezone</span> <span class="o">=</span> <span class="s">'UTC'</span> <span class="c1"># Or your preferred timezone, e.g., 'America/New_York'
+</span><span class="n">enable_utc</span> <span class="o">=</span> <span class="bp">True</span>
+
+<span class="c1"># List of modules to import when the Celery worker starts.
+# Make sure tasks.py is discoverable in your Python path
+</span><span class="n">imports</span> <span class="o">=</span> <span class="p">(</span><span class="s">'tasks'</span><span class="p">,)</span>
+
+<span class="c1"># Define the Beat schedule
+</span><span class="n">beat_schedule</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1"># Executes tasks.add every 15 seconds with arguments (16, 16)
+</span>    <span class="s">'add-every-15-seconds'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s">'task'</span><span class="p">:</span> <span class="s">'tasks.add'</span><span class="p">,</span>          <span class="c1"># The task name
+</span>        <span class="s">'schedule'</span><span class="p">:</span> <span class="mf">15.0</span><span class="p">,</span>             <span class="c1"># Run every 15 seconds (float or timedelta)
+</span>        <span class="s">'args'</span><span class="p">:</span> <span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">16</span><span class="p">),</span>             <span class="c1"># Positional arguments for the task
+</span>    <span class="p">},</span>
+    <span class="c1"># Executes tasks.send_report every minute
+</span>    <span class="s">'send-report-every-minute'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s">'task'</span><span class="p">:</span> <span class="s">'tasks.send_report'</span><span class="p">,</span>
+        <span class="s">'schedule'</span><span class="p">:</span> <span class="n">crontab</span><span class="p">(),</span>        <span class="c1"># Use crontab() for "every minute"
+</span>        <span class="s">'args'</span><span class="p">:</span> <span class="p">(</span><span class="s">'daily-summary'</span><span class="p">,),</span>   <span class="c1"># Argument for the report name
+</span>        <span class="c1"># Example using crontab for more specific timing:
+</span>        <span class="c1"># 'schedule': crontab(hour=8, minute=0, day_of_week='fri'), # Every Friday at 8:00 AM
+</span>    <span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">from datetime import timedelta</code>: Used for simple interval schedules.</li>
+  <li><code class="language-plaintext highlighter-rouge">from celery.schedules import crontab</code>: Used for cron-like scheduling.</li>
+  <li><code class="language-plaintext highlighter-rouge">imports = ('tasks',)</code>: Ensures the worker and beat know about the tasks defined in <code class="language-plaintext highlighter-rouge">tasks.py</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">beat_schedule = {...}</code>: This dictionary holds all your scheduled tasks.
+    <ul>
+      <li>Each key (<code class="language-plaintext highlighter-rouge">'add-every-15-seconds'</code>, <code class="language-plaintext highlighter-rouge">'send-report-every-minute'</code>) is a unique name for the schedule entry.</li>
+      <li>Each value is another dictionary describing the schedule:
+        <ul>
+          <li><code class="language-plaintext highlighter-rouge">'task'</code>: The full name of the task to run (e.g., <code class="language-plaintext highlighter-rouge">'module_name.task_name'</code>).</li>
+          <li><code class="language-plaintext highlighter-rouge">'schedule'</code>: Defines <em>when</em> to run.
+            <ul>
+              <li>A <code class="language-plaintext highlighter-rouge">float</code> or <code class="language-plaintext highlighter-rouge">int</code>: number of seconds between runs.</li>
+              <li>A <code class="language-plaintext highlighter-rouge">timedelta</code> object: the time interval between runs.</li>
+              <li>A <code class="language-plaintext highlighter-rouge">crontab</code> object: for complex schedules (minute, hour, day_of_week, etc.). <code class="language-plaintext highlighter-rouge">crontab()</code> with no arguments means “every minute”.</li>
+            </ul>
+          </li>
+          <li><code class="language-plaintext highlighter-rouge">'args'</code>: A tuple of positional arguments to pass to the task.</li>
+          <li><code class="language-plaintext highlighter-rouge">'kwargs'</code>: (Optional) A dictionary of keyword arguments to pass to the task.</li>
+          <li><code class="language-plaintext highlighter-rouge">'options'</code>: (Optional) A dictionary of execution options like <code class="language-plaintext highlighter-rouge">queue</code>, <code class="language-plaintext highlighter-rouge">priority</code>.</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<p><strong>2. Load the Configuration in Your App</strong></p>
+
+<p>Make sure your <code class="language-plaintext highlighter-rouge">celery_app.py</code> loads this configuration:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># celery_app.py
+</span><span class="kn">from</span> <span class="nn">celery</span> <span class="kn">import</span> <span class="n">Celery</span>
+
+<span class="c1"># Create the app instance
+</span><span class="n">app</span> <span class="o">=</span> <span class="n">Celery</span><span class="p">(</span><span class="s">'tasks'</span><span class="p">)</span>
+
+<span class="c1"># Load configuration from the 'celeryconfig' module
+</span><span class="n">app</span><span class="p">.</span><span class="n">config_from_object</span><span class="p">(</span><span class="s">'celeryconfig'</span><span class="p">)</span>
+
+<span class="c1"># Tasks might be defined here, but we put them in tasks.py
+# which is loaded via the 'imports' setting in celeryconfig.py
+</span></code></pre></div></div>
+
+<p><strong>3. Run Celery Beat</strong></p>
+
+<p>Now, open a terminal and run the Beat process. You need to tell it where your app is (<code class="language-plaintext highlighter-rouge">-A celery_app</code>):</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># In your terminal</span>
+celery <span class="nt">-A</span> celery_app beat <span class="nt">--loglevel</span><span class="o">=</span>info
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">celery</code>: The Celery command-line tool.</li>
+  <li><code class="language-plaintext highlighter-rouge">-A celery_app</code>: Points to your app instance (in <code class="language-plaintext highlighter-rouge">celery_app.py</code>).</li>
+  <li><code class="language-plaintext highlighter-rouge">beat</code>: Tells Celery to start the scheduler process.</li>
+  <li><code class="language-plaintext highlighter-rouge">--loglevel=info</code>: Shows informational messages about what Beat is doing.</li>
+</ul>
+
+<p>You’ll see output similar to this:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>celery beat v5.x.x is starting.
+__    -    ... __   -        _
+LocalTime -&gt; 2023-10-27 11:00:00
+Configuration -&gt;
+    . broker -&gt; redis://localhost:6379/0
+    . loader -&gt; celery.loaders.app.AppLoader
+    . scheduler -&gt; celery.beat.PersistentScheduler
+    . db -&gt; celerybeat-schedule
+    . logfile -&gt; [stderr]@INFO
+    . maxinterval -&gt; 300.0s (5m0s)
+celery beat v5.x.x has started.
+</code></pre></div></div>
+
+<p>Beat is now running! It will check the schedule and:</p>
+<ul>
+  <li>Every 15 seconds, it will send a message to run <code class="language-plaintext highlighter-rouge">tasks.add(16, 16)</code>.</li>
+  <li>Every minute, it will send a message to run <code class="language-plaintext highlighter-rouge">tasks.send_report('daily-summary')</code>.</li>
+</ul>
+
+<p><strong>4. Run a Worker (Crucial!)</strong></p>
+
+<p>Beat only <em>sends</em> the task messages. You still need a <a href="05_worker.md">Worker</a> running to actually <em>execute</em> the tasks. Open <strong>another terminal</strong> and start a worker:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># In a SECOND terminal</span>
+celery <span class="nt">-A</span> celery_app worker <span class="nt">--loglevel</span><span class="o">=</span>info
+</code></pre></div></div>
+
+<p>Now, watch the output in the <strong>worker’s terminal</strong>. You should see logs appearing periodically as the worker receives and executes the tasks sent by Beat:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Output in the WORKER terminal (example)
+[2023-10-27 11:00:15,000: INFO/MainProcess] Task tasks.add[task-id-1] received
+Task 'add' starting with (16, 16)
+Task 'add' finished with result: 32
+[2023-10-27 11:00:17,050: INFO/MainProcess] Task tasks.add[task-id-1] succeeded in 2.05s: 32
+
+[2023-10-27 11:01:00,000: INFO/MainProcess] Task tasks.send_report[task-id-2] received
+Task 'send_report' starting for report: daily-summary
+[2023-10-27 11:01:00,000: INFO/MainProcess] Task tasks.add[task-id-3] received  # Another 'add' task might arrive while 'send_report' runs
+Task 'add' starting with (16, 16)
+Task 'add' finished with result: 32
+[2023-10-27 11:01:02,050: INFO/MainProcess] Task tasks.add[task-id-3] succeeded in 2.05s: 32
+Report 'daily-summary' supposedly sent.
+[2023-10-27 11:01:05,100: INFO/MainProcess] Task tasks.send_report[task-id-2] succeeded in 5.10s: "Report daily-summary sent."
+... and so on ...
+</code></pre></div></div>
+
+<p>You have successfully set up scheduled tasks!</p>
+
+<h2 id="how-it-works-internally-simplified">How It Works Internally (Simplified)</h2>
+
+<ol>
+  <li><strong>Startup:</strong> You run <code class="language-plaintext highlighter-rouge">celery -A celery_app beat</code>. The Beat process starts.</li>
+  <li><strong>Load Config:</strong> It loads the Celery app (<code class="language-plaintext highlighter-rouge">celery_app</code>) and reads its configuration, paying special attention to <code class="language-plaintext highlighter-rouge">beat_schedule</code>.</li>
+  <li><strong>Load State:</strong> It opens the schedule file (e.g., <code class="language-plaintext highlighter-rouge">celerybeat-schedule</code>) to see when each task was last run. If the file doesn’t exist, it creates it.</li>
+  <li><strong>Main Loop (Tick):</strong> Beat enters its main loop (the “ticker”).</li>
+  <li><strong>Calculate Due Tasks:</strong> In each tick, Beat looks at every entry in <code class="language-plaintext highlighter-rouge">beat_schedule</code>. For each entry, it compares the current time with the task’s <code class="language-plaintext highlighter-rouge">schedule</code> definition and its <code class="language-plaintext highlighter-rouge">last_run_at</code> time (from the schedule file). It calculates which tasks are due to run <em>right now</em>.</li>
+  <li><strong>Send Task Message:</strong> If a task (e.g., <code class="language-plaintext highlighter-rouge">add-every-15-seconds</code>) is due, Beat constructs a task message (containing <code class="language-plaintext highlighter-rouge">'tasks.add'</code>, <code class="language-plaintext highlighter-rouge">args=(16, 16)</code>, etc.) just like <code class="language-plaintext highlighter-rouge">.delay()</code> would. It sends this message to the configured <strong>Broker</strong>.</li>
+  <li><strong>Update State:</strong> Beat updates the <code class="language-plaintext highlighter-rouge">last_run_at</code> time for the task it just sent in its internal state and saves this back to the schedule file.</li>
+  <li><strong>Sleep:</strong> Beat calculates the time until the <em>next</em> scheduled task is due and sleeps for that duration (or up to a maximum interval, <code class="language-plaintext highlighter-rouge">beat_max_loop_interval</code>, usually 5 minutes, whichever is shorter).</li>
+  <li><strong>Repeat:</strong> Go back to step 5.</li>
+</ol>
+
+<p>Meanwhile, a <strong>Worker</strong> process is connected to the same <strong>Broker</strong>, picks up the task messages sent by Beat, and executes them.</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Beat as Celery Beat Process
+    participant ScheduleCfg as beat_schedule Config
+    participant ScheduleDB as celerybeat-schedule File
+    participant Broker as Message Broker
+    participant Worker as Celery Worker
+
+    Beat-&gt;&gt;ScheduleCfg: Load schedule definitions on startup
+    Beat-&gt;&gt;ScheduleDB: Load last run times on startup
+
+    loop Tick Loop (e.g., every second or more)
+        Beat-&gt;&gt;Beat: Check current time
+        Beat-&gt;&gt;ScheduleCfg: Get definition for 'add-every-15'
+        Beat-&gt;&gt;ScheduleDB: Get last run time for 'add-every-15'
+        Beat-&gt;&gt;Beat: Calculate if 'add-every-15' is due now
+        alt Task 'add-every-15' is due
+            Beat-&gt;&gt;Broker: Send task message('tasks.add', (16, 16))
+            Broker--&gt;&gt;Beat: Ack (Message Queued)
+            Beat-&gt;&gt;ScheduleDB: Update last run time for 'add-every-15'
+            ScheduleDB--&gt;&gt;Beat: Ack (Saved)
+        end
+        Beat-&gt;&gt;Beat: Calculate time until next task is due
+        Beat-&gt;&gt;Beat: Sleep until next check
+    end
+
+    Worker-&gt;&gt;Broker: Fetch task message ('tasks.add', ...)
+    Broker--&gt;&gt;Worker: Deliver message
+    Worker-&gt;&gt;Worker: Execute task add(16, 16)
+    Worker-&gt;&gt;Broker: Ack message complete
+</code></pre>
+
+<h2 id="code-dive-where-beat-lives">Code Dive: Where Beat Lives</h2>
+
+<ul>
+  <li><strong>Command Line (<code class="language-plaintext highlighter-rouge">celery/bin/beat.py</code>):</strong> Handles the <code class="language-plaintext highlighter-rouge">celery beat</code> command, parses arguments (<code class="language-plaintext highlighter-rouge">-A</code>, <code class="language-plaintext highlighter-rouge">-s</code>, <code class="language-plaintext highlighter-rouge">-S</code>, <code class="language-plaintext highlighter-rouge">--loglevel</code>), and creates/runs the <code class="language-plaintext highlighter-rouge">Beat</code> service object.</li>
+  <li><strong>Beat Service Runner (<code class="language-plaintext highlighter-rouge">celery/apps/beat.py</code>):</strong> The <code class="language-plaintext highlighter-rouge">Beat</code> class sets up the environment, loads the app, initializes logging, creates the actual scheduler service (<code class="language-plaintext highlighter-rouge">celery.beat.Service</code>), installs signal handlers, and starts the service.</li>
+  <li><strong>Beat Service (<code class="language-plaintext highlighter-rouge">celery/beat.py:Service</code>):</strong> This class manages the lifecycle of the scheduler. Its <code class="language-plaintext highlighter-rouge">start()</code> method contains the main loop that repeatedly calls <code class="language-plaintext highlighter-rouge">scheduler.tick()</code>. It loads the scheduler class specified in the configuration (defaulting to <code class="language-plaintext highlighter-rouge">PersistentScheduler</code>).</li>
+  <li><strong>Scheduler (<code class="language-plaintext highlighter-rouge">celery/beat.py:Scheduler</code> / <code class="language-plaintext highlighter-rouge">PersistentScheduler</code>):</strong> This is the core logic.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">Scheduler</code> is the base class. Its <code class="language-plaintext highlighter-rouge">tick()</code> method calculates the time until the next event, finds due tasks, calls <code class="language-plaintext highlighter-rouge">apply_entry</code> for due tasks, and returns the sleep interval.</li>
+      <li><code class="language-plaintext highlighter-rouge">PersistentScheduler</code> inherits from <code class="language-plaintext highlighter-rouge">Scheduler</code> and adds the logic to load/save the schedule state (last run times) using <code class="language-plaintext highlighter-rouge">shelve</code> (the <code class="language-plaintext highlighter-rouge">celerybeat-schedule</code> file). It overrides methods like <code class="language-plaintext highlighter-rouge">setup_schedule</code>, <code class="language-plaintext highlighter-rouge">sync</code>, <code class="language-plaintext highlighter-rouge">close</code>, and <code class="language-plaintext highlighter-rouge">schedule</code> property to interact with the <code class="language-plaintext highlighter-rouge">shelve</code> store (<code class="language-plaintext highlighter-rouge">self._store</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Schedule Types (<code class="language-plaintext highlighter-rouge">celery/schedules.py</code>):</strong> Defines classes like <code class="language-plaintext highlighter-rouge">schedule</code> (for <code class="language-plaintext highlighter-rouge">timedelta</code> intervals) and <code class="language-plaintext highlighter-rouge">crontab</code>. These classes implement the <code class="language-plaintext highlighter-rouge">is_due(last_run_at)</code> method, which the <code class="language-plaintext highlighter-rouge">Scheduler.tick()</code> method uses to determine if a task entry should run.</li>
+</ul>
+
+<p>A simplified conceptual look at the <code class="language-plaintext highlighter-rouge">beat_schedule</code> config structure:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Example structure from celeryconfig.py
+</span>
+<span class="n">beat_schedule</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">'schedule-name-1'</span><span class="p">:</span> <span class="p">{</span>              <span class="c1"># Unique name for this entry
+</span>        <span class="s">'task'</span><span class="p">:</span> <span class="s">'my_app.tasks.task1'</span><span class="p">,</span>  <span class="c1"># Task to run (module.task_name)
+</span>        <span class="s">'schedule'</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span>             <span class="c1"># When to run (e.g., seconds, timedelta, crontab)
+</span>        <span class="s">'args'</span><span class="p">:</span> <span class="p">(</span><span class="n">arg1</span><span class="p">,</span> <span class="n">arg2</span><span class="p">),</span>         <span class="c1"># Optional: Positional arguments
+</span>        <span class="s">'kwargs'</span><span class="p">:</span> <span class="p">{</span><span class="s">'key'</span><span class="p">:</span> <span class="s">'value'</span><span class="p">},</span>   <span class="c1"># Optional: Keyword arguments
+</span>        <span class="s">'options'</span><span class="p">:</span> <span class="p">{</span><span class="s">'queue'</span><span class="p">:</span> <span class="s">'hipri'</span><span class="p">},</span><span class="c1"># Optional: Execution options
+</span>    <span class="p">},</span>
+    <span class="s">'schedule-name-2'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s">'task'</span><span class="p">:</span> <span class="s">'my_app.tasks.task2'</span><span class="p">,</span>
+        <span class="s">'schedule'</span><span class="p">:</span> <span class="n">crontab</span><span class="p">(</span><span class="n">minute</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">hour</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="c1"># e.g., Run at midnight
+</span>        <span class="c1"># ... other options ...
+</span>    <span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>And a very simplified concept of the <code class="language-plaintext highlighter-rouge">Scheduler.tick()</code> method:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified conceptual logic of Scheduler.tick()
+</span>
+<span class="k">def</span> <span class="nf">tick</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="n">remaining_times</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">due_tasks</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># 1. Iterate through schedule entries
+</span>    <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">schedule</span><span class="p">.</span><span class="n">values</span><span class="p">():</span> <span class="c1"># self.schedule reads from PersistentScheduler._store['entries']
+</span>        <span class="c1"># 2. Check if entry is due using its schedule object (e.g., crontab)
+</span>        <span class="n">is_due</span><span class="p">,</span> <span class="n">next_time_to_run</span> <span class="o">=</span> <span class="n">entry</span><span class="p">.</span><span class="n">is_due</span><span class="p">()</span> <span class="c1"># Calls schedule.is_due(entry.last_run_at)
+</span>
+        <span class="k">if</span> <span class="n">is_due</span><span class="p">:</span>
+            <span class="n">due_tasks</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">remaining_times</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">next_time_to_run</span><span class="p">)</span> <span class="c1"># Store time until next check
+</span>
+    <span class="c1"># 3. Apply due tasks (send message to broker)
+</span>    <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">due_tasks</span><span class="p">:</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">apply_entry</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span> <span class="c1"># Sends task message and updates entry's last_run_at in schedule store
+</span>
+    <span class="c1"># 4. Calculate minimum sleep time until next event
+</span>    <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="n">remaining_times</span> <span class="o">+</span> <span class="p">[</span><span class="bp">self</span><span class="p">.</span><span class="n">max_interval</span><span class="p">])</span>
+</code></pre></div></div>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Celery Beat is your tool for automating task execution within the Celery ecosystem.</p>
+
+<ul>
+  <li>It acts as a <strong>scheduler</strong>, like an alarm clock or <code class="language-plaintext highlighter-rouge">cron</code> for Celery tasks.</li>
+  <li>It runs as a <strong>separate process</strong> (<code class="language-plaintext highlighter-rouge">celery beat</code>).</li>
+  <li>You define the schedule using the <code class="language-plaintext highlighter-rouge">beat_schedule</code> setting in your configuration, specifying <strong>what</strong> tasks run, <strong>when</strong> (using intervals or crontabs), and with what <strong>arguments</strong>.</li>
+  <li>Beat <strong>sends task messages</strong> to the broker at the scheduled times.</li>
+  <li>Running <strong>Workers</strong> are still required to pick up and execute these tasks.</li>
+</ul>
+
+<p>Beat allows you to reliably automate recurring background jobs, from simple periodic checks to complex, time-specific operations.</p>
+
+<p>Now that we know how to run individual tasks, get their results, and schedule them automatically, what if we want to create more complex workflows involving multiple tasks that depend on each other? That’s where Celery’s Canvas comes in.</p>
+
+<p><strong>Next:</strong> <a href="08_canvas__signatures___primitives_.md">Chapter 8: Canvas (Signatures &amp; Primitives)</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

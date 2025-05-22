@@ -1,0 +1,346 @@
+<h1 id="chapter-6-chatcompletioncontext---remembering-the-conversation">Chapter 6: ChatCompletionContext - Remembering the Conversation</h1>
+
+<p>In <a href="05_chatcompletionclient.md">Chapter 5: ChatCompletionClient</a>, we learned how agents talk to Large Language Models (LLMs) using a <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code>. We saw that we need to send a list of <code class="language-plaintext highlighter-rouge">messages</code> (the conversation history) to the LLM so it knows the context.</p>
+
+<p>But conversations can get very long! Imagine talking on the phone for an hour. Can you remember <em>every single word</em> that was said? Probably not. You remember the main points, the beginning, and what was said most recently. LLMs have a similar limitation – they can only pay attention to a certain amount of text at once (called the “context window”).</p>
+
+<p>If we send the <em>entire</em> history of a very long chat, it might be too much for the LLM, lead to errors, be slow, or cost more money (since many LLMs charge based on the amount of text).</p>
+
+<p>So, how do we smartly choose <em>which</em> parts of the conversation history to send? This is the problem that <strong><code class="language-plaintext highlighter-rouge">ChatCompletionContext</code></strong> solves.</p>
+
+<h2 id="motivation-keeping-llm-conversations-focused">Motivation: Keeping LLM Conversations Focused</h2>
+
+<p>Let’s say we have a helpful assistant agent chatting with a user:</p>
+
+<ol>
+  <li><strong>User:</strong> “Hi! Can you tell me about AutoGen?”</li>
+  <li><strong>Assistant:</strong> “Sure! AutoGen is a framework…” (provides details)</li>
+  <li><strong>User:</strong> “Thanks! Now, can you draft an email to my team about our upcoming meeting?”</li>
+  <li><strong>Assistant:</strong> “Okay, what’s the meeting about?”</li>
+  <li><strong>User:</strong> “It’s about the project planning for Q3.”</li>
+  <li><strong>Assistant:</strong> (Needs to draft the email)</li>
+</ol>
+
+<p>When the Assistant needs to draft the email (step 6), does it need the <em>exact</em> text from step 2 about what AutoGen is? Probably not. It definitely needs the instructions from step 3 and the topic from step 5. Maybe the initial greeting isn’t super important either.</p>
+
+<p><code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> acts like a <strong>smart transcript editor</strong>. Before sending the history to the LLM via the <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code>, it reviews the full conversation log and prepares a shorter, focused version containing only the messages it thinks are most relevant for the LLM’s next response.</p>
+
+<h2 id="key-concepts-managing-the-chat-history">Key Concepts: Managing the Chat History</h2>
+
+<ol>
+  <li>
+    <p><strong>The Full Transcript Holder:</strong> A <code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> object holds the <em>complete</em> list of messages (<code class="language-plaintext highlighter-rouge">LLMMessage</code> objects like <code class="language-plaintext highlighter-rouge">SystemMessage</code>, <code class="language-plaintext highlighter-rouge">UserMessage</code>, <code class="language-plaintext highlighter-rouge">AssistantMessage</code> from Chapter 5) that have occurred in a specific conversation thread. You add new messages using its <code class="language-plaintext highlighter-rouge">add_message</code> method.</p>
+  </li>
+  <li>
+    <p><strong>The Smart View Generator (<code class="language-plaintext highlighter-rouge">get_messages</code>):</strong> The core job of <code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> is done by its <code class="language-plaintext highlighter-rouge">get_messages</code> method. When called, it looks at the <em>full</em> transcript it holds, but returns only a <em>subset</em> of those messages based on its specific strategy. This subset is what you’ll actually send to the <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code>.</p>
+  </li>
+  <li>
+    <p><strong>Different Strategies for Remembering:</strong> Because different situations require different focus, AutoGen Core provides several <code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> implementations (strategies):</p>
+    <ul>
+      <li><strong><code class="language-plaintext highlighter-rouge">UnboundedChatCompletionContext</code>:</strong> The simplest (and sometimes riskiest!). It doesn’t edit anything; <code class="language-plaintext highlighter-rouge">get_messages</code> just returns the <em>entire</em> history. Good for short chats, but can break with long ones.</li>
+      <li><strong><code class="language-plaintext highlighter-rouge">BufferedChatCompletionContext</code>:</strong> Like remembering only the last few things someone said. It keeps the most recent <code class="language-plaintext highlighter-rouge">N</code> messages (where <code class="language-plaintext highlighter-rouge">N</code> is the <code class="language-plaintext highlighter-rouge">buffer_size</code> you set). Good for focusing on recent interactions.</li>
+      <li><strong><code class="language-plaintext highlighter-rouge">HeadAndTailChatCompletionContext</code>:</strong> Tries to get the best of both worlds. It keeps the first few messages (the “head”, maybe containing initial instructions) and the last few messages (the “tail”, the recent context). It skips the messages in the middle.</li>
+    </ul>
+  </li>
+</ol>
+
+<h2 id="use-case-example-chatting-with-different-memory-strategies">Use Case Example: Chatting with Different Memory Strategies</h2>
+
+<p>Let’s simulate adding messages to different context managers and see what <code class="language-plaintext highlighter-rouge">get_messages</code> returns.</p>
+
+<p><strong>Step 1: Define some messages</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: define_chat_messages.py
+</span><span class="kn">from</span> <span class="nn">autogen_core.models</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">SystemMessage</span><span class="p">,</span> <span class="n">UserMessage</span><span class="p">,</span> <span class="n">AssistantMessage</span><span class="p">,</span> <span class="n">LLMMessage</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span>
+
+<span class="c1"># The initial instruction for the assistant
+</span><span class="n">system_msg</span> <span class="o">=</span> <span class="n">SystemMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s">"You are a helpful assistant."</span><span class="p">)</span>
+
+<span class="c1"># A sequence of user/assistant turns
+</span><span class="n">chat_sequence</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">UserMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s">"What is AutoGen?"</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s">"User"</span><span class="p">),</span>
+    <span class="n">AssistantMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s">"AutoGen is a multi-agent framework..."</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s">"Agent"</span><span class="p">),</span>
+    <span class="n">UserMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s">"What can it do?"</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s">"User"</span><span class="p">),</span>
+    <span class="n">AssistantMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s">"It can build complex LLM apps."</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s">"Agent"</span><span class="p">),</span>
+    <span class="n">UserMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s">"Thanks!"</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s">"User"</span><span class="p">)</span>
+<span class="p">]</span>
+
+<span class="c1"># Combine system message and the chat sequence
+</span><span class="n">full_history</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">system_msg</span><span class="p">]</span> <span class="o">+</span> <span class="n">chat_sequence</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Total messages in full history: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">full_history</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Output: Total messages in full history: 6
+</span></code></pre></div></div>
+<p>We have a full history of 6 messages (1 system + 5 chat turns).</p>
+
+<p><strong>Step 2: Use <code class="language-plaintext highlighter-rouge">UnboundedChatCompletionContext</code></strong></p>
+
+<p>This context keeps everything.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: use_unbounded_context.py
+</span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">define_chat_messages</span> <span class="kn">import</span> <span class="n">full_history</span>
+<span class="kn">from</span> <span class="nn">autogen_core.model_context</span> <span class="kn">import</span> <span class="n">UnboundedChatCompletionContext</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Create context and add all messages
+</span>    <span class="n">context</span> <span class="o">=</span> <span class="n">UnboundedChatCompletionContext</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">full_history</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">context</span><span class="p">.</span><span class="n">add_message</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="c1"># Get the messages to send to the LLM
+</span>    <span class="n">messages_for_llm</span> <span class="o">=</span> <span class="k">await</span> <span class="n">context</span><span class="p">.</span><span class="n">get_messages</span><span class="p">()</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"--- Unbounded Context (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">messages_for_llm</span><span class="p">)</span><span class="si">}</span><span class="s"> messages) ---"</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">msg</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">messages_for_llm</span><span class="p">):</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s">. [</span><span class="si">{</span><span class="n">msg</span><span class="p">.</span><span class="nb">type</span><span class="si">}</span><span class="s">]: </span><span class="si">{</span><span class="n">msg</span><span class="p">.</span><span class="n">content</span><span class="p">[</span><span class="si">:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+
+<span class="c1"># asyncio.run(main()) # If run
+</span></code></pre></div></div>
+
+<p><strong>Expected Output (Unbounded):</strong></p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--- Unbounded Context (6 messages) ---
+1. [SystemMessage]: You are a helpful assistant....
+2. [UserMessage]: What is AutoGen?...
+3. [AssistantMessage]: AutoGen is a multi-agent fram...
+4. [UserMessage]: What can it do?...
+5. [AssistantMessage]: It can build complex LLM apps...
+6. [UserMessage]: Thanks!...
+</code></pre></div></div>
+<p>It returns all 6 messages, exactly as added.</p>
+
+<p><strong>Step 3: Use <code class="language-plaintext highlighter-rouge">BufferedChatCompletionContext</code></strong></p>
+
+<p>Let’s keep only the last 3 messages.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: use_buffered_context.py
+</span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">define_chat_messages</span> <span class="kn">import</span> <span class="n">full_history</span>
+<span class="kn">from</span> <span class="nn">autogen_core.model_context</span> <span class="kn">import</span> <span class="n">BufferedChatCompletionContext</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Keep only the last 3 messages
+</span>    <span class="n">context</span> <span class="o">=</span> <span class="n">BufferedChatCompletionContext</span><span class="p">(</span><span class="n">buffer_size</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">full_history</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">context</span><span class="p">.</span><span class="n">add_message</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="n">messages_for_llm</span> <span class="o">=</span> <span class="k">await</span> <span class="n">context</span><span class="p">.</span><span class="n">get_messages</span><span class="p">()</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"--- Buffered Context (buffer=3, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">messages_for_llm</span><span class="p">)</span><span class="si">}</span><span class="s"> messages) ---"</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">msg</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">messages_for_llm</span><span class="p">):</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s">. [</span><span class="si">{</span><span class="n">msg</span><span class="p">.</span><span class="nb">type</span><span class="si">}</span><span class="s">]: </span><span class="si">{</span><span class="n">msg</span><span class="p">.</span><span class="n">content</span><span class="p">[</span><span class="si">:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+
+<span class="c1"># asyncio.run(main()) # If run
+</span></code></pre></div></div>
+
+<p><strong>Expected Output (Buffered):</strong></p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--- Buffered Context (buffer=3, 3 messages) ---
+1. [UserMessage]: What can it do?...
+2. [AssistantMessage]: It can build complex LLM apps...
+3. [UserMessage]: Thanks!...
+</code></pre></div></div>
+<p>It only returns the last 3 messages from the full history. The system message and the first chat turn are omitted.</p>
+
+<p><strong>Step 4: Use <code class="language-plaintext highlighter-rouge">HeadAndTailChatCompletionContext</code></strong></p>
+
+<p>Let’s keep the first message (head=1) and the last two messages (tail=2).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: use_head_tail_context.py
+</span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">define_chat_messages</span> <span class="kn">import</span> <span class="n">full_history</span>
+<span class="kn">from</span> <span class="nn">autogen_core.model_context</span> <span class="kn">import</span> <span class="n">HeadAndTailChatCompletionContext</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Keep first 1 and last 2 messages
+</span>    <span class="n">context</span> <span class="o">=</span> <span class="n">HeadAndTailChatCompletionContext</span><span class="p">(</span><span class="n">head_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">tail_size</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">full_history</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">context</span><span class="p">.</span><span class="n">add_message</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="n">messages_for_llm</span> <span class="o">=</span> <span class="k">await</span> <span class="n">context</span><span class="p">.</span><span class="n">get_messages</span><span class="p">()</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"--- Head &amp; Tail Context (h=1, t=2, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">messages_for_llm</span><span class="p">)</span><span class="si">}</span><span class="s"> messages) ---"</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">msg</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">messages_for_llm</span><span class="p">):</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s">. [</span><span class="si">{</span><span class="n">msg</span><span class="p">.</span><span class="nb">type</span><span class="si">}</span><span class="s">]: </span><span class="si">{</span><span class="n">msg</span><span class="p">.</span><span class="n">content</span><span class="p">[</span><span class="si">:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+
+<span class="c1"># asyncio.run(main()) # If run
+</span></code></pre></div></div>
+
+<p><strong>Expected Output (Head &amp; Tail):</strong></p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--- Head &amp; Tail Context (h=1, t=2, 4 messages) ---
+1. [SystemMessage]: You are a helpful assistant....
+2. [UserMessage]: Skipped 3 messages....
+3. [AssistantMessage]: It can build complex LLM apps...
+4. [UserMessage]: Thanks!...
+</code></pre></div></div>
+<p>It keeps the very first message (<code class="language-plaintext highlighter-rouge">SystemMessage</code>), then inserts a placeholder telling the LLM that some messages were skipped, and finally includes the last two messages. This preserves the initial instruction and the most recent context.</p>
+
+<p><strong>Which one to choose?</strong> It depends on your agent’s task!</p>
+<ul>
+  <li>Simple Q&amp;A? <code class="language-plaintext highlighter-rouge">Buffered</code> might be fine.</li>
+  <li>Following complex initial instructions? <code class="language-plaintext highlighter-rouge">HeadAndTail</code> or even <code class="language-plaintext highlighter-rouge">Unbounded</code> (if short) might be better.</li>
+</ul>
+
+<h2 id="under-the-hood-how-context-is-managed">Under the Hood: How Context is Managed</h2>
+
+<p>The core idea is defined by the <code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> abstract base class.</p>
+
+<p><strong>Conceptual Flow:</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent as Agent Logic
+    participant Context as ChatCompletionContext
+    participant FullHistory as Internal Message List
+
+    Agent-&gt;&gt;+Context: add_message(newMessage)
+    Context-&gt;&gt;+FullHistory: Append newMessage to list
+    FullHistory--&gt;&gt;-Context: List updated
+    Context--&gt;&gt;-Agent: Done
+
+    Agent-&gt;&gt;+Context: get_messages()
+    Context-&gt;&gt;+FullHistory: Read the full list
+    FullHistory--&gt;&gt;-Context: Return full list
+    Context-&gt;&gt;Context: Apply Strategy (e.g., slice list for Buffered/HeadTail)
+    Context--&gt;&gt;-Agent: Return selected list of messages
+</code></pre>
+
+<ol>
+  <li><strong>Adding:</strong> When <code class="language-plaintext highlighter-rouge">add_message(message)</code> is called, the context simply appends the <code class="language-plaintext highlighter-rouge">message</code> to its internal list (<code class="language-plaintext highlighter-rouge">self._messages</code>).</li>
+  <li><strong>Getting:</strong> When <code class="language-plaintext highlighter-rouge">get_messages()</code> is called:
+    <ul>
+      <li>The context accesses its internal <code class="language-plaintext highlighter-rouge">self._messages</code> list.</li>
+      <li>The specific implementation (<code class="language-plaintext highlighter-rouge">Unbounded</code>, <code class="language-plaintext highlighter-rouge">Buffered</code>, <code class="language-plaintext highlighter-rouge">HeadAndTail</code>) applies its logic to select which messages to return.</li>
+      <li>It returns the selected list.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><strong>Code Glimpse:</strong></p>
+
+<ul>
+  <li>
+    <p><strong>Base Class (<code class="language-plaintext highlighter-rouge">_chat_completion_context.py</code>):</strong> Defines the structure and common methods.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: model_context/_chat_completion_context.py (Simplified)
+</span><span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span>
+<span class="kn">from</span> <span class="nn">..models</span> <span class="kn">import</span> <span class="n">LLMMessage</span>
+
+<span class="k">class</span> <span class="nc">ChatCompletionContext</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="n">component_type</span> <span class="o">=</span> <span class="s">"chat_completion_context"</span> <span class="c1"># Identifies this as a component type
+</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_messages</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">]</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="c1"># Holds the COMPLETE history
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_messages</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">]</span> <span class="o">=</span> <span class="n">initial_messages</span> <span class="ow">or</span> <span class="p">[]</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">add_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">LLMMessage</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="s">"""Add a message to the full context."""</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_messages</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">get_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">]:</span>
+        <span class="s">"""Get the subset of messages based on the strategy."""</span>
+        <span class="c1"># Each subclass MUST implement this logic
+</span>        <span class="p">...</span>
+
+    <span class="c1"># Other methods like clear(), save_state(), load_state() exist too
+</span></code></pre></div>    </div>
+    <p>The base class handles storing messages; subclasses define <em>how</em> to retrieve them.</p>
+  </li>
+  <li>
+    <p><strong>Unbounded (<code class="language-plaintext highlighter-rouge">_unbounded_chat_completion_context.py</code>):</strong> The simplest implementation.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: model_context/_unbounded_chat_completion_context.py (Simplified)
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span>
+<span class="kn">from</span> <span class="nn">._chat_completion_context</span> <span class="kn">import</span> <span class="n">ChatCompletionContext</span>
+<span class="kn">from</span> <span class="nn">..models</span> <span class="kn">import</span> <span class="n">LLMMessage</span>
+
+<span class="k">class</span> <span class="nc">UnboundedChatCompletionContext</span><span class="p">(</span><span class="n">ChatCompletionContext</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">get_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">]:</span>
+        <span class="s">"""Returns all messages."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_messages</span> <span class="c1"># Just return the whole internal list
+</span></code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Buffered (<code class="language-plaintext highlighter-rouge">_buffered_chat_completion_context.py</code>):</strong> Uses slicing to get the end of the list.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: model_context/_buffered_chat_completion_context.py (Simplified)
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span>
+<span class="kn">from</span> <span class="nn">._chat_completion_context</span> <span class="kn">import</span> <span class="n">ChatCompletionContext</span>
+<span class="kn">from</span> <span class="nn">..models</span> <span class="kn">import</span> <span class="n">LLMMessage</span><span class="p">,</span> <span class="n">FunctionExecutionResultMessage</span>
+
+<span class="k">class</span> <span class="nc">BufferedChatCompletionContext</span><span class="p">(</span><span class="n">ChatCompletionContext</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">buffer_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="p">...):</span>
+        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">(...)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_buffer_size</span> <span class="o">=</span> <span class="n">buffer_size</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">get_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">]:</span>
+        <span class="s">"""Get at most `buffer_size` recent messages."""</span>
+        <span class="c1"># Slice the list to get the last 'buffer_size' items
+</span>        <span class="n">messages</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_messages</span><span class="p">[</span><span class="o">-</span><span class="bp">self</span><span class="p">.</span><span class="n">_buffer_size</span> <span class="p">:]</span>
+        <span class="c1"># Special case: Avoid starting with a function result message
+</span>        <span class="k">if</span> <span class="n">messages</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">messages</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">FunctionExecutionResultMessage</span><span class="p">):</span>
+            <span class="n">messages</span> <span class="o">=</span> <span class="n">messages</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">return</span> <span class="n">messages</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Head and Tail (<code class="language-plaintext highlighter-rouge">_head_and_tail_chat_completion_context.py</code>):</strong> Combines slices from the beginning and end.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: model_context/_head_and_tail_chat_completion_context.py (Simplified)
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span>
+<span class="kn">from</span> <span class="nn">._chat_completion_context</span> <span class="kn">import</span> <span class="n">ChatCompletionContext</span>
+<span class="kn">from</span> <span class="nn">..models</span> <span class="kn">import</span> <span class="n">LLMMessage</span><span class="p">,</span> <span class="n">UserMessage</span>
+
+<span class="k">class</span> <span class="nc">HeadAndTailChatCompletionContext</span><span class="p">(</span><span class="n">ChatCompletionContext</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">head_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">tail_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="p">...):</span>
+        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">(...)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_head_size</span> <span class="o">=</span> <span class="n">head_size</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_tail_size</span> <span class="o">=</span> <span class="n">tail_size</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">get_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">]:</span>
+        <span class="n">head</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_messages</span><span class="p">[:</span> <span class="bp">self</span><span class="p">.</span><span class="n">_head_size</span><span class="p">]</span> <span class="c1"># First 'head_size' items
+</span>        <span class="n">tail</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_messages</span><span class="p">[</span><span class="o">-</span><span class="bp">self</span><span class="p">.</span><span class="n">_tail_size</span> <span class="p">:]</span> <span class="c1"># Last 'tail_size' items
+</span>        <span class="n">num_skipped</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">_messages</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">head</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">tail</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">num_skipped</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span> <span class="c1"># If no overlap or gap
+</span>            <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_messages</span>
+        <span class="k">else</span><span class="p">:</span> <span class="c1"># If messages were skipped
+</span>            <span class="n">placeholder</span> <span class="o">=</span> <span class="p">[</span><span class="n">UserMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="sa">f</span><span class="s">"Skipped </span><span class="si">{</span><span class="n">num_skipped</span><span class="si">}</span><span class="s"> messages."</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s">"System"</span><span class="p">)]</span>
+            <span class="c1"># Combine head + placeholder + tail
+</span>            <span class="k">return</span> <span class="n">head</span> <span class="o">+</span> <span class="n">placeholder</span> <span class="o">+</span> <span class="n">tail</span>
+</code></pre></div>    </div>
+    <p>These implementations provide different ways to manage the context window effectively.</p>
+  </li>
+</ul>
+
+<h2 id="putting-it-together-with-chatcompletionclient">Putting it Together with ChatCompletionClient</h2>
+
+<p>How does an agent use <code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> with the <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code> from Chapter 5?</p>
+
+<ol>
+  <li>An agent has an instance of a <code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> (e.g., <code class="language-plaintext highlighter-rouge">BufferedChatCompletionContext</code>) to store its conversation history.</li>
+  <li>When the agent receives a new message (e.g., a <code class="language-plaintext highlighter-rouge">UserMessage</code>), it calls <code class="language-plaintext highlighter-rouge">await context.add_message(new_user_message)</code>.</li>
+  <li>To prepare for calling the LLM, the agent calls <code class="language-plaintext highlighter-rouge">messages_to_send = await context.get_messages()</code>. This gets the strategically selected subset of the history.</li>
+  <li>The agent then passes this list to the <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code>: <code class="language-plaintext highlighter-rouge">response = await llm_client.create(messages=messages_to_send, ...)</code>.</li>
+  <li>When the LLM replies (e.g., with an <code class="language-plaintext highlighter-rouge">AssistantMessage</code>), the agent adds it back to the context: <code class="language-plaintext highlighter-rouge">await context.add_message(llm_response_message)</code>.</li>
+</ol>
+
+<p>This loop ensures that the history is continuously updated and intelligently trimmed before each call to the LLM.</p>
+
+<h2 id="next-steps">Next Steps</h2>
+
+<p>You’ve learned how <code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> helps manage the conversation history sent to LLMs, preventing context window overflows and keeping the interaction focused using different strategies (<code class="language-plaintext highlighter-rouge">Unbounded</code>, <code class="language-plaintext highlighter-rouge">Buffered</code>, <code class="language-plaintext highlighter-rouge">HeadAndTail</code>).</p>
+
+<p>This context management is a specific form of <strong>memory</strong>. Agents might need to remember things beyond just the chat history. How do they store general information, state, or knowledge over time?</p>
+
+<ul>
+  <li><a href="07_memory.md">Chapter 7: Memory</a>: Explore the broader concept of Memory in AutoGen Core, which provides more general ways for agents to store and retrieve information.</li>
+  <li><a href="08_component.md">Chapter 8: Component</a>: Understand how <code class="language-plaintext highlighter-rouge">ChatCompletionContext</code> fits into the general <code class="language-plaintext highlighter-rouge">Component</code> model, allowing configuration and integration within the AutoGen system.</li>
+</ul>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

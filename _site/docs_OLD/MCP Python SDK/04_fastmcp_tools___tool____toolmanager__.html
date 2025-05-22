@@ -1,0 +1,256 @@
+<h1 id="chapter-4-fastmcp-tools-tool-toolmanager">Chapter 4: FastMCP Tools (<code class="language-plaintext highlighter-rouge">Tool</code>, <code class="language-plaintext highlighter-rouge">ToolManager</code>)</h1>
+
+<p>In <a href="03_fastmcp_resources___resource____resourcemanager__.md">Chapter 3: Sharing Data - FastMCP Resources (<code class="language-plaintext highlighter-rouge">Resource</code>, <code class="language-plaintext highlighter-rouge">ResourceManager</code>)</a>, we learned how to make data available for clients to read using <code class="language-plaintext highlighter-rouge">Resource</code> objects, like putting books in a digital library. That’s great for sharing information, but what if we want the client to be able to ask the server to <em>do</em> something?</p>
+
+<p>Imagine you want your server to not just provide data, but to perform calculations, interact with a database, or control some hardware. For example, maybe you want a client application (like an AI assistant) to be able to ask your server, “What’s 5 plus 7?”. The server needs to perform the addition and send back the result.</p>
+
+<p>This is where <strong>FastMCP Tools</strong> come in. They allow your server to expose functions that clients can call remotely.</p>
+
+<h2 id="the-workshop-analogy-tools-and-the-foreman">The Workshop Analogy: Tools and the Foreman</h2>
+
+<p>Think of your <code class="language-plaintext highlighter-rouge">FastMCP</code> server as a well-equipped workshop. Inside this workshop, you have various specialized tools:</p>
+<ul>
+  <li>A drill (<code class="language-plaintext highlighter-rouge">Tool</code>)</li>
+  <li>A screwdriver (<code class="language-plaintext highlighter-rouge">Tool</code>)</li>
+  <li>A calculator (<code class="language-plaintext highlighter-rouge">Tool</code>)</li>
+</ul>
+
+<p>Each <strong><code class="language-plaintext highlighter-rouge">Tool</code></strong> is designed for a specific job. When someone (a client) needs a job done, they don’t operate the tool directly. Instead, they go to the workshop <strong>foreman</strong> (the <strong><code class="language-plaintext highlighter-rouge">ToolManager</code></strong>) and say:</p>
+
+<p>“I need to use the <code class="language-plaintext highlighter-rouge">calculator</code> tool. Please add these numbers: <code class="language-plaintext highlighter-rouge">5</code> and <code class="language-plaintext highlighter-rouge">7</code>.”</p>
+
+<p>The foreman (<code class="language-plaintext highlighter-rouge">ToolManager</code>) knows exactly where the <code class="language-plaintext highlighter-rouge">calculator</code> tool is and how it works. It takes the request, operates the calculator with the provided numbers (<code class="language-plaintext highlighter-rouge">5</code>, <code class="language-plaintext highlighter-rouge">7</code>), gets the result (<code class="language-plaintext highlighter-rouge">12</code>), and gives it back to the person who asked.</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">Tool</code></strong>: A specific function or capability your server offers (like the calculator). It has a name and accepts specific inputs (arguments).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">ToolManager</code></strong>: The internal manager within <code class="language-plaintext highlighter-rouge">FastMCP</code> that keeps track of all available <code class="language-plaintext highlighter-rouge">Tool</code> objects and handles requests to use them (the foreman). Clients interact with the <code class="language-plaintext highlighter-rouge">ToolManager</code> via <code class="language-plaintext highlighter-rouge">FastMCP</code>.</li>
+</ul>
+
+<p>Clients can ask the <code class="language-plaintext highlighter-rouge">ToolManager</code> (via <code class="language-plaintext highlighter-rouge">FastMCP</code>) to list all available tools (<code class="language-plaintext highlighter-rouge">listTools</code>) and then request to execute a specific tool by its name, providing the necessary arguments (<code class="language-plaintext highlighter-rouge">callTool</code>).</p>
+
+<h2 id="adding-tools-to-your-workshop-using-servertool">Adding Tools to Your Workshop: Using <code class="language-plaintext highlighter-rouge">@server.tool()</code></h2>
+
+<p>Just like we used <code class="language-plaintext highlighter-rouge">@server.resource()</code> to add data “books” to our library, <code class="language-plaintext highlighter-rouge">FastMCP</code> provides the <code class="language-plaintext highlighter-rouge">@server.tool()</code> decorator to easily add action “tools” to our workshop (managed by the <code class="language-plaintext highlighter-rouge">ToolManager</code>).</p>
+
+<p>Let’s create a simple server with a calculator tool that can add two numbers.</p>
+
+<p><strong>File: <code class="language-plaintext highlighter-rouge">calculator_server.py</code></strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 1. Import FastMCP
+</span><span class="kn">from</span> <span class="nn">mcp.server.fastmcp</span> <span class="kn">import</span> <span class="n">FastMCP</span>
+
+<span class="c1"># 2. Create the server instance
+</span><span class="n">server</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"CalculatorServer"</span><span class="p">)</span>
+
+<span class="c1"># 3. Use the @server.tool() decorator to define our tool
+</span><span class="o">@</span><span class="n">server</span><span class="p">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"add"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">"Adds two numbers together."</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">add_numbers</span><span class="p">(</span><span class="n">num1</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">num2</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+  <span class="s">"""
+  This function is registered as the 'add' tool.
+  'num1: int' and 'num2: int' tell FastMCP the tool expects
+  two integer arguments named 'num1' and 'num2'.
+  '-&gt; int' tells FastMCP the tool will return an integer.
+  """</span>
+  <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Tool 'add' called with </span><span class="si">{</span><span class="n">num1</span><span class="si">}</span><span class="s"> and </span><span class="si">{</span><span class="n">num2</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># Server-side log
+</span>  <span class="c1"># 4. The function's logic performs the action
+</span>  <span class="n">result</span> <span class="o">=</span> <span class="n">num1</span> <span class="o">+</span> <span class="n">num2</span>
+  <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Returning result: </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+  <span class="k">return</span> <span class="n">result</span>
+
+<span class="c1"># 5. Standard run block
+</span><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Starting </span><span class="si">{</span><span class="n">server</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">run</span><span class="p">()</span> <span class="c1"># Start listening
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">server</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s"> finished."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">server = FastMCP(...)</code></strong>: Creates our server (the workshop). Internally, this also creates a <code class="language-plaintext highlighter-rouge">ToolManager</code> (the foreman).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">@server.tool(...)</code></strong>: This is our decorator “button” for adding tools.
+    <ul>
+      <li>We use the <code class="language-plaintext highlighter-rouge">.tool()</code> method of our <code class="language-plaintext highlighter-rouge">server</code> object as a decorator.</li>
+      <li><code class="language-plaintext highlighter-rouge">name="add"</code>: We tell <code class="language-plaintext highlighter-rouge">FastMCP</code> that clients should use the name <code class="language-plaintext highlighter-rouge">add</code> to call this tool.</li>
+      <li><code class="language-plaintext highlighter-rouge">description="..."</code>: A helpful description for clients.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">def add_numbers(num1: int, num2: int) -&gt; int:</code></strong>: This is a standard Python function.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">num1: int</code>, <code class="language-plaintext highlighter-rouge">num2: int</code>: These <strong>type hints</strong> are crucial! They tell <code class="language-plaintext highlighter-rouge">FastMCP</code> what arguments the tool expects (two integers named <code class="language-plaintext highlighter-rouge">num1</code> and <code class="language-plaintext highlighter-rouge">num2</code>). <code class="language-plaintext highlighter-rouge">FastMCP</code> uses this to validate input from clients and to generate documentation about the tool.</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt; int</code>: This type hint indicates that the function will return an integer result.</li>
+    </ul>
+  </li>
+  <li><strong>Function Body</strong>: This contains the actual logic for our tool – adding the numbers.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">server.run()</code></strong>: Starts the server. The <code class="language-plaintext highlighter-rouge">ToolManager</code> now knows about the <code class="language-plaintext highlighter-rouge">add</code> tool.</li>
+</ol>
+
+<p>If you run this server (<code class="language-plaintext highlighter-rouge">mcp run calculator_server.py</code>), a client could:</p>
+<ol>
+  <li>Call <code class="language-plaintext highlighter-rouge">listTools</code> and see the <code class="language-plaintext highlighter-rouge">add</code> tool listed, along with its description and expected arguments (<code class="language-plaintext highlighter-rouge">num1</code> (int), <code class="language-plaintext highlighter-rouge">num2</code> (int)).</li>
+  <li>Call <code class="language-plaintext highlighter-rouge">callTool</code> with the name <code class="language-plaintext highlighter-rouge">add</code> and arguments like <code class="language-plaintext highlighter-rouge">{"num1": 5, "num2": 7}</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> would ask the <code class="language-plaintext highlighter-rouge">ToolManager</code> to execute the <code class="language-plaintext highlighter-rouge">add</code> tool. The <code class="language-plaintext highlighter-rouge">ToolManager</code> would find your <code class="language-plaintext highlighter-rouge">add_numbers</code> function, check that the arguments match (<code class="language-plaintext highlighter-rouge">5</code> and <code class="language-plaintext highlighter-rouge">7</code> are integers), call the function, get the integer result <code class="language-plaintext highlighter-rouge">12</code>, and send it back to the client.</li>
+</ol>
+
+<h2 id="how-clients-use-tools">How Clients Use Tools</h2>
+
+<p>You don’t need to worry about writing client code right now, but it’s helpful to understand the basic interaction:</p>
+
+<ol>
+  <li><strong>Discovery:</strong> The client first asks the server, “What tools do you have?” (using the MCP <code class="language-plaintext highlighter-rouge">listTools</code> method). The server, guided by its <code class="language-plaintext highlighter-rouge">ToolManager</code>, responds with a list of tools, including their names, descriptions, and what arguments they expect (based on your Python function signature and the <code class="language-plaintext highlighter-rouge">@server.tool</code> decorator).</li>
+  <li><strong>Invocation:</strong> The client then decides to use a specific tool. It sends a request like, “Please execute the tool named ‘add’ with these arguments: <code class="language-plaintext highlighter-rouge">num1</code> is <code class="language-plaintext highlighter-rouge">5</code>, <code class="language-plaintext highlighter-rouge">num2</code> is <code class="language-plaintext highlighter-rouge">7</code>.” (using the MCP <code class="language-plaintext highlighter-rouge">callTool</code> method).</li>
+  <li><strong>Execution &amp; Response:</strong> The server receives this request. <code class="language-plaintext highlighter-rouge">FastMCP</code> hands it off to the <code class="language-plaintext highlighter-rouge">ToolManager</code>. The <code class="language-plaintext highlighter-rouge">ToolManager</code> finds the correct Python function (<code class="language-plaintext highlighter-rouge">add_numbers</code>), validates and passes the arguments (<code class="language-plaintext highlighter-rouge">5</code>, <code class="language-plaintext highlighter-rouge">7</code>), executes the function, gets the return value (<code class="language-plaintext highlighter-rouge">12</code>), and sends this result back to the client.</li>
+</ol>
+
+<h2 id="the-foreman-toolmanager-behind-the-scenes">The Foreman: <code class="language-plaintext highlighter-rouge">ToolManager</code> Behind the Scenes</h2>
+
+<p>While you primarily interact with <code class="language-plaintext highlighter-rouge">@server.tool()</code>, the <code class="language-plaintext highlighter-rouge">ToolManager</code> is the component within <code class="language-plaintext highlighter-rouge">FastMCP</code> that does the heavy lifting for tools.</p>
+
+<p>When <code class="language-plaintext highlighter-rouge">FastMCP</code> starts, it creates a <code class="language-plaintext highlighter-rouge">ToolManager</code> instance. Every time you use the <code class="language-plaintext highlighter-rouge">@server.tool()</code> decorator, you’re essentially telling <code class="language-plaintext highlighter-rouge">FastMCP</code> to register that function with its <code class="language-plaintext highlighter-rouge">ToolManager</code>.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">ToolManager</code>:</p>
+<ul>
+  <li>Keeps a dictionary mapping tool names (like <code class="language-plaintext highlighter-rouge">"add"</code>) to the corresponding <code class="language-plaintext highlighter-rouge">Tool</code> objects (which contain information about your function, its parameters, etc.).</li>
+  <li>Provides the list of tools when <code class="language-plaintext highlighter-rouge">FastMCP</code> needs to respond to a <code class="language-plaintext highlighter-rouge">listTools</code> request.</li>
+  <li>Looks up the correct <code class="language-plaintext highlighter-rouge">Tool</code> object when <code class="language-plaintext highlighter-rouge">FastMCP</code> receives a <code class="language-plaintext highlighter-rouge">callTool</code> request.</li>
+  <li>Validates the arguments provided by the client against the tool’s expected parameters (using the information gathered from type hints).</li>
+  <li>Calls your actual Python function with the validated arguments.</li>
+  <li>Handles potential errors during tool execution.</li>
+</ul>
+
+<p>You usually don’t need to interact with <code class="language-plaintext highlighter-rouge">ToolManager</code> directly; <code class="language-plaintext highlighter-rouge">@server.tool()</code> is the convenient interface.</p>
+
+<h2 id="how-tools-work-under-the-hood">How Tools Work Under the Hood</h2>
+
+<p>Let’s trace the journey of our <code class="language-plaintext highlighter-rouge">add</code> tool from definition to execution.</p>
+
+<p><strong>1. Registration (When the server code loads):</strong></p>
+
+<ul>
+  <li>Python executes your <code class="language-plaintext highlighter-rouge">calculator_server.py</code>.</li>
+  <li>It reaches the <code class="language-plaintext highlighter-rouge">@server.tool(name="add", ...)</code> line above <code class="language-plaintext highlighter-rouge">def add_numbers(...)</code>.</li>
+  <li>This calls the <code class="language-plaintext highlighter-rouge">server.tool()</code> method. Inside <code class="language-plaintext highlighter-rouge">FastMCP</code>, this ultimately calls <code class="language-plaintext highlighter-rouge">_tool_manager.add_tool()</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">ToolManager.add_tool</code> method inspects the <code class="language-plaintext highlighter-rouge">add_numbers</code> function:
+    <ul>
+      <li>Gets its name (<code class="language-plaintext highlighter-rouge">add_numbers</code>, but overridden by <code class="language-plaintext highlighter-rouge">name="add"</code>).</li>
+      <li>Gets its description (from the decorator or docstring).</li>
+      <li>Looks at the parameters (<code class="language-plaintext highlighter-rouge">num1: int</code>, <code class="language-plaintext highlighter-rouge">num2: int</code>) and return type (<code class="language-plaintext highlighter-rouge">-&gt; int</code>) using Python’s introspection features.</li>
+      <li>Uses this information to build a schema describing the expected input arguments (like a mini-form definition).</li>
+      <li>Creates an internal <code class="language-plaintext highlighter-rouge">Tool</code> object containing all this information (the function itself, its name, description, argument schema).</li>
+    </ul>
+  </li>
+  <li>The <code class="language-plaintext highlighter-rouge">ToolManager</code> stores this <code class="language-plaintext highlighter-rouge">Tool</code> object in its internal dictionary, keyed by the name <code class="language-plaintext highlighter-rouge">"add"</code>.</li>
+</ul>
+
+<p><strong>2. Invocation (When a client calls the tool):</strong></p>
+
+<ul>
+  <li>A client sends an MCP message: <code class="language-plaintext highlighter-rouge">{"method": "callTool", "params": {"name": "add", "arguments": {"num1": 5, "num2": 7}}}</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> receives this message and identifies it as a <code class="language-plaintext highlighter-rouge">callTool</code> request for the tool named <code class="language-plaintext highlighter-rouge">add</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> calls its internal <code class="language-plaintext highlighter-rouge">call_tool</code> handler method.</li>
+  <li>This handler asks the <code class="language-plaintext highlighter-rouge">ToolManager</code>: “Please execute the tool named <code class="language-plaintext highlighter-rouge">add</code> with arguments <code class="language-plaintext highlighter-rouge">{'num1': 5, 'num2': 7}</code>.” (calling <code class="language-plaintext highlighter-rouge">_tool_manager.call_tool</code>).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">ToolManager</code> looks up <code class="language-plaintext highlighter-rouge">"add"</code> in its dictionary and finds the corresponding <code class="language-plaintext highlighter-rouge">Tool</code> object.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Tool</code> object (or the <code class="language-plaintext highlighter-rouge">ToolManager</code> using it) validates the provided arguments (<code class="language-plaintext highlighter-rouge">{'num1': 5, 'num2': 7}</code>) against the stored argument schema (checks if <code class="language-plaintext highlighter-rouge">num1</code> and <code class="language-plaintext highlighter-rouge">num2</code> are present and are integers).</li>
+  <li>If validation passes, the <code class="language-plaintext highlighter-rouge">Tool</code> object calls the original Python function (<code class="language-plaintext highlighter-rouge">add_numbers</code>) with the arguments unpacked: <code class="language-plaintext highlighter-rouge">add_numbers(num1=5, num2=7)</code>.</li>
+  <li>Your <code class="language-plaintext highlighter-rouge">add_numbers</code> function runs, calculates <code class="language-plaintext highlighter-rouge">12</code>, and returns it.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">ToolManager</code> receives the result <code class="language-plaintext highlighter-rouge">12</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> takes the result, packages it into a valid MCP <code class="language-plaintext highlighter-rouge">callTool</code> response message, and sends it back to the client.</li>
+</ul>
+
+<p><strong>Simplified Sequence Diagram (<code class="language-plaintext highlighter-rouge">callTool</code> for <code class="language-plaintext highlighter-rouge">add</code>):</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Client
+    participant FastMCP_Server as FastMCP (calculator_server.py)
+    participant ToolMgr as ToolManager (_tool_manager)
+    participant AddTool as Tool (wraps add_numbers)
+    participant AddFunc as add_numbers()
+
+    Client-&gt;&gt;+FastMCP_Server: Send MCP Request: callTool(name="add", args={"num1": 5, "num2": 7})
+    FastMCP_Server-&gt;&gt;+ToolMgr: call_tool(name="add", args={...})
+    ToolMgr-&gt;&gt;ToolMgr: Find Tool object for "add"
+    ToolMgr-&gt;&gt;+AddTool: tool.run(arguments={...})
+    AddTool-&gt;&gt;AddTool: Validate args against schema
+    AddTool-&gt;&gt;+AddFunc: Call add_numbers(num1=5, num2=7)
+    AddFunc--&gt;&gt;-AddTool: Return 12
+    AddTool--&gt;&gt;-ToolMgr: Return 12
+    ToolMgr--&gt;&gt;-FastMCP_Server: Return 12
+    FastMCP_Server-&gt;&gt;-Client: Send MCP Response: result=12
+</code></pre>
+
+<p><strong>Looking at the Code (Briefly):</strong></p>
+
+<p>You don’t need to memorize this, but seeing the structure can help.</p>
+
+<ul>
+  <li><strong>Registration (<code class="language-plaintext highlighter-rouge">@server.tool</code> -&gt; <code class="language-plaintext highlighter-rouge">add_tool</code> -&gt; <code class="language-plaintext highlighter-rouge">ToolManager.add_tool</code>)</strong>:
+    <ul>
+      <li>In <code class="language-plaintext highlighter-rouge">server/fastmcp/server.py</code>, the <code class="language-plaintext highlighter-rouge">FastMCP.tool</code> decorator returns an inner function that calls <code class="language-plaintext highlighter-rouge">self.add_tool(fn, ...)</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">FastMCP.add_tool</code> simply calls <code class="language-plaintext highlighter-rouge">self._tool_manager.add_tool(fn, ...)</code>.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside server/fastmcp/tools/tool_manager.py (Simplified ToolManager.add_tool)
+</span><span class="kn">from</span> <span class="nn">.base</span> <span class="kn">import</span> <span class="n">Tool</span> <span class="c1"># Tool class definition is in base.py
+</span>
+<span class="k">class</span> <span class="nc">ToolManager</span><span class="p">:</span>
+    <span class="c1"># ... (init, get_tool, list_tools) ...
+</span>
+    <span class="k">def</span> <span class="nf">add_tool</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fn</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tool</span><span class="p">:</span>
+        <span class="c1"># 1. Create a Tool object from the function
+</span>        <span class="n">tool</span> <span class="o">=</span> <span class="n">Tool</span><span class="p">.</span><span class="n">from_function</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">)</span>
+        <span class="c1"># 2. Check for duplicates (optional warning)
+</span>        <span class="k">if</span> <span class="n">tool</span><span class="p">.</span><span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">_tools</span><span class="p">:</span>
+            <span class="c1"># ... handle duplicate ...
+</span>            <span class="k">pass</span>
+        <span class="c1"># 3. Store the Tool object in the dictionary
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_tools</span><span class="p">[</span><span class="n">tool</span><span class="p">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">tool</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"Registered tool: </span><span class="si">{</span><span class="n">tool</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tool</span>
+</code></pre></div>    </div>
+  </li>
+  <li><strong>Invocation (<code class="language-plaintext highlighter-rouge">FastMCP.call_tool</code> -&gt; <code class="language-plaintext highlighter-rouge">ToolManager.call_tool</code> -&gt; <code class="language-plaintext highlighter-rouge">Tool.run</code>)</strong>:
+    <ul>
+      <li>In <code class="language-plaintext highlighter-rouge">server/fastmcp/server.py</code>, the <code class="language-plaintext highlighter-rouge">FastMCP.call_tool</code> method (which handles incoming <code class="language-plaintext highlighter-rouge">callTool</code> requests) calls <code class="language-plaintext highlighter-rouge">self._tool_manager.call_tool(name, arguments, ...)</code>.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside server/fastmcp/tools/tool_manager.py (Simplified ToolManager.call_tool)
+</span><span class="k">class</span> <span class="nc">ToolManager</span><span class="p">:</span>
+    <span class="c1"># ... (init, add_tool, list_tools) ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">call_tool</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">arguments</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c1"># 1. Find the tool by name
+</span>        <span class="n">tool</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_tool</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">tool</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ToolError</span><span class="p">(</span><span class="sa">f</span><span class="s">"Unknown tool: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+        <span class="c1"># 2. Tell the Tool object to run with the arguments
+</span>        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"Calling tool: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s"> with args: </span><span class="si">{</span><span class="n">arguments</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">tool</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">arguments</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span>
+</code></pre></div>    </div>
+
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">Tool.run</code> method (in <code class="language-plaintext highlighter-rouge">server/fastmcp/tools/base.py</code>) handles argument validation (using the <code class="language-plaintext highlighter-rouge">FuncMetadata</code> generated during registration) and finally calls your original Python function (<code class="language-plaintext highlighter-rouge">add_numbers</code>).</li>
+    </ul>
+  </li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now learned about FastMCP Tools, the way to expose actions and computations from your server for clients to execute.</p>
+
+<ul>
+  <li><strong>Tools (<code class="language-plaintext highlighter-rouge">Tool</code>)</strong> are server-side functions callable by clients, identified by a name.</li>
+  <li>The <strong><code class="language-plaintext highlighter-rouge">ToolManager</code></strong> is the internal component that registers and dispatches tool calls (like a workshop foreman).</li>
+  <li>The <strong><code class="language-plaintext highlighter-rouge">@server.tool()</code></strong> decorator is the easy way to register a Python function as a tool.</li>
+  <li><strong>Type hints</strong> in your function signature are essential for defining the tool’s arguments and return type, enabling automatic validation and documentation.</li>
+  <li>Clients use <code class="language-plaintext highlighter-rouge">listTools</code> to discover tools and <code class="language-plaintext highlighter-rouge">callTool</code> to execute them.</li>
+</ul>
+
+<p>Tools are fundamental for building interactive applications where the client needs the server to perform specific tasks beyond just retrieving data.</p>
+
+<p>In the next chapter, we’ll explore another powerful feature of <code class="language-plaintext highlighter-rouge">FastMCP</code> for interacting with Large Language Models: <a href="05_fastmcp_prompts___prompt____promptmanager__.md">Chapter 5: FastMCP Prompts (<code class="language-plaintext highlighter-rouge">Prompt</code>, <code class="language-plaintext highlighter-rouge">PromptManager</code>)</a>.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

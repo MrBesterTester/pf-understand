@@ -1,0 +1,26 @@
+<h1 id="tutorial-langgraph">Tutorial: LangGraph</h1>
+
+<blockquote>
+  <p>This tutorial is AI-generated! To learn more, check out <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>
+</blockquote>
+
+<p>LangGraph<sup><a href="https://github.com/langchain-ai/langgraph/tree/55f922cf2f3e63600ed8f0d0cd1262a75a991fdc/libs/langgraph/langgraph">View Repo</a></sup> helps you build complex <strong>stateful applications</strong>, like chatbots or agents, using a <em>graph-based approach</em>.
+You define your application’s logic as a series of steps (<strong>Nodes</strong>) connected by transitions (<strong>Edges</strong>) in a <strong>Graph</strong>.
+The system manages the application’s <em>shared state</em> using <strong>Channels</strong> and executes the graph step-by-step with its <strong>Pregel engine</strong>, handling things like branching, interruptions, and saving progress (<strong>Checkpointing</strong>).</p>
+
+<pre><code class="language-mermaid">flowchart TD
+    A0["Pregel Execution Engine"]
+    A1["Graph / StateGraph"]
+    A2["Channels"]
+    A3["Nodes (PregelNode)"]
+    A4["Checkpointer (BaseCheckpointSaver)"]
+    A5["Control Flow Primitives (Branch, Send, Interrupt)"]
+    A0 -- "Executes" --&gt; A1
+    A1 -- "Contains" --&gt; A3
+    A3 -- "Updates State Via" --&gt; A2
+    A0 -- "Manages State Via" --&gt; A2
+    A0 -- "Uses Checkpointer" --&gt; A4
+    A1 -- "Defines Control Flow With" --&gt; A5
+    A5 -- "Directs Execution Of" --&gt; A0
+    A4 -- "Saves State Of" --&gt; A2
+</code></pre>

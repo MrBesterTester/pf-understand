@@ -1,0 +1,316 @@
+<h1 id="chapter-5-chatcompletionclient---talking-to-the-brains">Chapter 5: ChatCompletionClient - Talking to the Brains</h1>
+
+<p>So far, we’ve learned about:</p>
+<ul>
+  <li><a href="01_agent.md">Agents</a>: The workers in our system.</li>
+  <li><a href="02_messaging_system__topic___subscription_.md">Messaging</a>: How agents communicate broadly.</li>
+  <li><a href="03_agentruntime.md">AgentRuntime</a>: The manager that runs the show.</li>
+  <li><a href="04_tool.md">Tools</a>: How agents get specific skills.</li>
+</ul>
+
+<p>But how does an agent actually <em>think</em> or <em>generate text</em>? Many powerful agents rely on Large Language Models (LLMs) – think of models like GPT-4, Claude, or Gemini – as their “brains”. How does an agent in AutoGen Core communicate with these external LLM services?</p>
+
+<p>This is where the <strong><code class="language-plaintext highlighter-rouge">ChatCompletionClient</code></strong> comes in. It’s the dedicated component for talking to LLMs.</p>
+
+<h2 id="motivation-bridging-the-gap-to-llms">Motivation: Bridging the Gap to LLMs</h2>
+
+<p>Imagine you want to build an agent that can summarize long articles.</p>
+<ol>
+  <li>You give the agent an article (as a message).</li>
+  <li>The agent needs to send this article to an LLM (like GPT-4).</li>
+  <li>It also needs to tell the LLM: “Please summarize this.”</li>
+  <li>The LLM processes the request and generates a summary.</li>
+  <li>The agent needs to receive this summary back from the LLM.</li>
+</ol>
+
+<p>How does the agent handle the technical details of connecting to the LLM’s specific API, formatting the request correctly, sending it over the internet, and understanding the response?</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code> solves this! Think of it as the <strong>standard phone line and translator</strong> connecting your agent to the LLM service. You tell the client <em>what</em> to say (the conversation history and instructions), and it handles <em>how</em> to say it to the specific LLM and translates the LLM’s reply back into a standard format.</p>
+
+<h2 id="key-concepts-understanding-the-llm-communicator">Key Concepts: Understanding the LLM Communicator</h2>
+
+<p>Let’s break down the <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code>:</p>
+
+<ol>
+  <li>
+    <p><strong>LLM Communication Bridge:</strong> It’s the primary way AutoGen agents interact with external LLM APIs (like OpenAI, Anthropic, Google Gemini, etc.). It hides the complexity of specific API calls.</p>
+  </li>
+  <li><strong>Standard Interface (<code class="language-plaintext highlighter-rouge">create</code> method):</strong> It defines a common way to send requests and receive responses, regardless of the underlying LLM. The core method is <code class="language-plaintext highlighter-rouge">create</code>. You give it:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">messages</code>: A list of messages representing the conversation history so far.</li>
+      <li>Optional <code class="language-plaintext highlighter-rouge">tools</code>: A list of tools (<a href="04_tool.md">Chapter 4</a>) the LLM might be able to use.</li>
+      <li>Other parameters (like <code class="language-plaintext highlighter-rouge">json_output</code> hints, <code class="language-plaintext highlighter-rouge">cancellation_token</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Messages (<code class="language-plaintext highlighter-rouge">LLMMessage</code>):</strong> The conversation history is passed as a sequence of specific message types defined in <code class="language-plaintext highlighter-rouge">autogen_core.models</code>:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">SystemMessage</code>: Instructions for the LLM (e.g., “You are a helpful assistant.”).</li>
+      <li><code class="language-plaintext highlighter-rouge">UserMessage</code>: Input from the user or another agent (e.g., the article text).</li>
+      <li><code class="language-plaintext highlighter-rouge">AssistantMessage</code>: Previous responses from the LLM (can include text or requests to call functions/tools).</li>
+      <li><code class="language-plaintext highlighter-rouge">FunctionExecutionResultMessage</code>: The results of executing a tool/function call.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Tools (<code class="language-plaintext highlighter-rouge">ToolSchema</code>):</strong> You can provide the schemas of available tools (<a href="04_tool.md">Chapter 4</a>). The LLM might then respond not with text, but with a request to call one of these tools (<code class="language-plaintext highlighter-rouge">FunctionCall</code> inside an <code class="language-plaintext highlighter-rouge">AssistantMessage</code>).</p>
+  </li>
+  <li><strong>Response (<code class="language-plaintext highlighter-rouge">CreateResult</code>):</strong> The <code class="language-plaintext highlighter-rouge">create</code> method returns a standard <code class="language-plaintext highlighter-rouge">CreateResult</code> object containing:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">content</code>: The LLM’s generated text or a list of <code class="language-plaintext highlighter-rouge">FunctionCall</code> requests.</li>
+      <li><code class="language-plaintext highlighter-rouge">finish_reason</code>: Why the LLM stopped generating (e.g., “stop”, “length”, “function_calls”).</li>
+      <li><code class="language-plaintext highlighter-rouge">usage</code>: How many input (<code class="language-plaintext highlighter-rouge">prompt_tokens</code>) and output (<code class="language-plaintext highlighter-rouge">completion_tokens</code>) tokens were used.</li>
+      <li><code class="language-plaintext highlighter-rouge">cached</code>: Whether the response came from a cache.</li>
+    </ul>
+  </li>
+  <li><strong>Token Tracking:</strong> The client automatically tracks token usage (<code class="language-plaintext highlighter-rouge">prompt_tokens</code>, <code class="language-plaintext highlighter-rouge">completion_tokens</code>) for each call. You can query the total usage via methods like <code class="language-plaintext highlighter-rouge">total_usage()</code>. This is vital for monitoring costs, as most LLM APIs charge based on tokens.</li>
+</ol>
+
+<h2 id="use-case-example-summarizing-text-with-an-llm">Use Case Example: Summarizing Text with an LLM</h2>
+
+<p>Let’s build a simplified scenario where we use a <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code> to ask an LLM to summarize text.</p>
+
+<p><strong>Goal:</strong> Send text to an LLM via a client and get a summary back.</p>
+
+<p><strong>Step 1: Prepare the Input Messages</strong></p>
+
+<p>We need to structure our request as a list of <code class="language-plaintext highlighter-rouge">LLMMessage</code> objects.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: prepare_messages.py
+</span><span class="kn">from</span> <span class="nn">autogen_core.models</span> <span class="kn">import</span> <span class="n">SystemMessage</span><span class="p">,</span> <span class="n">UserMessage</span>
+
+<span class="c1"># Instructions for the LLM
+</span><span class="n">system_prompt</span> <span class="o">=</span> <span class="n">SystemMessage</span><span class="p">(</span>
+    <span class="n">content</span><span class="o">=</span><span class="s">"You are a helpful assistant designed to summarize text concisely."</span>
+<span class="p">)</span>
+
+<span class="c1"># The text we want to summarize
+</span><span class="n">article_text</span> <span class="o">=</span> <span class="s">"""
+AutoGen is a framework that enables the development of LLM applications using multiple agents
+that can converse with each other to solve tasks. AutoGen agents are customizable,
+conversable, and can seamlessly allow human participation. They can operate in various modes
+that employ combinations of LLMs, human inputs, and tools.
+"""</span>
+<span class="n">user_request</span> <span class="o">=</span> <span class="n">UserMessage</span><span class="p">(</span>
+    <span class="n">content</span><span class="o">=</span><span class="sa">f</span><span class="s">"Please summarize the following text in one sentence:</span><span class="se">\n\n</span><span class="si">{</span><span class="n">article_text</span><span class="si">}</span><span class="s">"</span><span class="p">,</span>
+    <span class="n">source</span><span class="o">=</span><span class="s">"User"</span> <span class="c1"># Indicate who provided this input
+</span><span class="p">)</span>
+
+<span class="c1"># Combine into a list for the client
+</span><span class="n">messages_to_send</span> <span class="o">=</span> <span class="p">[</span><span class="n">system_prompt</span><span class="p">,</span> <span class="n">user_request</span><span class="p">]</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"Messages prepared:"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">messages_to_send</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"- </span><span class="si">{</span><span class="n">msg</span><span class="p">.</span><span class="nb">type</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="n">msg</span><span class="p">.</span><span class="n">content</span><span class="p">[</span><span class="si">:</span><span class="mi">50</span><span class="p">]</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span> <span class="c1"># Print first 50 chars
+</span></code></pre></div></div>
+<p>This code defines the instructions (<code class="language-plaintext highlighter-rouge">SystemMessage</code>) and the user’s request (<code class="language-plaintext highlighter-rouge">UserMessage</code>) and puts them in a list, ready to be sent.</p>
+
+<p><strong>Step 2: Use the ChatCompletionClient (Conceptual)</strong></p>
+
+<p>Now, we need an instance of a <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code>. In a real application, you’d configure a specific client (like <code class="language-plaintext highlighter-rouge">OpenAIChatCompletionClient</code> with your API key). For this example, let’s imagine we have a pre-configured client called <code class="language-plaintext highlighter-rouge">llm_client</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: call_llm_client.py
+</span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">autogen_core.models</span> <span class="kn">import</span> <span class="n">CreateResult</span><span class="p">,</span> <span class="n">RequestUsage</span>
+<span class="c1"># Assume 'messages_to_send' is from the previous step
+# Assume 'llm_client' is a pre-configured ChatCompletionClient instance
+# (e.g., llm_client = OpenAIChatCompletionClient(config=...))
+</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">get_summary</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">messages</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Sending messages to LLM via ChatCompletionClient..."</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># The core call: send messages, get structured result
+</span>        <span class="n">response</span><span class="p">:</span> <span class="n">CreateResult</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="p">.</span><span class="n">create</span><span class="p">(</span>
+            <span class="n">messages</span><span class="o">=</span><span class="n">messages</span><span class="p">,</span>
+            <span class="c1"># We aren't providing tools in this simple example
+</span>            <span class="n">tools</span><span class="o">=</span><span class="p">[]</span>
+        <span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"Received response:"</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"- Finish Reason: </span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">finish_reason</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"- Content: </span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">content</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># This should be the summary
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"- Usage (Tokens): Prompt=</span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">usage</span><span class="p">.</span><span class="n">prompt_tokens</span><span class="si">}</span><span class="s">, Completion=</span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">usage</span><span class="p">.</span><span class="n">completion_tokens</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"- Cached: </span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">cached</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+        <span class="c1"># Also, check total usage tracked by the client
+</span>        <span class="n">total_usage</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="n">total_usage</span><span class="p">()</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Client Total Usage: Prompt=</span><span class="si">{</span><span class="n">total_usage</span><span class="p">.</span><span class="n">prompt_tokens</span><span class="si">}</span><span class="s">, Completion=</span><span class="si">{</span><span class="n">total_usage</span><span class="p">.</span><span class="n">completion_tokens</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+    <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"An error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># --- Placeholder for actual client ---
+</span><span class="k">class</span> <span class="nc">MockChatCompletionClient</span><span class="p">:</span> <span class="c1"># Simulate a real client
+</span>    <span class="n">_total_usage</span> <span class="o">=</span> <span class="n">RequestUsage</span><span class="p">(</span><span class="n">prompt_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">completion_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">messages</span><span class="p">,</span> <span class="n">tools</span><span class="o">=</span><span class="p">[],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CreateResult</span><span class="p">:</span>
+        <span class="c1"># Simulate API call and response
+</span>        <span class="n">prompt_len</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">m</span><span class="p">.</span><span class="n">content</span><span class="p">))</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">messages</span><span class="p">)</span> <span class="o">//</span> <span class="mi">4</span> <span class="c1"># Rough token estimate
+</span>        <span class="n">summary</span> <span class="o">=</span> <span class="s">"AutoGen is a multi-agent framework for developing LLM applications."</span>
+        <span class="n">completion_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">summary</span><span class="p">)</span> <span class="o">//</span> <span class="mi">4</span> <span class="c1"># Rough token estimate
+</span>        <span class="n">usage</span> <span class="o">=</span> <span class="n">RequestUsage</span><span class="p">(</span><span class="n">prompt_tokens</span><span class="o">=</span><span class="n">prompt_len</span><span class="p">,</span> <span class="n">completion_tokens</span><span class="o">=</span><span class="n">completion_len</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_total_usage</span><span class="p">.</span><span class="n">prompt_tokens</span> <span class="o">+=</span> <span class="n">usage</span><span class="p">.</span><span class="n">prompt_tokens</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_total_usage</span><span class="p">.</span><span class="n">completion_tokens</span> <span class="o">+=</span> <span class="n">usage</span><span class="p">.</span><span class="n">completion_tokens</span>
+        <span class="k">return</span> <span class="n">CreateResult</span><span class="p">(</span>
+            <span class="n">finish_reason</span><span class="o">=</span><span class="s">"stop"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">summary</span><span class="p">,</span> <span class="n">usage</span><span class="o">=</span><span class="n">usage</span><span class="p">,</span> <span class="n">cached</span><span class="o">=</span><span class="bp">False</span>
+        <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">total_usage</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RequestUsage</span><span class="p">:</span> <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_total_usage</span>
+    <span class="c1"># Other required methods (count_tokens, model_info etc.) omitted for brevity
+</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="kn">from</span> <span class="nn">prepare_messages</span> <span class="kn">import</span> <span class="n">messages_to_send</span> <span class="c1"># Get messages from previous step
+</span>    <span class="n">mock_client</span> <span class="o">=</span> <span class="n">MockChatCompletionClient</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">get_summary</span><span class="p">(</span><span class="n">mock_client</span><span class="p">,</span> <span class="n">messages_to_send</span><span class="p">)</span>
+
+<span class="c1"># asyncio.run(main()) # If you run this, it uses the mock client
+</span></code></pre></div></div>
+<p>This code shows the essential <code class="language-plaintext highlighter-rouge">client.create(...)</code> call. We pass our <code class="language-plaintext highlighter-rouge">messages_to_send</code> and receive a <code class="language-plaintext highlighter-rouge">CreateResult</code>. We then print the summary (<code class="language-plaintext highlighter-rouge">response.content</code>) and the token usage reported for that specific call (<code class="language-plaintext highlighter-rouge">response.usage</code>) and the total tracked by the client (<code class="language-plaintext highlighter-rouge">client.total_usage()</code>).</p>
+
+<p><strong>How an Agent Uses It:</strong>
+Typically, an agent’s logic (e.g., inside its <code class="language-plaintext highlighter-rouge">on_message</code> handler) would:</p>
+<ol>
+  <li>Receive an incoming message (like the article to summarize).</li>
+  <li>Prepare the list of <code class="language-plaintext highlighter-rouge">LLMMessage</code> objects (including system prompts, history, and the new request).</li>
+  <li>Access a <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code> instance (often provided during agent setup or accessed via its context).</li>
+  <li>Call <code class="language-plaintext highlighter-rouge">await client.create(...)</code>.</li>
+  <li>Process the <code class="language-plaintext highlighter-rouge">CreateResult</code> (e.g., extract the summary text, check for function calls if tools were provided).</li>
+  <li>Potentially send the result as a new message to another agent or return it.</li>
+</ol>
+
+<h2 id="under-the-hood-how-the-client-talks-to-the-llm">Under the Hood: How the Client Talks to the LLM</h2>
+
+<p>What happens when you call <code class="language-plaintext highlighter-rouge">await client.create(...)</code>?</p>
+
+<p><strong>Conceptual Flow:</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent as Agent Logic
+    participant Client as ChatCompletionClient
+    participant Formatter as API Formatter
+    participant HTTP as HTTP Client
+    participant LLM_API as External LLM API
+
+    Agent-&gt;&gt;+Client: create(messages, tools)
+    Client-&gt;&gt;+Formatter: Format messages &amp; tools for specific API (e.g., OpenAI JSON format)
+    Formatter--&gt;&gt;-Client: Return formatted request body
+    Client-&gt;&gt;+HTTP: Send POST request to LLM API endpoint with formatted body &amp; API Key
+    HTTP-&gt;&gt;+LLM_API: Transmit request over network
+    LLM_API-&gt;&gt;LLM_API: Process request, generate completion/function call
+    LLM_API--&gt;&gt;-HTTP: Return API response (e.g., JSON)
+    HTTP--&gt;&gt;-Client: Receive HTTP response
+    Client-&gt;&gt;+Formatter: Parse API response (extract content, usage, finish_reason)
+    Formatter--&gt;&gt;-Client: Return parsed data
+    Client-&gt;&gt;Client: Create standard CreateResult object
+    Client--&gt;&gt;-Agent: Return CreateResult
+</code></pre>
+
+<ol>
+  <li><strong>Prepare:</strong> The <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code> takes the standard <code class="language-plaintext highlighter-rouge">LLMMessage</code> list and <code class="language-plaintext highlighter-rouge">ToolSchema</code> list.</li>
+  <li><strong>Format:</strong> It translates these into the specific format required by the target LLM’s API (e.g., the JSON structure expected by OpenAI’s <code class="language-plaintext highlighter-rouge">/chat/completions</code> endpoint). This might involve renaming roles (like <code class="language-plaintext highlighter-rouge">SystemMessage</code> to <code class="language-plaintext highlighter-rouge">system</code>), formatting tool descriptions, etc.</li>
+  <li><strong>Request:</strong> It uses an underlying HTTP client to send a network request (usually a POST request) to the LLM service’s API endpoint, including the formatted data and authentication (like an API key).</li>
+  <li><strong>Wait &amp; Receive:</strong> It waits for the LLM service to process the request and send back a response over the network.</li>
+  <li><strong>Parse:</strong> It receives the raw HTTP response (usually JSON) from the API.</li>
+  <li><strong>Standardize:</strong> It parses this specific API response, extracting the generated text or function calls, token usage figures, finish reason, etc.</li>
+  <li><strong>Return:</strong> It packages all this information into a standard <code class="language-plaintext highlighter-rouge">CreateResult</code> object and returns it to the calling agent code.</li>
+</ol>
+
+<p><strong>Code Glimpse:</strong></p>
+
+<ul>
+  <li>
+    <p><strong><code class="language-plaintext highlighter-rouge">ChatCompletionClient</code> Protocol (<code class="language-plaintext highlighter-rouge">models/_model_client.py</code>):</strong> This is the abstract base class (or protocol) defining the <em>contract</em> that all specific clients must follow.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: models/_model_client.py (Simplified ABC)
+</span><span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">AsyncGenerator</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span> <span class="nn">._types</span> <span class="kn">import</span> <span class="n">LLMMessage</span><span class="p">,</span> <span class="n">CreateResult</span><span class="p">,</span> <span class="n">RequestUsage</span>
+<span class="kn">from</span> <span class="nn">..tools</span> <span class="kn">import</span> <span class="n">Tool</span><span class="p">,</span> <span class="n">ToolSchema</span>
+<span class="kn">from</span> <span class="nn">..</span> <span class="kn">import</span> <span class="n">CancellationToken</span>
+
+<span class="k">class</span> <span class="nc">ChatCompletionClient</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">create</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">messages</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span>
+        <span class="n">tools</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tool</span> <span class="o">|</span> <span class="n">ToolSchema</span><span class="p">]</span> <span class="o">=</span> <span class="p">[],</span>
+        <span class="n">json_output</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="c1"># Hint for JSON mode
+</span>        <span class="n">extra_create_args</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{},</span> <span class="c1"># API-specific args
+</span>        <span class="n">cancellation_token</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">CancellationToken</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CreateResult</span><span class="p">:</span> <span class="p">...</span> <span class="c1"># The core method
+</span>
+    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">def</span> <span class="nf">create_stream</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="c1"># Similar to create, but yields results incrementally
+</span>        <span class="c1"># ... parameters ...
+</span>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncGenerator</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">CreateResult</span><span class="p">],</span> <span class="bp">None</span><span class="p">]:</span> <span class="p">...</span>
+
+    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">def</span> <span class="nf">total_usage</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RequestUsage</span><span class="p">:</span> <span class="p">...</span> <span class="c1"># Get total tracked usage
+</span>
+    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">def</span> <span class="nf">count_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">messages</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">LLMMessage</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">tools</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tool</span> <span class="o">|</span> <span class="n">ToolSchema</span><span class="p">]</span> <span class="o">=</span> <span class="p">[])</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span> <span class="p">...</span> <span class="c1"># Estimate token count
+</span>
+    <span class="c1"># Other methods like close(), actual_usage(), remaining_tokens(), model_info...
+</span></code></pre></div>    </div>
+    <p>Concrete classes like <code class="language-plaintext highlighter-rouge">OpenAIChatCompletionClient</code>, <code class="language-plaintext highlighter-rouge">AnthropicChatCompletionClient</code> etc., implement these methods using the specific libraries and API calls for each service.</p>
+  </li>
+  <li>
+    <p><strong><code class="language-plaintext highlighter-rouge">LLMMessage</code> Types (<code class="language-plaintext highlighter-rouge">models/_types.py</code>):</strong> These define the structure of messages passed <em>to</em> the client.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: models/_types.py (Simplified)
+</span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Literal</span>
+<span class="kn">from</span> <span class="nn">..</span> <span class="kn">import</span> <span class="n">FunctionCall</span> <span class="c1"># From Chapter 4 context
+</span>
+<span class="k">class</span> <span class="nc">SystemMessage</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">content</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s">"SystemMessage"</span><span class="p">]</span> <span class="o">=</span> <span class="s">"SystemMessage"</span>
+
+<span class="k">class</span> <span class="nc">UserMessage</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">content</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Image</span><span class="p">]]]</span> <span class="c1"># Can include images!
+</span>    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s">"UserMessage"</span><span class="p">]</span> <span class="o">=</span> <span class="s">"UserMessage"</span>
+
+<span class="k">class</span> <span class="nc">AssistantMessage</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">content</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">FunctionCall</span><span class="p">]]</span> <span class="c1"># Can be text or function calls
+</span>    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s">"AssistantMessage"</span><span class="p">]</span> <span class="o">=</span> <span class="s">"AssistantMessage"</span>
+
+<span class="c1"># FunctionExecutionResultMessage also exists here...
+</span></code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong><code class="language-plaintext highlighter-rouge">CreateResult</code> (<code class="language-plaintext highlighter-rouge">models/_types.py</code>):</strong> This defines the structure of the response <em>from</em> the client.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: models/_types.py (Simplified)
+</span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">from</span> <span class="nn">..</span> <span class="kn">import</span> <span class="n">FunctionCall</span>
+
+<span class="o">@</span><span class="n">dataclass</span>
+<span class="k">class</span> <span class="nc">RequestUsage</span><span class="p">:</span>
+    <span class="n">prompt_tokens</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">completion_tokens</span><span class="p">:</span> <span class="nb">int</span>
+
+<span class="n">FinishReasons</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s">"stop"</span><span class="p">,</span> <span class="s">"length"</span><span class="p">,</span> <span class="s">"function_calls"</span><span class="p">,</span> <span class="s">"content_filter"</span><span class="p">,</span> <span class="s">"unknown"</span><span class="p">]</span>
+
+<span class="k">class</span> <span class="nc">CreateResult</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">finish_reason</span><span class="p">:</span> <span class="n">FinishReasons</span>
+    <span class="n">content</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">FunctionCall</span><span class="p">]]</span> <span class="c1"># LLM output
+</span>    <span class="n">usage</span><span class="p">:</span> <span class="n">RequestUsage</span> <span class="c1"># Token usage for this call
+</span>    <span class="n">cached</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="c1"># Optional fields like logprobs, thought...
+</span></code></pre></div>    </div>
+    <p>Using these standard types ensures that agent logic can work consistently, even if you switch the underlying LLM service by using a different <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code> implementation.</p>
+  </li>
+</ul>
+
+<h2 id="next-steps">Next Steps</h2>
+
+<p>You now understand the role of <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code> as the crucial link between AutoGen agents and the powerful capabilities of Large Language Models. It provides a standard way to send conversational history and tool definitions, receive generated text or function call requests, and track token usage.</p>
+
+<p>Managing the conversation history (<code class="language-plaintext highlighter-rouge">messages</code>) sent to the client is very important. How do you ensure the LLM has the right context, especially after tool calls have happened?</p>
+
+<ul>
+  <li><a href="06_chatcompletioncontext.md">Chapter 6: ChatCompletionContext</a>: Learn how AutoGen helps manage the conversation history, including adding tool call requests and their results, before sending it to the <code class="language-plaintext highlighter-rouge">ChatCompletionClient</code>.</li>
+</ul>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

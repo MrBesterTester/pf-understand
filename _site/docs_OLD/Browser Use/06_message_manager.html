@@ -1,0 +1,389 @@
+<h1 id="chapter-6-message-manager---keeping-the-conversation-straight">Chapter 6: Message Manager - Keeping the Conversation Straight</h1>
+
+<p>In the <a href="05_action_controller___registry.md">previous chapter</a>, we learned how the <code class="language-plaintext highlighter-rouge">Action Controller</code> and <code class="language-plaintext highlighter-rouge">Registry</code> act as the Agent’s “hands” and “toolbox”, executing the specific actions decided by the LLM planner. But how does the LLM get all the information it needs to make those decisions in the first place? How does the Agent keep track of the ongoing conversation, including what it “saw” on the page and what happened after each action?</p>
+
+<p>Imagine you’re having a long, multi-step discussion with an assistant about a complex task. If the assistant has a poor memory, they might forget earlier instructions, the current status, or previous results, making it impossible to proceed correctly. LLMs face a similar challenge: they need the conversation history for context, but they have a limited memory (called the “context window”).</p>
+
+<p>This is the problem the <strong>Message Manager</strong> solves.</p>
+
+<h2 id="what-problem-does-the-message-manager-solve">What Problem Does the Message Manager Solve?</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">Agent</code> needs to have a conversation with the LLM. This conversation isn’t just chat; it includes:</p>
+
+<ol>
+  <li><strong>Initial Instructions:</strong> The core rules from the <a href="02_system_prompt.md">System Prompt</a>.</li>
+  <li><strong>The Task:</strong> The overall goal the Agent needs to achieve.</li>
+  <li><strong>Observations:</strong> What the Agent currently “sees” in the browser (<a href="03_browsercontext.md">BrowserContext</a> state, including the <a href="04_dom_representation.md">DOM Representation</a>).</li>
+  <li><strong>Action Results:</strong> What happened after the last action was performed (<a href="05_action_controller___registry.md">Action Controller &amp; Registry</a>).</li>
+  <li><strong>LLM’s Plan:</strong> The sequence of actions the LLM decided on.</li>
+</ol>
+
+<p>The Message Manager solves several key problems:</p>
+
+<ul>
+  <li><strong>Organizes History:</strong> It structures the conversation chronologically, keeping track of who said what (System, User/Agent State, AI/LLM Plan).</li>
+  <li><strong>Formats Messages:</strong> It ensures the browser state, action results, and even images are formatted correctly so the LLM can understand them.</li>
+  <li><strong>Tracks Size:</strong> It keeps count of the “tokens” (roughly, words or parts of words) used in the conversation history.</li>
+  <li><strong>Manages Limits:</strong> It helps prevent the conversation history from exceeding the LLM’s context window limit, potentially by removing older parts of the conversation if it gets too long.</li>
+</ul>
+
+<p>Think of the <code class="language-plaintext highlighter-rouge">MessageManager</code> as a meticulous secretary for the Agent-LLM conversation. It takes clear, concise notes, presents the current situation accurately, and ensures the conversation doesn’t ramble on for too long, keeping everything within the LLM’s “attention span”.</p>
+
+<h2 id="meet-the-message-manager-the-conversation-secretary">Meet the Message Manager: The Conversation Secretary</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">MessageManager</code> (found in <code class="language-plaintext highlighter-rouge">agent/message_manager/service.py</code>) is responsible for managing the list of messages that are sent to the LLM in each step.</p>
+
+<p>Here are its main jobs:</p>
+
+<ol>
+  <li><strong>Initialization:</strong> When the <code class="language-plaintext highlighter-rouge">Agent</code> starts, the <code class="language-plaintext highlighter-rouge">MessageManager</code> is created. It immediately adds the foundational messages:
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">SystemMessage</code> containing the rules from the <a href="02_system_prompt.md">System Prompt</a>.</li>
+      <li>A <code class="language-plaintext highlighter-rouge">HumanMessage</code> stating the overall <code class="language-plaintext highlighter-rouge">task</code>.</li>
+      <li>Other initial setup messages (like examples or sensitive data placeholders).</li>
+    </ul>
+  </li>
+  <li><strong>Adding Browser State:</strong> Before asking the LLM what to do next, the <code class="language-plaintext highlighter-rouge">Agent</code> gets the current <code class="language-plaintext highlighter-rouge">BrowserState</code>. It then tells the <code class="language-plaintext highlighter-rouge">MessageManager</code> to add this information as a <code class="language-plaintext highlighter-rouge">HumanMessage</code>. This message includes the simplified DOM map, the current URL, and potentially a screenshot (if <code class="language-plaintext highlighter-rouge">use_vision</code> is enabled). It also includes the results (<code class="language-plaintext highlighter-rouge">ActionResult</code>) from the <em>previous</em> step, so the LLM knows what happened last.</li>
+  <li><strong>Adding LLM Output:</strong> After the LLM responds with its plan (<code class="language-plaintext highlighter-rouge">AgentOutput</code>), the <code class="language-plaintext highlighter-rouge">Agent</code> tells the <code class="language-plaintext highlighter-rouge">MessageManager</code> to add this plan as an <code class="language-plaintext highlighter-rouge">AIMessage</code>. This typically includes the LLM’s reasoning and the list of actions to perform.</li>
+  <li><strong>Adding Action Results (Indirectly):</strong> The results from the <code class="language-plaintext highlighter-rouge">Controller.act</code> call (<code class="language-plaintext highlighter-rouge">ActionResult</code>) aren’t added as separate messages <em>after</em> the action. Instead, they are included in the <em>next</em> <code class="language-plaintext highlighter-rouge">HumanMessage</code> that contains the browser state (see step 2). This keeps the context tight: “Here’s the current page, and here’s what happened right before we got here.”</li>
+  <li><strong>Providing Messages to LLM:</strong> When the <code class="language-plaintext highlighter-rouge">Agent</code> is ready to call the LLM, it asks the <code class="language-plaintext highlighter-rouge">MessageManager</code> for the current conversation history (<code class="language-plaintext highlighter-rouge">get_messages()</code>).</li>
+  <li><strong>Token Management:</strong> Every time a message is added, the <code class="language-plaintext highlighter-rouge">MessageManager</code> calculates how many tokens it adds (<code class="language-plaintext highlighter-rouge">_count_tokens</code>) and updates the total. If the total exceeds the limit (<code class="language-plaintext highlighter-rouge">max_input_tokens</code>), it might trigger a truncation strategy (<code class="language-plaintext highlighter-rouge">cut_messages</code>) to shorten the history, usually by removing parts of the oldest user state message or removing the image first.</li>
+</ol>
+
+<h2 id="how-the-agent-uses-the-message-manager">How the Agent Uses the Message Manager</h2>
+
+<p>Let’s revisit the simplified <code class="language-plaintext highlighter-rouge">Agent.step</code> method from <a href="01_agent.md">Chapter 1</a> and highlight the <code class="language-plaintext highlighter-rouge">MessageManager</code> interactions (using <code class="language-plaintext highlighter-rouge">self._message_manager</code>):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agent/service.py (Simplified step method - Highlighting MessageManager) ---
+</span><span class="k">class</span> <span class="nc">Agent</span><span class="p">:</span>
+    <span class="c1"># ... (init, run) ...
+</span>    <span class="k">async</span> <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">step_info</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">AgentStepInfo</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s">"📍 Step </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">n_steps</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">model_output</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">result</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ActionResult</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># 1. Get current state from the browser
+</span>            <span class="n">state</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">browser_context</span><span class="p">.</span><span class="n">get_state</span><span class="p">()</span> <span class="c1"># Uses BrowserContext
+</span>
+            <span class="c1"># 2. Add state + PREVIOUS result to message history via MessageManager
+</span>            <span class="c1">#    'self.state.last_result' holds the outcome of the *previous* step's action
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">_message_manager</span><span class="p">.</span><span class="n">add_state_message</span><span class="p">(</span>
+                <span class="n">state</span><span class="p">,</span>
+                <span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">last_result</span><span class="p">,</span> <span class="c1"># Result from previous action
+</span>                <span class="n">step_info</span><span class="p">,</span>
+                <span class="bp">self</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">use_vision</span> <span class="c1"># Tell it whether to include image
+</span>            <span class="p">)</span>
+
+            <span class="c1"># 3. Get the complete, formatted message history for the LLM
+</span>            <span class="n">input_messages</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_message_manager</span><span class="p">.</span><span class="n">get_messages</span><span class="p">()</span>
+
+            <span class="c1"># 4. Get LLM's decision on the next action(s)
+</span>            <span class="n">model_output</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_next_action</span><span class="p">(</span><span class="n">input_messages</span><span class="p">)</span> <span class="c1"># Calls the LLM
+</span>
+            <span class="c1"># --- Agent increments step counter ---
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">n_steps</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># 5. Remove the potentially large state message before adding the compact AI response
+</span>            <span class="c1">#    (This is an optimization mentioned in the provided code)
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">_message_manager</span><span class="p">.</span><span class="n">_remove_last_state_message</span><span class="p">()</span>
+
+            <span class="c1"># 6. Add the LLM's response (the plan) to the history
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">_message_manager</span><span class="p">.</span><span class="n">add_model_output</span><span class="p">(</span><span class="n">model_output</span><span class="p">)</span>
+
+            <span class="c1"># 7. Execute the action(s) using the Controller
+</span>            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">multi_act</span><span class="p">(</span><span class="n">model_output</span><span class="p">.</span><span class="n">action</span><span class="p">)</span> <span class="c1"># Uses Controller
+</span>
+            <span class="c1"># 8. Store the result of THIS action. It will be used in the *next* step's
+</span>            <span class="c1">#    call to self._message_manager.add_state_message()
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">last_result</span> <span class="o">=</span> <span class="n">result</span>
+
+            <span class="c1"># ... (Record step details, handle success/failure) ...
+</span>
+        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Handle errors...
+</span>            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_handle_step_error</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">last_result</span> <span class="o">=</span> <span class="n">result</span>
+        <span class="c1"># ... (finally block) ...
+</span></code></pre></div></div>
+
+<p>This flow shows the cycle: add state/previous result -&gt; get messages -&gt; call LLM -&gt; add LLM response -&gt; execute action -&gt; store result for <em>next</em> state message.</p>
+
+<h2 id="how-it-works-under-the-hood-managing-the-flow">How it Works Under the Hood: Managing the Flow</h2>
+
+<p>Let’s visualize the key interactions during one step of the Agent loop involving the <code class="language-plaintext highlighter-rouge">MessageManager</code>:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent
+    participant BC as BrowserContext
+    participant MM as MessageManager
+    participant LLM
+    participant Controller
+
+    Note over Agent: Start of step
+    Agent-&gt;&gt;BC: get_state()
+    BC--&gt;&gt;Agent: Current BrowserState (DOM map, URL, screenshot?)
+    Note over Agent: Have BrowserState and `last_result` from previous step
+    Agent-&gt;&gt;MM: add_state_message(BrowserState, last_result)
+    MM-&gt;&gt;MM: Format state/result into HumanMessage (with text/image)
+    MM-&gt;&gt;MM: Calculate tokens for new message
+    MM-&gt;&gt;MM: Add HumanMessage to internal history list
+    MM-&gt;&gt;MM: Update total token count
+    MM-&gt;&gt;MM: Check token limit, potentially call cut_messages()
+    Note over Agent: Ready to ask LLM
+    Agent-&gt;&gt;MM: get_messages()
+    MM--&gt;&gt;Agent: Return List[BaseMessage] (System, Task, State1, Plan1, State2...)
+    Agent-&gt;&gt;LLM: Invoke LLM with message list
+    LLM--&gt;&gt;Agent: LLM Response (AgentOutput containing plan)
+    Note over Agent: Got LLM's plan
+    Agent-&gt;&gt;MM: _remove_last_state_message() # Optimization
+    MM-&gt;&gt;MM: Remove last (large) HumanMessage from list
+    Agent-&gt;&gt;MM: add_model_output(AgentOutput)
+    MM-&gt;&gt;MM: Format plan into AIMessage (with tool calls)
+    MM-&gt;&gt;MM: Calculate tokens for AIMessage
+    MM-&gt;&gt;MM: Add AIMessage to internal history list
+    MM-&gt;&gt;MM: Update total token count
+    Note over Agent: Ready to execute plan
+    Agent-&gt;&gt;Controller: multi_act(AgentOutput.action)
+    Controller--&gt;&gt;Agent: List[ActionResult] (Result of this step's actions)
+    Agent-&gt;&gt;Agent: Store ActionResult in `self.state.last_result` (for next step)
+    Note over Agent: End of step
+</code></pre>
+
+<p>This shows how <code class="language-plaintext highlighter-rouge">MessageManager</code> sits between the Agent, the Browser State, and the LLM, managing the history list and token counts.</p>
+
+<h2 id="diving-deeper-into-the-code-agentmessage_managerservicepy">Diving Deeper into the Code (<code class="language-plaintext highlighter-rouge">agent/message_manager/service.py</code>)</h2>
+
+<p>Let’s look at simplified versions of key methods in <code class="language-plaintext highlighter-rouge">MessageManager</code>.</p>
+
+<p><strong>1. Initialization (<code class="language-plaintext highlighter-rouge">__init__</code> and <code class="language-plaintext highlighter-rouge">_init_messages</code>)</strong></p>
+
+<p>When the <code class="language-plaintext highlighter-rouge">Agent</code> creates the <code class="language-plaintext highlighter-rouge">MessageManager</code>, it passes the task and the already-formatted <code class="language-plaintext highlighter-rouge">SystemMessage</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agent/message_manager/service.py (Simplified __init__) ---
+</span><span class="kn">from</span> <span class="nn">langchain_core.messages</span> <span class="kn">import</span> <span class="n">SystemMessage</span><span class="p">,</span> <span class="n">HumanMessage</span><span class="p">,</span> <span class="n">AIMessage</span><span class="p">,</span> <span class="n">ToolMessage</span>
+<span class="c1"># ... other imports ...
+</span><span class="kn">from</span> <span class="nn">browser_use.agent.views</span> <span class="kn">import</span> <span class="n">MessageManagerState</span> <span class="c1"># Internal state storage
+</span><span class="kn">from</span> <span class="nn">browser_use.agent.message_manager.views</span> <span class="kn">import</span> <span class="n">MessageMetadata</span><span class="p">,</span> <span class="n">ManagedMessage</span> <span class="c1"># Message wrapper
+</span>
+<span class="k">class</span> <span class="nc">MessageManager</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">task</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">system_message</span><span class="p">:</span> <span class="n">SystemMessage</span><span class="p">,</span> <span class="c1"># Received from Agent
+</span>        <span class="n">settings</span><span class="p">:</span> <span class="n">MessageManagerSettings</span> <span class="o">=</span> <span class="n">MessageManagerSettings</span><span class="p">(),</span>
+        <span class="n">state</span><span class="p">:</span> <span class="n">MessageManagerState</span> <span class="o">=</span> <span class="n">MessageManagerState</span><span class="p">(),</span> <span class="c1"># Stores history
+</span>    <span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">task</span> <span class="o">=</span> <span class="n">task</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">settings</span> <span class="o">=</span> <span class="n">settings</span> <span class="c1"># Max tokens, image settings, etc.
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">state</span> <span class="c1"># Holds the 'history' object
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">system_prompt</span> <span class="o">=</span> <span class="n">system_message</span>
+
+        <span class="c1"># Only initialize if history is empty (e.g., not resuming from saved state)
+</span>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">history</span><span class="p">.</span><span class="n">messages</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">_init_messages</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_init_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="s">"""Add the initial fixed messages to the history."""</span>
+        <span class="c1"># Add the main system prompt (rules)
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_add_message_with_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">system_prompt</span><span class="p">)</span>
+
+        <span class="c1"># Add the user's task
+</span>        <span class="n">task_message</span> <span class="o">=</span> <span class="n">HumanMessage</span><span class="p">(</span>
+            <span class="n">content</span><span class="o">=</span><span class="sa">f</span><span class="s">'Your ultimate task is: """</span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">task</span><span class="si">}</span><span class="s">"""...'</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_add_message_with_tokens</span><span class="p">(</span><span class="n">task_message</span><span class="p">)</span>
+
+        <span class="c1"># Add other setup messages (context, sensitive data info, examples)
+</span>        <span class="c1"># ... (simplified - see full code for details) ...
+</span>
+        <span class="c1"># Example: Add a placeholder for where the main history begins
+</span>        <span class="n">placeholder_message</span> <span class="o">=</span> <span class="n">HumanMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s">'[Your task history memory starts here]'</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_add_message_with_tokens</span><span class="p">(</span><span class="n">placeholder_message</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This sets up the foundational context for the LLM.</p>
+
+<p><strong>2. Adding Browser State (<code class="language-plaintext highlighter-rouge">add_state_message</code>)</strong></p>
+
+<p>This method takes the current <code class="language-plaintext highlighter-rouge">BrowserState</code> and the previous <code class="language-plaintext highlighter-rouge">ActionResult</code>, formats them into a <code class="language-plaintext highlighter-rouge">HumanMessage</code> (potentially multi-modal with image and text parts), and adds it to the history.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agent/message_manager/service.py (Simplified add_state_message) ---
+# ... imports ...
+</span><span class="kn">from</span> <span class="nn">browser_use.browser.views</span> <span class="kn">import</span> <span class="n">BrowserState</span>
+<span class="kn">from</span> <span class="nn">browser_use.agent.views</span> <span class="kn">import</span> <span class="n">ActionResult</span><span class="p">,</span> <span class="n">AgentStepInfo</span>
+<span class="kn">from</span> <span class="nn">browser_use.agent.prompts</span> <span class="kn">import</span> <span class="n">AgentMessagePrompt</span> <span class="c1"># Helper to format state
+</span>
+<span class="k">class</span> <span class="nc">MessageManager</span><span class="p">:</span>
+    <span class="c1"># ... (init) ...
+</span>
+    <span class="k">def</span> <span class="nf">add_state_message</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">state</span><span class="p">:</span> <span class="n">BrowserState</span><span class="p">,</span> <span class="c1"># The current view of the browser
+</span>        <span class="n">result</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">ActionResult</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="c1"># Result from *previous* action
+</span>        <span class="n">step_info</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">AgentStepInfo</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+        <span class="n">use_vision</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="c1"># Flag to include screenshot
+</span>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="s">"""Add browser state and previous result as a human message."""</span>
+
+        <span class="c1"># Add any 'memory' messages from the previous result first (if any)
+</span>        <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">result</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">r</span><span class="p">.</span><span class="n">include_in_memory</span> <span class="ow">and</span> <span class="p">(</span><span class="n">r</span><span class="p">.</span><span class="n">extracted_content</span> <span class="ow">or</span> <span class="n">r</span><span class="p">.</span><span class="n">error</span><span class="p">):</span>
+                    <span class="n">content</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Action result: </span><span class="si">{</span><span class="n">r</span><span class="p">.</span><span class="n">extracted_content</span><span class="si">}</span><span class="s">"</span> <span class="k">if</span> <span class="n">r</span><span class="p">.</span><span class="n">extracted_content</span> <span class="k">else</span> <span class="sa">f</span><span class="s">"Action error: </span><span class="si">{</span><span class="n">r</span><span class="p">.</span><span class="n">error</span><span class="si">}</span><span class="s">"</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="n">HumanMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="n">content</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="p">.</span><span class="n">_add_message_with_tokens</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                    <span class="n">result</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># Don't include again in the main state message
+</span>
+        <span class="c1"># Use a helper class to format the BrowserState (+ optional remaining result)
+</span>        <span class="c1"># into the correct message structure (text + optional image)
+</span>        <span class="n">state_prompt</span> <span class="o">=</span> <span class="n">AgentMessagePrompt</span><span class="p">(</span>
+            <span class="n">state</span><span class="p">,</span>
+            <span class="n">result</span><span class="p">,</span> <span class="c1"># Pass any remaining result info
+</span>            <span class="n">include_attributes</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">include_attributes</span><span class="p">,</span>
+            <span class="n">step_info</span><span class="o">=</span><span class="n">step_info</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="c1"># Get the formatted message (could be complex list for vision)
+</span>        <span class="n">state_message</span> <span class="o">=</span> <span class="n">state_prompt</span><span class="p">.</span><span class="n">get_user_message</span><span class="p">(</span><span class="n">use_vision</span><span class="p">)</span>
+
+        <span class="c1"># Add the formatted message (with token calculation) to history
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_add_message_with_tokens</span><span class="p">(</span><span class="n">state_message</span><span class="p">)</span>
+
+</code></pre></div></div>
+
+<p><strong>3. Adding Model Output (<code class="language-plaintext highlighter-rouge">add_model_output</code>)</strong></p>
+
+<p>This takes the LLM’s plan (<code class="language-plaintext highlighter-rouge">AgentOutput</code>) and formats it as an <code class="language-plaintext highlighter-rouge">AIMessage</code> with specific “tool calls” structure that many models expect.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agent/message_manager/service.py (Simplified add_model_output) ---
+# ... imports ...
+</span><span class="kn">from</span> <span class="nn">browser_use.agent.views</span> <span class="kn">import</span> <span class="n">AgentOutput</span>
+
+<span class="k">class</span> <span class="nc">MessageManager</span><span class="p">:</span>
+    <span class="c1"># ... (init, add_state_message) ...
+</span>
+    <span class="k">def</span> <span class="nf">add_model_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_output</span><span class="p">:</span> <span class="n">AgentOutput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="s">"""Add model output (the plan) as an AI message with tool calls."""</span>
+        <span class="c1"># Format the output according to OpenAI's tool calling standard
+</span>        <span class="n">tool_calls</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">{</span>
+                <span class="s">'name'</span><span class="p">:</span> <span class="s">'AgentOutput'</span><span class="p">,</span> <span class="c1"># The 'tool' name
+</span>                <span class="s">'args'</span><span class="p">:</span> <span class="n">model_output</span><span class="p">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s">'json'</span><span class="p">,</span> <span class="n">exclude_unset</span><span class="o">=</span><span class="bp">True</span><span class="p">),</span> <span class="c1"># The LLM's JSON output
+</span>                <span class="s">'id'</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">tool_id</span><span class="p">),</span> <span class="c1"># Unique ID for the call
+</span>                <span class="s">'type'</span><span class="p">:</span> <span class="s">'tool_call'</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">]</span>
+
+        <span class="c1"># Create the AIMessage containing the tool calls
+</span>        <span class="n">msg</span> <span class="o">=</span> <span class="n">AIMessage</span><span class="p">(</span>
+            <span class="n">content</span><span class="o">=</span><span class="s">''</span><span class="p">,</span> <span class="c1"># Content is often empty when using tool calls
+</span>            <span class="n">tool_calls</span><span class="o">=</span><span class="n">tool_calls</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Add it to history
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_add_message_with_tokens</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="c1"># Add a corresponding empty ToolMessage (required by some models)
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">add_tool_message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s">''</span><span class="p">)</span> <span class="c1"># Content depends on tool execution result
+</span>
+    <span class="k">def</span> <span class="nf">add_tool_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">content</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="s">"""Add tool message to history (often confirms tool call receipt/result)"""</span>
+        <span class="c1"># ToolMessage links back to the AIMessage's tool_call_id
+</span>        <span class="n">msg</span> <span class="o">=</span> <span class="n">ToolMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="n">content</span><span class="p">,</span> <span class="n">tool_call_id</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">tool_id</span><span class="p">))</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">tool_id</span> <span class="o">+=</span> <span class="mi">1</span> <span class="c1"># Increment for next potential tool call
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_add_message_with_tokens</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>4. Adding Messages and Counting Tokens (<code class="language-plaintext highlighter-rouge">_add_message_with_tokens</code>, <code class="language-plaintext highlighter-rouge">_count_tokens</code>)</strong></p>
+
+<p>This is the core function called by others to add any message to the history, ensuring token counts are tracked.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agent/message_manager/service.py (Simplified _add_message_with_tokens) ---
+# ... imports ...
+</span><span class="kn">from</span> <span class="nn">langchain_core.messages</span> <span class="kn">import</span> <span class="n">BaseMessage</span>
+<span class="kn">from</span> <span class="nn">browser_use.agent.message_manager.views</span> <span class="kn">import</span> <span class="n">MessageMetadata</span><span class="p">,</span> <span class="n">ManagedMessage</span>
+
+<span class="k">class</span> <span class="nc">MessageManager</span><span class="p">:</span>
+    <span class="c1"># ... (other methods) ...
+</span>
+    <span class="k">def</span> <span class="nf">_add_message_with_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">BaseMessage</span><span class="p">,</span> <span class="n">position</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="s">"""Internal helper to add any message with its token count metadata."""</span>
+
+        <span class="c1"># 1. Optionally filter sensitive data (replace actual data with placeholders)
+</span>        <span class="c1"># if self.settings.sensitive_data:
+</span>        <span class="c1">#    message = self._filter_sensitive_data(message) # Simplified
+</span>
+        <span class="c1"># 2. Count the tokens in the message
+</span>        <span class="n">token_count</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_count_tokens</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+        <span class="c1"># 3. Create metadata object
+</span>        <span class="n">metadata</span> <span class="o">=</span> <span class="n">MessageMetadata</span><span class="p">(</span><span class="n">tokens</span><span class="o">=</span><span class="n">token_count</span><span class="p">)</span>
+
+        <span class="c1"># 4. Add the message and its metadata to the history list
+</span>        <span class="c1">#    (self.state.history is a MessageHistory object)
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">history</span><span class="p">.</span><span class="n">add_message</span><span class="p">(</span><span class="n">message</span><span class="p">,</span> <span class="n">metadata</span><span class="p">,</span> <span class="n">position</span><span class="p">)</span>
+        <span class="c1">#    Note: self.state.history.add_message also updates the total token count
+</span>
+        <span class="c1"># 5. Check if history exceeds token limit and truncate if needed
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">cut_messages</span><span class="p">()</span> <span class="c1"># Check and potentially trim history
+</span>
+    <span class="k">def</span> <span class="nf">_count_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">BaseMessage</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="s">"""Estimate tokens in a message."""</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">content</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span> <span class="c1"># Multi-modal (text + image)
+</span>            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">message</span><span class="p">.</span><span class="n">content</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s">'image_url'</span> <span class="ow">in</span> <span class="n">item</span><span class="p">:</span>
+                    <span class="c1"># Add fixed cost for images
+</span>                    <span class="n">tokens</span> <span class="o">+=</span> <span class="bp">self</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">image_tokens</span>
+                <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s">'text'</span> <span class="ow">in</span> <span class="n">item</span><span class="p">:</span>
+                    <span class="c1"># Estimate tokens based on text length
+</span>                    <span class="n">tokens</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s">'text'</span><span class="p">])</span> <span class="o">//</span> <span class="bp">self</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">estimated_characters_per_token</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">content</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span> <span class="c1"># Text message
+</span>            <span class="n">text</span> <span class="o">=</span> <span class="n">message</span><span class="p">.</span><span class="n">content</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">message</span><span class="p">,</span> <span class="s">'tool_calls'</span><span class="p">):</span> <span class="c1"># Add tokens for tool call structure
+</span>                 <span class="n">text</span> <span class="o">+=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">message</span><span class="p">,</span> <span class="s">'tool_calls'</span><span class="p">,</span> <span class="s">''</span><span class="p">))</span>
+            <span class="n">tokens</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="o">//</span> <span class="bp">self</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">estimated_characters_per_token</span>
+
+        <span class="k">return</span> <span class="n">tokens</span>
+
+    <span class="k">def</span> <span class="nf">cut_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">"""Trim messages if total tokens exceed the limit."""</span>
+        <span class="c1"># Calculate how many tokens we are over the limit
+</span>        <span class="n">diff</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">history</span><span class="p">.</span><span class="n">current_tokens</span> <span class="o">-</span> <span class="bp">self</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">max_input_tokens</span>
+        <span class="k">if</span> <span class="n">diff</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="c1"># We are within limits
+</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"Token limit exceeded by </span><span class="si">{</span><span class="n">diff</span><span class="si">}</span><span class="s">. Trimming history."</span><span class="p">)</span>
+
+        <span class="c1"># Strategy:
+</span>        <span class="c1"># 1. Try removing the image from the *last* (most recent) state message if present.
+</span>        <span class="c1">#    (Code logic finds the last message, checks content list, removes image item, updates counts)
+</span>        <span class="c1"># ... (Simplified - see full code for image removal logic) ...
+</span>
+        <span class="c1"># 2. If still over limit after image removal (or no image was present),
+</span>        <span class="c1">#    trim text content from the *end* of the last state message.
+</span>        <span class="c1">#    Calculate proportion to remove, shorten string, create new message.
+</span>        <span class="c1"># ... (Simplified - see full code for text trimming logic) ...
+</span>
+        <span class="c1"># Ensure we don't get stuck if trimming isn't enough (raise error)
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">history</span><span class="p">.</span><span class="n">current_tokens</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">max_input_tokens</span><span class="p">:</span>
+             <span class="k">raise</span> <span class="nb">ValueError</span><span class="p">(</span><span class="s">"Max token limit reached even after trimming."</span><span class="p">)</span>
+
+</code></pre></div></div>
+
+<p>This shows the basic mechanics of adding messages, calculating their approximate size, and applying strategies to keep the history within the LLM’s context window limit.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">MessageManager</code> is the Agent’s conversation secretary. It meticulously records the dialogue between the Agent (reporting browser state and action results) and the LLM (providing analysis and action plans), starting from the initial <code class="language-plaintext highlighter-rouge">System Prompt</code> and task definition.</p>
+
+<p>Crucially, it formats these messages correctly, tracks the conversation’s size using token counts, and implements strategies to keep the history concise enough for the LLM’s limited context window. Without the <code class="language-plaintext highlighter-rouge">MessageManager</code>, the Agent would quickly lose track of the conversation, and the LLM wouldn’t have the necessary context to guide the browser effectively.</p>
+
+<p>Many of the objects managed and passed around by the <code class="language-plaintext highlighter-rouge">MessageManager</code>, like <code class="language-plaintext highlighter-rouge">BrowserState</code>, <code class="language-plaintext highlighter-rouge">ActionResult</code>, and <code class="language-plaintext highlighter-rouge">AgentOutput</code>, are defined as specific data structures. In the next chapter, we’ll take a closer look at these important <strong>Data Structures (Views)</strong>.</p>
+
+<p><a href="07_data_structures__views_.md">Next Chapter: Data Structures (Views)</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

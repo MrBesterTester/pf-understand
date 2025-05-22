@@ -1,0 +1,334 @@
+<h1 id="chapter-5-reusable-chat-starters---fastmcp-prompts-prompt-promptmanager">Chapter 5: Reusable Chat Starters - FastMCP Prompts (<code class="language-plaintext highlighter-rouge">Prompt</code>, <code class="language-plaintext highlighter-rouge">PromptManager</code>)</h1>
+
+<p>In <a href="04_fastmcp_tools___tool____toolmanager__.md">Chapter 4: FastMCP Tools (<code class="language-plaintext highlighter-rouge">Tool</code>, <code class="language-plaintext highlighter-rouge">ToolManager</code>)</a>, we learned how to give our server specific <em>actions</em> it can perform, like a calculator tool. But modern AI often involves conversations, especially with Large Language Models (LLMs). How do we manage the instructions and conversation starters we send to these models?</p>
+
+<p>Imagine you want to build an AI assistant tool that can summarize text. You’ll need to tell the underlying LLM <em>what</em> to do (summarize) and <em>what</em> text to summarize. You might also want to provide specific instructions like “Keep the summary under 50 words.” You’ll probably need variations of this prompt for different tasks. Writing this message structure over and over again in your tool code would be repetitive and hard to manage.</p>
+
+<p>This is where <strong>FastMCP Prompts</strong> come in. They provide a way to create reusable templates for generating sequences of messages, perfect for starting conversations with LLMs or structuring requests.</p>
+
+<h2 id="the-mad-libs-analogy-prompts-and-the-prompt-manager">The Mad Libs Analogy: Prompts and the Prompt Manager</h2>
+
+<p>Think of a <strong><code class="language-plaintext highlighter-rouge">Prompt</code></strong> like a <strong>Mad Libs story template</strong>. A Mad Libs template has a pre-written story with blanks (like <code class="language-plaintext highlighter-rouge">___(noun)___</code> or <code class="language-plaintext highlighter-rouge">___(verb)___</code>). You define the structure and the blanks.</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">Prompt</code></strong>: The Mad Libs template itself. It has a name (like “Vacation Story”) and defined blanks. In FastMCP, the “story” is a sequence of messages (usually for an LLM), and the blanks are <strong><code class="language-plaintext highlighter-rouge">PromptArgument</code></strong> objects.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">PromptArgument</code></strong>: Represents a blank in the template. It defines the name of the blank (e.g., <code class="language-plaintext highlighter-rouge">text_to_summarize</code>), maybe a description, and whether it’s required.</li>
+  <li><strong>Rendering</strong>: The act of filling in the blanks. You provide values (arguments) for the blanks (<code class="language-plaintext highlighter-rouge">text_to_summarize = "Once upon a time..."</code>), and the template generates the complete story. In FastMCP, rendering a <code class="language-plaintext highlighter-rouge">Prompt</code> with arguments produces a list of <strong><code class="language-plaintext highlighter-rouge">PromptMessage</code></strong> objects (like <code class="language-plaintext highlighter-rouge">UserMessage</code> or <code class="language-plaintext highlighter-rouge">AssistantMessage</code>). These messages have roles (<code class="language-plaintext highlighter-rouge">user</code>, <code class="language-plaintext highlighter-rouge">assistant</code>) and content, ready to be sent to an LLM.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">PromptManager</code></strong>: Like a folder or binder holding all your different Mad Libs templates. It’s the part of <code class="language-plaintext highlighter-rouge">FastMCP</code> that stores and helps you find and use (<code class="language-plaintext highlighter-rouge">render</code>) your defined <code class="language-plaintext highlighter-rouge">Prompt</code> templates.</li>
+</ul>
+
+<p>Clients (like an AI application) can ask the <code class="language-plaintext highlighter-rouge">PromptManager</code> (via <code class="language-plaintext highlighter-rouge">FastMCP</code>) to list available prompt templates (<code class="language-plaintext highlighter-rouge">listPrompts</code>) and then request a specific, filled-in prompt sequence using its name and arguments (<code class="language-plaintext highlighter-rouge">getPrompt</code>).</p>
+
+<h2 id="creating-your-first-prompt-template-using-serverprompt">Creating Your First Prompt Template: Using <code class="language-plaintext highlighter-rouge">@server.prompt()</code></h2>
+
+<p>Just like <code class="language-plaintext highlighter-rouge">@server.tool()</code> and <code class="language-plaintext highlighter-rouge">@server.resource()</code>, <code class="language-plaintext highlighter-rouge">FastMCP</code> provides a simple decorator, <code class="language-plaintext highlighter-rouge">@server.prompt()</code>, to easily define these message templates using Python functions.</p>
+
+<p>Let’s create a prompt template for our text summarization task.</p>
+
+<p><strong>File: <code class="language-plaintext highlighter-rouge">summarizer_server.py</code></strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 1. Import FastMCP and message types
+</span><span class="kn">from</span> <span class="nn">mcp.server.fastmcp</span> <span class="kn">import</span> <span class="n">FastMCP</span>
+<span class="kn">from</span> <span class="nn">mcp.server.fastmcp.prompts</span> <span class="kn">import</span> <span class="n">UserMessage</span> <span class="c1"># We'll use this
+</span>
+<span class="c1"># 2. Create the server instance
+</span><span class="n">server</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"SummarizerServer"</span><span class="p">)</span>
+
+<span class="c1"># 3. Use the @server.prompt() decorator to define our template
+</span><span class="o">@</span><span class="n">server</span><span class="p">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"summarize_text"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">"Generates messages to ask an LLM to summarize text."</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">create_summary_prompt</span><span class="p">(</span><span class="n">text_to_summarize</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">UserMessage</span><span class="p">]:</span>
+  <span class="s">"""
+  This function defines the 'summarize_text' prompt template.
+  'text_to_summarize: str' defines a required argument (a blank).
+  '-&gt; list[UserMessage]' indicates it returns a list of messages.
+  """</span>
+  <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Rendering prompt 'summarize_text' with text: </span><span class="si">{</span><span class="n">text_to_summarize</span><span class="p">[</span><span class="si">:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span> <span class="c1"># Log
+</span>
+  <span class="c1"># 4. Construct the message(s) based on the arguments
+</span>  <span class="c1"># Here, we create a single user message containing instructions and the text.
+</span>  <span class="n">prompt_content</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Please summarize the following text concisely:</span><span class="se">\n\n</span><span class="si">{</span><span class="n">text_to_summarize</span><span class="si">}</span><span class="s">"</span>
+
+  <span class="c1"># Return a list containing one UserMessage object
+</span>  <span class="k">return</span> <span class="p">[</span><span class="n">UserMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="n">prompt_content</span><span class="p">)]</span>
+
+<span class="c1"># 5. Standard run block (optional: add a tool that uses this prompt later)
+</span><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Starting </span><span class="si">{</span><span class="n">server</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">run</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">server</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s"> finished."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Imports</strong>: We import <code class="language-plaintext highlighter-rouge">FastMCP</code> and <code class="language-plaintext highlighter-rouge">UserMessage</code> (a specific type of <code class="language-plaintext highlighter-rouge">PromptMessage</code>). <code class="language-plaintext highlighter-rouge">AssistantMessage</code> is also available.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">server = FastMCP(...)</code></strong>: Creates our server. Internally, this also creates a <code class="language-plaintext highlighter-rouge">PromptManager</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">@server.prompt(...)</code></strong>: This decorator registers our function as a prompt template.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">name="summarize_text"</code>: The name clients will use to request this template.</li>
+      <li><code class="language-plaintext highlighter-rouge">description="..."</code>: A helpful description.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">def create_summary_prompt(...)</code></strong>: This Python function <em>builds</em> the message list when the prompt is rendered.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">text_to_summarize: str</code>: The type hint defines a required <code class="language-plaintext highlighter-rouge">PromptArgument</code> named <code class="language-plaintext highlighter-rouge">text_to_summarize</code>. This is the blank in our Mad Libs.</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt; list[UserMessage]</code>: The type hint tells <code class="language-plaintext highlighter-rouge">FastMCP</code> that this function will return a list containing <code class="language-plaintext highlighter-rouge">UserMessage</code> objects (or compatible types like plain strings or dicts that look like messages).</li>
+      <li>The function body uses the input argument (<code class="language-plaintext highlighter-rouge">text_to_summarize</code>) to construct the desired message content.</li>
+      <li>It returns a list containing a single <code class="language-plaintext highlighter-rouge">UserMessage</code>. You could return multiple messages (e.g., alternating user/assistant roles) to set up a conversation history.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">server.run()</code></strong>: Starts the server. The <code class="language-plaintext highlighter-rouge">PromptManager</code> now knows about the <code class="language-plaintext highlighter-rouge">summarize_text</code> prompt template.</li>
+</ol>
+
+<p><strong>What happens when a client uses this prompt?</strong></p>
+
+<ol>
+  <li><strong>Discovery (Optional):</strong> A client might call <code class="language-plaintext highlighter-rouge">listPrompts</code>. The server (using <code class="language-plaintext highlighter-rouge">PromptManager</code>) would respond with information about the <code class="language-plaintext highlighter-rouge">summarize_text</code> prompt, including its name, description, and the required argument <code class="language-plaintext highlighter-rouge">text_to_summarize</code> (string).</li>
+  <li><strong>Rendering Request:</strong> The client wants to generate the messages for summarizing a specific text. It sends an MCP request: <code class="language-plaintext highlighter-rouge">getPrompt</code> with <code class="language-plaintext highlighter-rouge">name="summarize_text"</code> and <code class="language-plaintext highlighter-rouge">arguments={"text_to_summarize": "This is the text..."}</code>.</li>
+  <li><strong>Server-Side Rendering:</strong>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">FastMCP</code> receives the request and asks its <code class="language-plaintext highlighter-rouge">PromptManager</code> to render the prompt.</li>
+      <li><code class="language-plaintext highlighter-rouge">PromptManager</code> finds the <code class="language-plaintext highlighter-rouge">Prompt</code> object associated with <code class="language-plaintext highlighter-rouge">summarize_text</code>.</li>
+      <li>It calls the <code class="language-plaintext highlighter-rouge">render</code> method on the <code class="language-plaintext highlighter-rouge">Prompt</code> object, which in turn calls your Python function <code class="language-plaintext highlighter-rouge">create_summary_prompt(text_to_summarize="This is the text...")</code>.</li>
+      <li>Your function runs, builds the <code class="language-plaintext highlighter-rouge">prompt_content</code> string, and returns <code class="language-plaintext highlighter-rouge">[UserMessage(content="Please summarize...")]</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">FastMCP</code> takes this list of <code class="language-plaintext highlighter-rouge">Message</code> objects.</li>
+    </ul>
+  </li>
+  <li><strong>Response:</strong> <code class="language-plaintext highlighter-rouge">FastMCP</code> sends the generated message list back to the client in the <code class="language-plaintext highlighter-rouge">getPrompt</code> response. The client now has the structured message(s) ready to be sent to an LLM.</li>
+</ol>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">//</span><span class="w"> </span><span class="err">Example</span><span class="w"> </span><span class="err">Client</span><span class="w"> </span><span class="err">Request</span><span class="w"> </span><span class="err">(Simplified</span><span class="w"> </span><span class="err">MCP</span><span class="w"> </span><span class="err">format)</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"method"</span><span class="p">:</span><span class="w"> </span><span class="s2">"getPrompt"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"params"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"summarize_text"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"arguments"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"text_to_summarize"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The quick brown fox jumps over the lazy dog."</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+
+</span><span class="err">//</span><span class="w"> </span><span class="err">Example</span><span class="w"> </span><span class="err">Server</span><span class="w"> </span><span class="err">Response</span><span class="w"> </span><span class="err">(Simplified</span><span class="w"> </span><span class="err">MCP</span><span class="w"> </span><span class="err">format)</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"result"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"messages"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+      </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"user"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"content"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span><span class="w">
+          </span><span class="nl">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Please summarize the following text concisely:</span><span class="se">\n\n</span><span class="s2">The quick brown fox jumps over the lazy dog."</span><span class="w">
+        </span><span class="p">}</span><span class="w">
+      </span><span class="p">}</span><span class="w">
+    </span><span class="p">]</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This makes it easy for client applications to get consistently formatted prompts for various tasks without needing to know the exact text structure themselves.</p>
+
+<h2 id="returning-different-message-types">Returning Different Message Types</h2>
+
+<p>Your prompt function can return various things, and <code class="language-plaintext highlighter-rouge">FastMCP</code> will try to convert them into the standard <code class="language-plaintext highlighter-rouge">Message</code> format (like <code class="language-plaintext highlighter-rouge">UserMessage</code> or <code class="language-plaintext highlighter-rouge">AssistantMessage</code>):</p>
+
+<ul>
+  <li><strong>A single string:</strong> Automatically converted to <code class="language-plaintext highlighter-rouge">UserMessage(content=TextContent(type="text", text=your_string))</code>.</li>
+  <li><strong>A <code class="language-plaintext highlighter-rouge">Message</code> object (e.g., <code class="language-plaintext highlighter-rouge">UserMessage</code>, <code class="language-plaintext highlighter-rouge">AssistantMessage</code>):</strong> Used directly.</li>
+  <li><strong>A dictionary matching the <code class="language-plaintext highlighter-rouge">Message</code> structure:</strong> e.g., <code class="language-plaintext highlighter-rouge">{"role": "user", "content": "Hello!"}</code>. Validated and converted.</li>
+  <li><strong>A list containing any mix of the above:</strong> Each item is converted/validated.</li>
+</ul>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">mcp.server.fastmcp</span> <span class="kn">import</span> <span class="n">FastMCP</span>
+<span class="c1"># Import both message types
+</span><span class="kn">from</span> <span class="nn">mcp.server.fastmcp.prompts</span> <span class="kn">import</span> <span class="n">UserMessage</span><span class="p">,</span> <span class="n">AssistantMessage</span>
+
+<span class="n">server</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"MultiMessageServer"</span><span class="p">)</span>
+
+<span class="o">@</span><span class="n">server</span><span class="p">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"greet_user"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">"Starts a simple conversation."</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">greeting_prompt</span><span class="p">(</span><span class="n">user_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span> <span class="c1"># -&gt; returns list of mixed types
+</span>  <span class="s">"""Generates a multi-turn conversation starter."""</span>
+
+  <span class="c1"># We can return a list containing different types:
+</span>  <span class="k">return</span> <span class="p">[</span>
+      <span class="c1"># A UserMessage object
+</span>      <span class="n">UserMessage</span><span class="p">(</span><span class="sa">f</span><span class="s">"Hello </span><span class="si">{</span><span class="n">user_name</span><span class="si">}</span><span class="s">, tell me about your day."</span><span class="p">),</span>
+      <span class="c1"># A dictionary that looks like an AssistantMessage
+</span>      <span class="p">{</span><span class="s">"role"</span><span class="p">:</span> <span class="s">"assistant"</span><span class="p">,</span> <span class="s">"content"</span><span class="p">:</span> <span class="s">"I'm ready to listen!"</span><span class="p">},</span>
+      <span class="c1"># A simple string (becomes a UserMessage)
+</span>      <span class="s">"Start whenever you're ready."</span><span class="p">,</span>
+  <span class="p">]</span>
+
+<span class="c1"># ... (run block) ...
+</span></code></pre></div></div>
+
+<p>This flexibility lets you structure complex conversational prompts easily.</p>
+
+<h2 id="how-prompts-work-under-the-hood">How Prompts Work Under the Hood</h2>
+
+<p>Using <code class="language-plaintext highlighter-rouge">@server.prompt()</code> is straightforward, but what’s happening inside <code class="language-plaintext highlighter-rouge">FastMCP</code> and its <code class="language-plaintext highlighter-rouge">PromptManager</code>?</p>
+
+<p><strong>1. Registration (When the server code loads):</strong></p>
+
+<ul>
+  <li>Python executes your <code class="language-plaintext highlighter-rouge">summarizer_server.py</code>.</li>
+  <li>It reaches the <code class="language-plaintext highlighter-rouge">@server.prompt(name="summarize_text", ...)</code> line above <code class="language-plaintext highlighter-rouge">def create_summary_prompt(...)</code>.</li>
+  <li>This calls the <code class="language-plaintext highlighter-rouge">server.prompt()</code> method (in <code class="language-plaintext highlighter-rouge">server/fastmcp/server.py</code>). This method returns a decorator function that is immediately applied to <code class="language-plaintext highlighter-rouge">create_summary_prompt</code>.</li>
+  <li>The decorator function calls <code class="language-plaintext highlighter-rouge">server.add_prompt()</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">server.add_prompt()</code> calls <code class="language-plaintext highlighter-rouge">self._prompt_manager.add_prompt()</code>.</li>
+  <li>Inside <code class="language-plaintext highlighter-rouge">PromptManager.add_prompt</code> (in <code class="language-plaintext highlighter-rouge">server/fastmcp/prompts/manager.py</code>):
+    <ul>
+      <li>It calls <code class="language-plaintext highlighter-rouge">Prompt.from_function(create_summary_prompt, name="summarize_text", ...)</code> (see <code class="language-plaintext highlighter-rouge">server/fastmcp/prompts/base.py</code>).</li>
+      <li><code class="language-plaintext highlighter-rouge">Prompt.from_function</code> inspects the <code class="language-plaintext highlighter-rouge">create_summary_prompt</code> function:
+        <ul>
+          <li>Gets its name (<code class="language-plaintext highlighter-rouge">summarize_text</code>).</li>
+          <li>Gets its description (from decorator or docstring).</li>
+          <li>Looks at the parameters (<code class="language-plaintext highlighter-rouge">text_to_summarize: str</code>) using Python’s introspection to determine the required <code class="language-plaintext highlighter-rouge">PromptArgument</code>s.</li>
+          <li>Creates a <code class="language-plaintext highlighter-rouge">Prompt</code> object storing the function itself (<code class="language-plaintext highlighter-rouge">fn</code>), its name, description, and the list of arguments.</li>
+        </ul>
+      </li>
+      <li>The <code class="language-plaintext highlighter-rouge">PromptManager</code> stores this <code class="language-plaintext highlighter-rouge">Prompt</code> object in its internal dictionary, keyed by the name <code class="language-plaintext highlighter-rouge">"summarize_text"</code>.</li>
+    </ul>
+  </li>
+</ul>
+
+<p><strong>2. Rendering (When a client calls <code class="language-plaintext highlighter-rouge">getPrompt</code>):</strong></p>
+
+<ul>
+  <li>A client sends the MCP <code class="language-plaintext highlighter-rouge">getPrompt</code> request we saw earlier.</li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> receives this and calls its internal <code class="language-plaintext highlighter-rouge">get_prompt</code> handler method (defined in <code class="language-plaintext highlighter-rouge">server/fastmcp/server.py</code>).</li>
+  <li>This handler calls <code class="language-plaintext highlighter-rouge">self._prompt_manager.render_prompt("summarize_text", {"text_to_summarize": "..."})</code>.</li>
+  <li>Inside <code class="language-plaintext highlighter-rouge">PromptManager.render_prompt</code>:
+    <ul>
+      <li>It looks up <code class="language-plaintext highlighter-rouge">"summarize_text"</code> in its dictionary and finds the corresponding <code class="language-plaintext highlighter-rouge">Prompt</code> object.</li>
+      <li>It calls the <code class="language-plaintext highlighter-rouge">Prompt</code> object’s <code class="language-plaintext highlighter-rouge">render</code> method: <code class="language-plaintext highlighter-rouge">prompt.render(arguments={"text_to_summarize": "..."})</code>.</li>
+    </ul>
+  </li>
+  <li>Inside <code class="language-plaintext highlighter-rouge">Prompt.render</code> (in <code class="language-plaintext highlighter-rouge">server/fastmcp/prompts/base.py</code>):
+    <ul>
+      <li>It validates that all required arguments (like <code class="language-plaintext highlighter-rouge">text_to_summarize</code>) were provided.</li>
+      <li>It calls the original Python function stored in <code class="language-plaintext highlighter-rouge">prompt.fn</code>: <code class="language-plaintext highlighter-rouge">create_summary_prompt(text_to_summarize="...")</code>.</li>
+      <li>Your function executes and returns the list <code class="language-plaintext highlighter-rouge">[UserMessage(...)]</code>.</li>
+      <li>The <code class="language-plaintext highlighter-rouge">render</code> method takes this result, validates that each item is (or can be converted to) a <code class="language-plaintext highlighter-rouge">Message</code> object, and ensures the final output is a list of <code class="language-plaintext highlighter-rouge">Message</code>s.</li>
+    </ul>
+  </li>
+  <li>The <code class="language-plaintext highlighter-rouge">PromptManager</code> receives this validated list of <code class="language-plaintext highlighter-rouge">Message</code> objects.</li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> takes the result, packages it into the standard MCP <code class="language-plaintext highlighter-rouge">GetPromptResult</code> format (which contains the <code class="language-plaintext highlighter-rouge">messages</code> list), and sends it back to the client.</li>
+</ul>
+
+<p><strong>Simplified Sequence Diagram (<code class="language-plaintext highlighter-rouge">getPrompt</code> for <code class="language-plaintext highlighter-rouge">summarize_text</code>):</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Client
+    participant FastMCP_Server as FastMCP (server.py)
+    participant PromptMgr as PromptManager (_prompt_manager)
+    participant SummaryPrompt as Prompt (wraps create_summary_prompt)
+    participant PromptFunc as create_summary_prompt()
+
+    Client-&gt;&gt;+FastMCP_Server: Send MCP Request: getPrompt(name="summarize_text", args={"text": "..."})
+    FastMCP_Server-&gt;&gt;+PromptMgr: render_prompt(name="summarize_text", args={...})
+    PromptMgr-&gt;&gt;PromptMgr: Find Prompt object for "summarize_text"
+    PromptMgr-&gt;&gt;+SummaryPrompt: prompt.render(arguments={...})
+    SummaryPrompt-&gt;&gt;+PromptFunc: Call create_summary_prompt(text_to_summarize="...")
+    PromptFunc--&gt;&gt;-SummaryPrompt: Return [UserMessage(content="Summarize: ...")]
+    SummaryPrompt-&gt;&gt;SummaryPrompt: Validate &amp; format message list
+    SummaryPrompt--&gt;&gt;-PromptMgr: Return validated [UserMessage(...)]
+    PromptMgr--&gt;&gt;-FastMCP_Server: Return [UserMessage(...)]
+    FastMCP_Server-&gt;&gt;-Client: Send MCP Response: result={messages: [{...}]}
+</code></pre>
+
+<p><strong>Looking at the Code (Briefly):</strong></p>
+
+<p>You don’t need to memorize the internal details, but seeing where things happen can clarify the process:</p>
+
+<ul>
+  <li><strong>Registration (<code class="language-plaintext highlighter-rouge">@server.prompt</code> -&gt; <code class="language-plaintext highlighter-rouge">add_prompt</code> -&gt; <code class="language-plaintext highlighter-rouge">PromptManager.add_prompt</code>)</strong>:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">server.py</code>: <code class="language-plaintext highlighter-rouge">FastMCP.prompt</code> decorator calls <code class="language-plaintext highlighter-rouge">self.add_prompt</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">server.py</code>: <code class="language-plaintext highlighter-rouge">FastMCP.add_prompt</code> calls <code class="language-plaintext highlighter-rouge">self._prompt_manager.add_prompt</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">manager.py</code>: <code class="language-plaintext highlighter-rouge">PromptManager.add_prompt</code> calls <code class="language-plaintext highlighter-rouge">Prompt.from_function</code> and stores the result.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside server/fastmcp/prompts/manager.py (Simplified PromptManager.add_prompt)
+</span><span class="kn">from</span> <span class="nn">.base</span> <span class="kn">import</span> <span class="n">Prompt</span>
+
+<span class="k">class</span> <span class="nc">PromptManager</span><span class="p">:</span>
+    <span class="c1"># ... (init, get_prompt, list_prompts) ...
+</span>
+    <span class="k">def</span> <span class="nf">add_prompt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">:</span> <span class="n">Prompt</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Prompt</span><span class="p">:</span>
+        <span class="c1"># Check for duplicates...
+</span>        <span class="k">if</span> <span class="n">prompt</span><span class="p">.</span><span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">_prompts</span><span class="p">:</span>
+             <span class="c1"># ... handle duplicate ...
+</span>             <span class="k">pass</span>
+        <span class="c1"># Store the Prompt object
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_prompts</span><span class="p">[</span><span class="n">prompt</span><span class="p">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">prompt</span>
+        <span class="k">return</span> <span class="n">prompt</span>
+
+<span class="c1"># Note: Prompt.from_function (in base.py) does the function inspection.
+</span></code></pre></div>    </div>
+  </li>
+  <li><strong>Rendering (<code class="language-plaintext highlighter-rouge">FastMCP.get_prompt</code> -&gt; <code class="language-plaintext highlighter-rouge">PromptManager.render_prompt</code> -&gt; <code class="language-plaintext highlighter-rouge">Prompt.render</code>)</strong>:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">server.py</code>: <code class="language-plaintext highlighter-rouge">FastMCP.get_prompt</code> handles incoming requests and calls <code class="language-plaintext highlighter-rouge">self._prompt_manager.render_prompt</code>.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside server/fastmcp/prompts/manager.py (Simplified PromptManager.render_prompt)
+</span><span class="k">class</span> <span class="nc">PromptManager</span><span class="p">:</span>
+    <span class="c1"># ... (other methods) ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">render_prompt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">arguments</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c1"># 1. Find the prompt object by name
+</span>        <span class="n">prompt</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_prompt</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">prompt</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="nb">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s">"Unknown prompt: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+        <span class="c1"># 2. Tell the Prompt object to render itself
+</span>        <span class="k">return</span> <span class="k">await</span> <span class="n">prompt</span><span class="p">.</span><span class="n">render</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
+</code></pre></div>    </div>
+
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">base.py</code>: <code class="language-plaintext highlighter-rouge">Prompt.render</code> validates arguments and calls the stored function (<code class="language-plaintext highlighter-rouge">self.fn</code>). It then processes the function’s return value into a list of <code class="language-plaintext highlighter-rouge">Message</code> objects.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside server/fastmcp/prompts/base.py (Simplified Prompt.render)
+</span><span class="k">class</span> <span class="nc">Prompt</span><span class="p">:</span>
+    <span class="c1"># ... (init, from_function, PromptArgument) ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">render</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arguments</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c1"># Validate required arguments...
+</span>        <span class="c1"># ...
+</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Call the original decorated function
+</span>            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">fn</span><span class="p">(</span><span class="o">**</span><span class="p">(</span><span class="n">arguments</span> <span class="ow">or</span> <span class="p">{}))</span>
+            <span class="k">if</span> <span class="n">inspect</span><span class="p">.</span><span class="n">iscoroutine</span><span class="p">(</span><span class="n">result</span><span class="p">):</span> <span class="c1"># Handle async functions
+</span>                <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">result</span>
+
+            <span class="c1"># Convert result to list of Message objects
+</span>            <span class="c1"># (Handles strings, dicts, Message objects, lists)
+</span>            <span class="n">messages</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="c1"># ... (conversion logic using message_validator) ...
+</span>            <span class="k">return</span> <span class="n">messages</span>
+        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="nb">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error rendering prompt </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div>    </div>
+  </li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about FastMCP Prompts, a powerful way to manage reusable message templates, especially useful for interacting with language models.</p>
+
+<ul>
+  <li><strong>Prompts (<code class="language-plaintext highlighter-rouge">Prompt</code>)</strong> are like Mad Libs templates for creating sequences of <code class="language-plaintext highlighter-rouge">UserMessage</code>s and <code class="language-plaintext highlighter-rouge">AssistantMessage</code>s.</li>
+  <li>They use <strong><code class="language-plaintext highlighter-rouge">PromptArgument</code></strong>s to define the “blanks” that need filling.</li>
+  <li>The <strong><code class="language-plaintext highlighter-rouge">PromptManager</code></strong> keeps track of all defined prompts.</li>
+  <li>The <strong><code class="language-plaintext highlighter-rouge">@server.prompt()</code></strong> decorator provides an easy way to define a prompt template using a Python function. The function’s parameters become arguments, and its return value (string, dict, Message object, or list thereof) defines the generated message sequence.</li>
+  <li>Clients use <code class="language-plaintext highlighter-rouge">listPrompts</code> to discover templates and <code class="language-plaintext highlighter-rouge">getPrompt</code> to render a specific template with arguments, receiving the generated messages back.</li>
+</ul>
+
+<p>Prompts help keep your LLM interaction logic organized, reusable, and separate from your main tool code.</p>
+
+<p>In the next chapter, we’ll explore a concept that ties tools, resources, and potentially prompts together during a request: <a href="06_fastmcp_context___context__.md">Chapter 6: FastMCP Context (<code class="language-plaintext highlighter-rouge">Context</code>)</a>. This allows your tools and resources to access server capabilities like logging and progress reporting.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

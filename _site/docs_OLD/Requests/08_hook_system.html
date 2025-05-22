@@ -1,0 +1,351 @@
+<h1 id="chapter-8-the-hook-system---setting-up-checkpoints">Chapter 8: The Hook System - Setting Up Checkpoints</h1>
+
+<p>In <a href="07_transport_adapters.md">Chapter 7: Transport Adapters</a>, we saw how to customize the low-level details of <em>how</em> requests are sent and connections are managed, like setting custom retry strategies. Transport Adapters give you control over the delivery mechanism itself.</p>
+
+<p>But what if you don’t need to change <em>how</em> the request is sent, but instead want to simply <strong>react</strong> when something happens during the process? For example, maybe you want to log every single response your application receives, or perhaps automatically add a timestamp to every request header just before it goes out (though this specific header example isn’t currently supported by the default hooks).</p>
+
+<h2 id="the-problem-reacting-to-events">The Problem: Reacting to Events</h2>
+
+<p>Imagine you’re building an application that interacts with several different web services. For debugging or monitoring purposes, you want to keep a record of every response you get back – specifically, the URL you requested and the status code the server returned.</p>
+
+<p>You could manually add <code class="language-plaintext highlighter-rouge">print()</code> statements after every single <code class="language-plaintext highlighter-rouge">requests.get()</code>, <code class="language-plaintext highlighter-rouge">s.post()</code>, etc., call throughout your code:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Manual logging (Repetitive!)
+</span><span class="n">response1</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'https://api.service1.com/data'</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"LOG: Got </span><span class="si">{</span><span class="n">response1</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s"> for </span><span class="si">{</span><span class="n">response1</span><span class="p">.</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># ... process response1 ...
+</span>
+<span class="n">response2</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">post</span><span class="p">(</span><span class="s">'https://api.service2.com/action'</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s">'key'</span><span class="p">:</span> <span class="s">'value'</span><span class="p">})</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"LOG: Got </span><span class="si">{</span><span class="n">response2</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s"> for </span><span class="si">{</span><span class="n">response2</span><span class="p">.</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># ... process response2 ...
+</span>
+<span class="n">response3</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'https://api.service1.com/status'</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"LOG: Got </span><span class="si">{</span><span class="n">response3</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s"> for </span><span class="si">{</span><span class="n">response3</span><span class="p">.</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># ... process response3 ...
+</span></code></pre></div></div>
+
+<p>This quickly becomes tedious and error-prone. If you forget to add the logging line, you miss that record. If you want to change the log format, you have to change it everywhere. Isn’t there a way to tell <code class="language-plaintext highlighter-rouge">requests</code> to automatically run your logging code <em>every time</em> it gets a response?</p>
+
+<h2 id="meet-the-hook-system-your-automated-checkpoints">Meet the Hook System: Your Automated Checkpoints</h2>
+
+<p>Yes, there is! <code class="language-plaintext highlighter-rouge">Requests</code> provides a <strong>Hook System</strong> that lets you do just that.</p>
+
+<p>Think of hooks like setting up <strong>checkpoints</strong> in the process of making a request and getting a response. When the process reaches a specific checkpoint, <code class="language-plaintext highlighter-rouge">requests</code> pauses briefly and calls any custom functions you’ve registered for that checkpoint.</p>
+
+<p><strong>Analogy: Package Delivery Checkpoints</strong> 📦</p>
+
+<p>Imagine a package delivery process:</p>
+<ol>
+  <li>Package picked up.</li>
+  <li>Package arrives at sorting facility. -&gt; <strong>Checkpoint!</strong> (Maybe run a function to scan the barcode).</li>
+  <li>Package loaded onto delivery truck.</li>
+  <li>Package delivered to recipient. -&gt; <strong>Checkpoint!</strong> (Maybe run a function to get a signature).</li>
+</ol>
+
+<p>The Hook System in <code class="language-plaintext highlighter-rouge">requests</code> works similarly. You can attach your own Python functions (called “hooks”) to specific events (checkpoints).</p>
+
+<p>Currently, the main event available is the <strong><code class="language-plaintext highlighter-rouge">response</code></strong> hook.</p>
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">response</code> Hook:</strong> This hook runs <em>after</em> a response has been received from the server and the basic <code class="language-plaintext highlighter-rouge">Response</code> object has been built, but <em>before</em> that <code class="language-plaintext highlighter-rouge">Response</code> object is returned to your code that called <code class="language-plaintext highlighter-rouge">requests.get()</code> or <code class="language-plaintext highlighter-rouge">s.post()</code>.</li>
+</ul>
+
+<h2 id="using-the-response-hook">Using the <code class="language-plaintext highlighter-rouge">response</code> Hook</h2>
+
+<p>Let’s solve our logging problem using the <code class="language-plaintext highlighter-rouge">response</code> hook.</p>
+
+<p><strong>Step 1: Define the Hook Function</strong></p>
+
+<p>First, we need to write a Python function that will perform our logging action. This function needs to accept the <code class="language-plaintext highlighter-rouge">Response</code> object as its first argument. It can also accept optional keyword arguments (<code class="language-plaintext highlighter-rouge">**kwargs</code>), which <code class="language-plaintext highlighter-rouge">requests</code> might pass in (though for the <code class="language-plaintext highlighter-rouge">response</code> hook, the <code class="language-plaintext highlighter-rouge">Response</code> object is the main thing).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Our custom hook function for logging
+</span><span class="k">def</span> <span class="nf">log_response_details</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="s">"""
+    This function will be called after each response.
+    It logs the request method, URL, and response status code.
+    """</span>
+    <span class="c1"># 'response' is the Response object just received
+</span>    <span class="n">request_method</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">request</span><span class="p">.</span><span class="n">method</span> <span class="c1"># Get the method from the original request
+</span>    <span class="n">url</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">url</span>                     <span class="c1"># Get the final URL
+</span>    <span class="n">status_code</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">status_code</span>       <span class="c1"># Get the status code
+</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"HOOK LOG: Received </span><span class="si">{</span><span class="n">status_code</span><span class="si">}</span><span class="s"> for </span><span class="si">{</span><span class="n">request_method</span><span class="si">}</span><span class="s"> request to </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+    <span class="c1"># IMPORTANT: Hooks usually shouldn't return anything (or return None).
+</span>    <span class="c1"># If a hook returns a value, it REPLACES the data being processed.
+</span>    <span class="c1"># For the 'response' hook, returning a value would replace the Response object!
+</span>    <span class="c1"># Since we just want to log, we don't return anything.
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>The function <code class="language-plaintext highlighter-rouge">log_response_details</code> takes <code class="language-plaintext highlighter-rouge">response</code> as its first argument. This will be the <code class="language-plaintext highlighter-rouge">requests.Response</code> object.</li>
+  <li>It also accepts <code class="language-plaintext highlighter-rouge">*args</code> and <code class="language-plaintext highlighter-rouge">**kwargs</code> to be flexible, even though we don’t use them here.</li>
+  <li>Inside the function, we access attributes of the <code class="language-plaintext highlighter-rouge">response</code> object (like <code class="language-plaintext highlighter-rouge">status_code</code>, <code class="language-plaintext highlighter-rouge">url</code>) and its associated request (<code class="language-plaintext highlighter-rouge">response.request.method</code>) to print our log message.</li>
+  <li>Crucially, this function <em>doesn’t return anything</em>. If it did return a value, that value would replace the original <code class="language-plaintext highlighter-rouge">response</code> object for any further processing or for the final return value of <code class="language-plaintext highlighter-rouge">s.get()</code>.</li>
+</ul>
+
+<p><strong>Step 2: Register the Hook</strong></p>
+
+<p>Now we need to tell <code class="language-plaintext highlighter-rouge">requests</code> to actually <em>use</em> our <code class="language-plaintext highlighter-rouge">log_response_details</code> function. We can register hooks in two main ways:</p>
+
+<ol>
+  <li><strong>On a <code class="language-plaintext highlighter-rouge">Session</code> Object:</strong> If you register a hook on a <a href="03_session.md">Session</a> object, it will be called for <em>every request</em> made using that session. This is perfect for our logging use case.</li>
+  <li><strong>On a Single <code class="language-plaintext highlighter-rouge">Request</code>:</strong> You can also attach hooks to an individual <code class="language-plaintext highlighter-rouge">Request</code> object before preparing it. This is less common but useful if you only want a hook to run for one specific request.</li>
+</ol>
+
+<p>Let’s register our hook on a <code class="language-plaintext highlighter-rouge">Session</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="c1"># (Paste the log_response_details function definition from above here)
+</span><span class="k">def</span> <span class="nf">log_response_details</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">request_method</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">request</span><span class="p">.</span><span class="n">method</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">url</span>
+    <span class="n">status_code</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">status_code</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"HOOK LOG: Received </span><span class="si">{</span><span class="n">status_code</span><span class="si">}</span><span class="s"> for </span><span class="si">{</span><span class="n">request_method</span><span class="si">}</span><span class="s"> request to </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Create a Session
+</span><span class="n">s</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">Session</span><span class="p">()</span>
+
+<span class="c1"># Register the hook on the session
+# Hooks are stored in a dictionary: session.hooks = {'event_name': [list_of_functions]}
+# We add our function to the list for the 'response' event.
+</span><span class="n">s</span><span class="p">.</span><span class="n">hooks</span><span class="p">[</span><span class="s">'response'</span><span class="p">].</span><span class="n">append</span><span class="p">(</span><span class="n">log_response_details</span><span class="p">)</span>
+
+<span class="c1"># Now, make some requests using the session
+</span><span class="k">print</span><span class="p">(</span><span class="s">"Making requests..."</span><span class="p">)</span>
+<span class="n">response1</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'https://httpbin.org/get'</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"  -&gt; Main code received response 1 with status: </span><span class="si">{</span><span class="n">response1</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">response2</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">post</span><span class="p">(</span><span class="s">'https://httpbin.org/post'</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s">'id'</span><span class="p">:</span> <span class="s">'123'</span><span class="p">})</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"  -&gt; Main code received response 2 with status: </span><span class="si">{</span><span class="n">response2</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">response3</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'https://httpbin.org/status/404'</span><span class="p">)</span> <span class="c1"># This will get a 404
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"  -&gt; Main code received response 3 with status: </span><span class="si">{</span><span class="n">response3</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Expected Output:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Making requests...
+HOOK LOG: Received 200 for GET request to https://httpbin.org/get
+  -&gt; Main code received response 1 with status: 200
+HOOK LOG: Received 200 for POST request to https://httpbin.org/post
+  -&gt; Main code received response 2 with status: 200
+HOOK LOG: Received 404 for GET request to https://httpbin.org/status/404
+  -&gt; Main code received response 3 with status: 404
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">s = requests.Session()</code>: We created a session.</li>
+  <li><code class="language-plaintext highlighter-rouge">s.hooks['response'].append(log_response_details)</code>: This is the key step. <code class="language-plaintext highlighter-rouge">s.hooks</code> is a dictionary where keys are event names (like <code class="language-plaintext highlighter-rouge">'response'</code>) and values are lists of functions to call for that event. We appended our logging function to the list for the <code class="language-plaintext highlighter-rouge">'response'</code> event.</li>
+  <li>When we called <code class="language-plaintext highlighter-rouge">s.get(...)</code> or <code class="language-plaintext highlighter-rouge">s.post(...)</code>, the following happened internally:
+    <ul>
+      <li>The request was sent.</li>
+      <li>The response was received.</li>
+      <li><em>Before</em> returning the response to our main code (<code class="language-plaintext highlighter-rouge">response1 = ...</code>), the <code class="language-plaintext highlighter-rouge">requests</code> Session checked its <code class="language-plaintext highlighter-rouge">hooks</code> dictionary for the <code class="language-plaintext highlighter-rouge">'response'</code> event.</li>
+      <li>It found our <code class="language-plaintext highlighter-rouge">log_response_details</code> function and called it, passing the received <code class="language-plaintext highlighter-rouge">Response</code> object.</li>
+      <li>Our hook function printed the log message.</li>
+      <li>Since the hook returned <code class="language-plaintext highlighter-rouge">None</code>, the original <code class="language-plaintext highlighter-rouge">Response</code> object was then returned to our main code.</li>
+    </ul>
+  </li>
+  <li>Notice how the “HOOK LOG” lines appear <em>before</em> the “Main code received response” lines, demonstrating that the hook runs after receiving the response but before the calling code gets it.</li>
+</ol>
+
+<p><strong>Modifying the Response (Advanced)</strong></p>
+
+<p>While our logging hook didn’t return anything, a hook <em>can</em> modify the <code class="language-plaintext highlighter-rouge">Response</code> object it receives, or even return a completely different <code class="language-plaintext highlighter-rouge">Response</code> object.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">add_custom_header_hook</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="s">"""Adds a custom header to the received response."""</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"HOOK: Adding X-Hook-Processed header..."</span><span class="p">)</span>
+    <span class="n">response</span><span class="p">.</span><span class="n">headers</span><span class="p">[</span><span class="s">'X-Hook-Processed'</span><span class="p">]</span> <span class="o">=</span> <span class="s">'True'</span>
+    <span class="c1"># We modified the response in-place, so we return None
+</span>    <span class="c1"># to let requests continue using the modified response.
+</span>    <span class="k">return</span> <span class="bp">None</span>
+
+<span class="c1"># Or, a hook that returns a *new* response (less common)
+# def replace_response_hook(response, *args, **kwargs):
+#     if response.status_code == 404:
+#         print("HOOK: Replacing 404 response with a custom one!")
+#         new_response = requests.Response()
+#         new_response.status_code = 200
+#         new_response.reason = "Found via Hook"
+#         new_response._content = b"Content generated by hook!"
+#         new_response.request = response.request # Keep original request link
+#         return new_response # Return the NEW response
+#     return None # Otherwise, keep the original response
+</span></code></pre></div></div>
+
+<p><strong>Caution:</strong> Modifying or replacing responses within hooks can be powerful but also confusing if not done carefully. For beginners, using hooks for actions like logging or metrics that don’t change the response is often the safest starting point.</p>
+
+<h2 id="how-it-works-internally">How It Works Internally</h2>
+
+<p>Where exactly does <code class="language-plaintext highlighter-rouge">requests</code> call these hooks? The <code class="language-plaintext highlighter-rouge">response</code> hook is triggered within the <code class="language-plaintext highlighter-rouge">Session.send()</code> method, after the underlying <a href="07_transport_adapters.md">Transport Adapter</a> has returned a response, but before things like cookie persistence and redirect handling are fully completed for that specific response.</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">Session.send()</code> Called:</strong> Your code calls <code class="language-plaintext highlighter-rouge">s.get()</code> or <code class="language-plaintext highlighter-rouge">s.post()</code>, which eventually calls <code class="language-plaintext highlighter-rouge">Session.send()</code>.</li>
+  <li><strong>Adapter Sends Request:</strong> The session selects the appropriate <a href="07_transport_adapters.md">Transport Adapter</a> (e.g., <code class="language-plaintext highlighter-rouge">HTTPAdapter</code>). The adapter sends the request and receives the raw response (<code class="language-plaintext highlighter-rouge">r = adapter.send(...)</code>).</li>
+  <li><strong>Dispatch Hook:</strong> Right after the adapter returns the <code class="language-plaintext highlighter-rouge">Response</code> object <code class="language-plaintext highlighter-rouge">r</code>, <code class="language-plaintext highlighter-rouge">Session.send()</code> calls <code class="language-plaintext highlighter-rouge">dispatch_hook("response", hooks, r, **kwargs)</code>. <code class="language-plaintext highlighter-rouge">hooks</code> here refers to the merged hooks from the <code class="language-plaintext highlighter-rouge">Request</code> and the <code class="language-plaintext highlighter-rouge">Session</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">dispatch_hook()</code> Executes:</strong> This helper function (from <code class="language-plaintext highlighter-rouge">requests.hooks</code>) looks up the list of functions registered for the <code class="language-plaintext highlighter-rouge">"response"</code> event. It iterates through this list, calling each hook function (like our <code class="language-plaintext highlighter-rouge">log_response_details</code>) one by one, passing the <code class="language-plaintext highlighter-rouge">Response</code> object (<code class="language-plaintext highlighter-rouge">r</code>) to it.</li>
+  <li><strong>Hook Modifies/Replaces (Optional):</strong> If a hook function returns a value, <code class="language-plaintext highlighter-rouge">dispatch_hook</code> updates <code class="language-plaintext highlighter-rouge">r</code> to be that new value. This allows hooks later in the list (or the main code) to see the modified response.</li>
+  <li><strong>Further Processing:</strong> After <code class="language-plaintext highlighter-rouge">dispatch_hook</code> returns the (potentially modified) <code class="language-plaintext highlighter-rouge">Response</code> object <code class="language-plaintext highlighter-rouge">r</code>, <code class="language-plaintext highlighter-rouge">Session.send()</code> continues with other tasks like extracting cookies from <code class="language-plaintext highlighter-rouge">r</code> into the session’s jar and handling redirects (which might involve sending another request).</li>
+  <li><strong>Return Response:</strong> Finally, the <code class="language-plaintext highlighter-rouge">Response</code> object is returned to your original calling code.</li>
+</ol>
+
+<p>Here’s a simplified sequence diagram:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant UserCode as Your Code
+    participant Session as Session Object
+    participant Adapter as Transport Adapter
+    participant Hooks as dispatch_hook()
+
+    UserCode-&gt;&gt;Session: s.get(url) / s.post(url)
+    Session-&gt;&gt;Session: Calls prepare_request()
+    Session-&gt;&gt;Session: Gets adapter based on URL
+    Session-&gt;&gt;Adapter: adapter.send(request)
+    activate Adapter
+    Note over Adapter: Sends request, gets raw response
+    Adapter-&gt;&gt;Adapter: build_response() -&gt; Response 'r'
+    Adapter--&gt;&gt;Session: Return Response 'r'
+    deactivate Adapter
+
+    Note over Session: Merges request and session hooks
+    Session-&gt;&gt;Hooks: dispatch_hook('response', merged_hooks, r)
+    activate Hooks
+    Note over Hooks: Iterates through registered hook functions
+    Hooks-&gt;&gt;Hooks: Call each hook_function(r)
+    Note over Hooks: Hook might modify 'r' or return a new one
+    Hooks--&gt;&gt;Session: Return (potentially modified) Response 'r'
+    deactivate Hooks
+
+    Note over Session: Persist cookies from 'r', handle redirects...
+    Session--&gt;&gt;UserCode: Return final Response 'r'
+
+</code></pre>
+
+<p>Let’s look at the key code pieces:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: requests/hooks.py (Simplified)
+</span>
+<span class="n">HOOKS</span> <span class="o">=</span> <span class="p">[</span><span class="s">"response"</span><span class="p">]</span> <span class="c1"># Currently, only 'response' is actively used
+</span>
+<span class="k">def</span> <span class="nf">default_hooks</span><span class="p">():</span>
+    <span class="c1"># Creates the initial empty structure for hooks
+</span>    <span class="k">return</span> <span class="p">{</span><span class="n">event</span><span class="p">:</span> <span class="p">[]</span> <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="n">HOOKS</span><span class="p">}</span>
+
+<span class="k">def</span> <span class="nf">dispatch_hook</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">hooks</span><span class="p">,</span> <span class="n">hook_data</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="s">"""Dispatches hooks for a given key event."""</span>
+    <span class="n">hooks</span> <span class="o">=</span> <span class="n">hooks</span> <span class="ow">or</span> <span class="p">{}</span> <span class="c1"># Ensure hooks is a dict
+</span>    <span class="n">hooks</span> <span class="o">=</span> <span class="n">hooks</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="c1"># Get the list of functions for this event key
+</span>
+    <span class="k">if</span> <span class="n">hooks</span><span class="p">:</span>
+        <span class="c1"># Allow a single callable or a list
+</span>        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">hooks</span><span class="p">,</span> <span class="s">"__call__"</span><span class="p">):</span>
+            <span class="n">hooks</span> <span class="o">=</span> <span class="p">[</span><span class="n">hooks</span><span class="p">]</span>
+        <span class="c1"># Call each registered hook function
+</span>        <span class="k">for</span> <span class="n">hook</span> <span class="ow">in</span> <span class="n">hooks</span><span class="p">:</span>
+            <span class="n">_hook_data</span> <span class="o">=</span> <span class="n">hook</span><span class="p">(</span><span class="n">hook_data</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="c1"># Call the user's function
+</span>            <span class="k">if</span> <span class="n">_hook_data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="c1"># If the hook returned something, update the data
+</span>                <span class="n">hook_data</span> <span class="o">=</span> <span class="n">_hook_data</span>
+    <span class="k">return</span> <span class="n">hook_data</span> <span class="c1"># Return the (potentially modified) data
+</span>
+
+<span class="c1"># File: requests/sessions.py (Simplified view of Session.send)
+</span>
+<span class="kn">from</span> <span class="nn">.hooks</span> <span class="kn">import</span> <span class="n">dispatch_hook</span> <span class="c1"># Import the dispatcher
+</span>
+<span class="k">class</span> <span class="nc">Session</span><span class="p">:</span>
+    <span class="c1"># ... (other methods: __init__, request, prepare_request, get_adapter) ...
+</span>
+    <span class="k">def</span> <span class="nf">send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># ... (setup: kwargs, get adapter) ...
+</span>
+        <span class="n">adapter</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_adapter</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">url</span><span class="p">)</span>
+
+        <span class="c1"># === ADAPTER SENDS THE REQUEST ===
+</span>        <span class="n">r</span> <span class="o">=</span> <span class="n">adapter</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="c1"># Gets the Response object 'r'
+</span>
+        <span class="c1"># ... (calculate elapsed time) ...
+</span>
+        <span class="c1"># === DISPATCH THE 'RESPONSE' HOOK ===
+</span>        <span class="c1"># request.hooks contains merged hooks from Request and Session
+</span>        <span class="n">r</span> <span class="o">=</span> <span class="n">dispatch_hook</span><span class="p">(</span><span class="s">"response"</span><span class="p">,</span> <span class="n">request</span><span class="p">.</span><span class="n">hooks</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># === CONTINUE PROCESSING ===
+</span>        <span class="c1"># Persist cookies from the (potentially modified) response 'r'
+</span>        <span class="n">extract_cookies_to_jar</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">cookies</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">r</span><span class="p">.</span><span class="n">raw</span><span class="p">)</span>
+
+        <span class="c1"># Handle redirects if allowed (using the potentially modified 'r')
+</span>        <span class="k">if</span> <span class="n">kwargs</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'allow_redirects'</span><span class="p">,</span> <span class="bp">True</span><span class="p">):</span>
+            <span class="c1"># ... redirect logic using self.resolve_redirects ...
+</span>            <span class="c1"># This might modify 'r' further if redirects occur
+</span>            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># ... store potential next request for non-redirected responses ...
+</span>            <span class="k">pass</span>
+
+        <span class="c1"># ... (maybe consume content if stream=False) ...
+</span>
+        <span class="k">return</span> <span class="n">r</span> <span class="c1"># Return the final Response object
+</span>
+<span class="c1"># File: requests/models.py (Simplified view of PreparedRequest)
+# Shows where hooks are stored initially
+</span>
+<span class="k">class</span> <span class="nc">RequestHooksMixin</span><span class="p">:</span>
+    <span class="c1"># Mixin used by Request and PreparedRequest
+</span>    <span class="k">def</span> <span class="nf">register_hook</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">,</span> <span class="n">hook</span><span class="p">):</span>
+        <span class="c1"># ... logic to add hook functions to self.hooks[event] list ...
+</span>        <span class="k">pass</span>
+
+<span class="k">class</span> <span class="nc">Request</span><span class="p">(</span><span class="n">RequestHooksMixin</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="p">...,</span> <span class="n">hooks</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c1"># ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">hooks</span> <span class="o">=</span> <span class="n">default_hooks</span><span class="p">()</span> <span class="c1"># Initialize hooks dict
+</span>        <span class="k">if</span> <span class="n">hooks</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">hooks</span><span class="p">.</span><span class="n">items</span><span class="p">()):</span>
+                <span class="bp">self</span><span class="p">.</span><span class="n">register_hook</span><span class="p">(</span><span class="n">event</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">hook</span><span class="o">=</span><span class="n">v</span><span class="p">)</span> <span class="c1"># Register hooks passed in
+</span>        <span class="c1"># ...
+</span>
+<span class="k">class</span> <span class="nc">PreparedRequest</span><span class="p">(...,</span> <span class="n">RequestHooksMixin</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">hooks</span> <span class="o">=</span> <span class="n">default_hooks</span><span class="p">()</span> <span class="c1"># Hooks are also on PreparedRequest
+</span>        <span class="c1"># ...
+</span>
+    <span class="k">def</span> <span class="nf">prepare_hooks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">hooks</span><span class="p">):</span>
+        <span class="c1"># Called during prepare() to merge hooks from the original Request
+</span>        <span class="n">hooks</span> <span class="o">=</span> <span class="n">hooks</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="n">hooks</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">register_hook</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="n">hooks</span><span class="p">[</span><span class="n">event</span><span class="p">])</span>
+
+<span class="c1"># Note: Session.prepare_request merges Request hooks and Session hooks
+#       into the PreparedRequest.hooks dictionary.
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">dispatch_hook</code> function is the core mechanism that allows <code class="language-plaintext highlighter-rouge">requests</code> to call your custom functions at the designated <code class="language-plaintext highlighter-rouge">"response"</code> checkpoint within <code class="language-plaintext highlighter-rouge">Session.send</code>.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the <strong>Hook System</strong> in <code class="language-plaintext highlighter-rouge">requests</code>, a way to register custom callback functions that run at specific points in the request-response lifecycle.</p>
+
+<ul>
+  <li>You understood the motivation: automating actions like logging without cluttering your main code.</li>
+  <li>You focused on the primary hook: <strong><code class="language-plaintext highlighter-rouge">response</code></strong>, which runs after a response is received but before it’s returned to the caller.</li>
+  <li>You saw how to define a hook function (accepting the <code class="language-plaintext highlighter-rouge">response</code> object) and register it on a <code class="language-plaintext highlighter-rouge">Session</code> (using <code class="language-plaintext highlighter-rouge">session.hooks</code>) to apply it globally, or potentially on a single <code class="language-plaintext highlighter-rouge">Request</code>.</li>
+  <li>You implemented a practical example: logging response details automatically.</li>
+  <li>You got a glimpse into how hooks <em>can</em> modify responses (use with care!).</li>
+  <li>You learned that internally, the <code class="language-plaintext highlighter-rouge">dispatch_hook</code> function is called by <code class="language-plaintext highlighter-rouge">Session.send</code> to execute your registered hook functions.</li>
+</ul>
+
+<p>The Hook System provides a clean way to plug into the <code class="language-plaintext highlighter-rouge">requests</code> workflow and add custom behavior or monitoring without modifying the library itself.</p>
+
+<p>This concludes our journey through the core abstractions of the <code class="language-plaintext highlighter-rouge">requests</code> library! From the simple <a href="01_functional_api.md">Functional API</a> to the powerful <a href="03_session.md">Session</a> object, managing <a href="04_cookie_jar.md">Cookies</a>, handling <a href="05_authentication_handlers.md">Authentication</a>, dealing with <a href="06_exception_hierarchy.md">Exceptions</a>, customizing connections with <a href="07_transport_adapters.md">Transport Adapters</a>, and reacting to events with the Hook System, you now have a solid foundation for using <code class="language-plaintext highlighter-rouge">requests</code> effectively in your Python projects. Happy requesting!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

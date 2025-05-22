@@ -1,0 +1,256 @@
+<h1 id="chapter-1-your-control-panel---the-mcp-command-line-interface">Chapter 1: Your Control Panel - The <code class="language-plaintext highlighter-rouge">mcp</code> Command-Line Interface</h1>
+
+<p>Welcome to the MCP Python SDK! This is your starting point for building powerful, interactive AI tools.</p>
+
+<p>Imagine you’ve just built an amazing new tool using the SDK – maybe a helpful assistant that can answer questions about your documents. How do you actually <em>run</em> this tool? How do you test it? How do you connect it to applications like Claude Desktop?</p>
+
+<p>This is where the <code class="language-plaintext highlighter-rouge">mcp</code> command-line interface (CLI) comes in. Think of it as your <strong>developer control panel</strong> or <strong>toolkit</strong> for managing your MCP creations right from your terminal (that black window where you type commands). It helps you run, test, and integrate your MCP servers.</p>
+
+<p>In this chapter, we’ll explore the basic commands you’ll use most often. Our main goal is to learn how to take a simple server written in a Python file and get it running.</p>
+
+<h2 id="what-is-the-mcp-command">What is the <code class="language-plaintext highlighter-rouge">mcp</code> Command?</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">mcp</code> command is a tool you run in your terminal. After installing the <code class="language-plaintext highlighter-rouge">MCP Python SDK</code> (specifically with the <code class="language-plaintext highlighter-rouge">cli</code> extras, like <code class="language-plaintext highlighter-rouge">pip install mcp[cli]</code>), you gain access to this command. It provides several sub-commands to help you manage your MCP development workflow.</p>
+
+<p>Let’s look at the most important ones.</p>
+
+<h3 id="checking-your-setup-mcp-version">Checking Your Setup: <code class="language-plaintext highlighter-rouge">mcp version</code></h3>
+
+<p>First things first, let’s make sure everything is installed correctly. You can check the installed version of the MCP SDK using this command:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mcp version
+</code></pre></div></div>
+
+<p><strong>What happens?</strong></p>
+
+<p>This command looks up the installed <code class="language-plaintext highlighter-rouge">mcp</code> package and prints its version number.</p>
+
+<p><strong>Example Output:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>MCP version 0.1.0
+</code></pre></div></div>
+
+<p>If you see a version number, you’re good to go! If you get an error, double-check that you’ve installed the SDK correctly (<code class="language-plaintext highlighter-rouge">pip install mcp[cli]</code>).</p>
+
+<h3 id="running-your-server-mcp-run">Running Your Server: <code class="language-plaintext highlighter-rouge">mcp run</code></h3>
+
+<p>This is the command you’ll use to execute your MCP server directly. Let’s say you have a Python file named <code class="language-plaintext highlighter-rouge">my_first_server.py</code> that contains your server code.</p>
+
+<p><strong>Minimal Server Example (<code class="language-plaintext highlighter-rouge">my_first_server.py</code>):</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># We'll learn about FastMCP in the next chapter!
+# For now, just know this creates a basic server.
+</span><span class="kn">from</span> <span class="nn">mcp.server.fastmcp</span> <span class="kn">import</span> <span class="n">FastMCP</span>
+
+<span class="c1"># Create an instance of our server
+</span><span class="n">server</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"MyFirstServer"</span><span class="p">)</span>
+
+<span class="c1"># This is a standard Python check to make sure
+# the script is being run directly
+</span><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="c1"># Tell the server to start running
+</span>    <span class="k">print</span><span class="p">(</span><span class="s">"Starting MyFirstServer..."</span><span class="p">)</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">run</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"MyFirstServer finished."</span><span class="p">)</span> <span class="c1"># You might not see this if the server runs forever
+</span></code></pre></div></div>
+
+<p>To run this server, you would open your terminal, navigate to the directory containing <code class="language-plaintext highlighter-rouge">my_first_server.py</code>, and type:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mcp run my_first_server.py
+</code></pre></div></div>
+
+<p><strong>What happens?</strong></p>
+
+<p>The <code class="language-plaintext highlighter-rouge">mcp run</code> command will:</p>
+<ol>
+  <li>Find your <code class="language-plaintext highlighter-rouge">my_first_server.py</code> file.</li>
+  <li>Look inside for a server object (it tries common names like <code class="language-plaintext highlighter-rouge">mcp</code>, <code class="language-plaintext highlighter-rouge">server</code>, or <code class="language-plaintext highlighter-rouge">app</code> by default, or you can specify one like <code class="language-plaintext highlighter-rouge">my_first_server.py:server</code>).</li>
+  <li>Tell that server object to start running (by calling its <code class="language-plaintext highlighter-rouge">.run()</code> method).</li>
+</ol>
+
+<p>Your terminal will likely show output like “Starting MyFirstServer…” and then wait for connections or instructions, depending on how the server is configured. To stop it, you usually press <code class="language-plaintext highlighter-rouge">Ctrl+C</code>.</p>
+
+<h3 id="developing-and-inspecting-mcp-dev">Developing and Inspecting: <code class="language-plaintext highlighter-rouge">mcp dev</code></h3>
+
+<p>When you’re building your server, you often want to see what’s happening inside – what messages are being sent and received? The <code class="language-plaintext highlighter-rouge">mcp dev</code> command is perfect for this. It runs your server <em>and</em> launches the <strong>MCP Inspector</strong>, a web-based tool that lets you monitor and debug your server in real-time.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mcp dev my_first_server.py
+</code></pre></div></div>
+
+<p><strong>What happens?</strong></p>
+
+<ol>
+  <li>Similar to <code class="language-plaintext highlighter-rouge">mcp run</code>, it finds and prepares to run your server (<code class="language-plaintext highlighter-rouge">my_first_server.py</code>).</li>
+  <li>It ensures any necessary helper tools (like the Inspector itself, using <code class="language-plaintext highlighter-rouge">npx</code>) are available.</li>
+  <li>It starts your server.</li>
+  <li>It launches the MCP Inspector, which connects to your running server. You’ll usually see a URL in your terminal that you can open in your web browser, or sometimes the Inspector might open automatically.</li>
+</ol>
+
+<p>This is incredibly useful during development for understanding the flow of information.</p>
+
+<p><em>(Note: <code class="language-plaintext highlighter-rouge">mcp dev</code> might require Node.js and npx to be installed on your system to run the Inspector tool.)</em></p>
+
+<h3 id="integrating-with-apps-mcp-install">Integrating with Apps: <code class="language-plaintext highlighter-rouge">mcp install</code></h3>
+
+<p>Once your server is working, you might want to use it from another application, like the Claude Desktop app. The <code class="language-plaintext highlighter-rouge">mcp install</code> command helps you register your server with Claude so it appears in the app’s list of available tools.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mcp <span class="nb">install </span>my_first_server.py <span class="nt">--name</span> <span class="s2">"My Awesome Tool"</span>
+</code></pre></div></div>
+
+<p><strong>What happens?</strong></p>
+
+<ol>
+  <li>It finds your <code class="language-plaintext highlighter-rouge">my_first_server.py</code> file.</li>
+  <li>It locates the configuration file for the Claude Desktop app on your computer.</li>
+  <li>It adds an entry to that configuration file, telling Claude:
+    <ul>
+      <li>The name you want to use (“My Awesome Tool”).</li>
+      <li>How to run your server (using a command like <code class="language-plaintext highlighter-rouge">uv run --with mcp mcp run /path/to/your/my_first_server.py</code>). <code class="language-plaintext highlighter-rouge">uv</code> is a fast tool used behind the scenes to manage the environment and dependencies needed to run your server.</li>
+      <li>Optionally, any extra Python packages your server needs (<code class="language-plaintext highlighter-rouge">--with some_package</code>) or environment variables (<code class="language-plaintext highlighter-rouge">--env-var KEY=VALUE</code>).</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Now, when you open Claude Desktop, “My Awesome Tool” should be available for use! This command essentially automates the process of telling Claude how to find and execute your custom server.</p>
+
+<h2 id="how-does-mcp-run-work-under-the-hood">How Does <code class="language-plaintext highlighter-rouge">mcp run</code> Work Under the Hood?</h2>
+
+<p>Let’s peek behind the curtain when you execute <code class="language-plaintext highlighter-rouge">mcp run my_first_server.py</code>. It might seem like magic, but it’s a well-defined sequence of steps:</p>
+
+<ol>
+  <li><strong>You type the command:</strong> You enter <code class="language-plaintext highlighter-rouge">mcp run my_first_server.py</code> in your terminal.</li>
+  <li><strong>OS Executes <code class="language-plaintext highlighter-rouge">mcp</code>:</strong> Your operating system finds the installed <code class="language-plaintext highlighter-rouge">mcp</code> script (which is part of the <code class="language-plaintext highlighter-rouge">MCP Python SDK</code>) and runs it using Python.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Typer</code> Parses:</strong> The <code class="language-plaintext highlighter-rouge">mcp</code> script uses a library called <code class="language-plaintext highlighter-rouge">Typer</code> to understand the command-line arguments. It sees <code class="language-plaintext highlighter-rouge">run</code> as the command and <code class="language-plaintext highlighter-rouge">my_first_server.py</code> as the argument.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">run</code> Function Called:</strong> <code class="language-plaintext highlighter-rouge">Typer</code> directs the execution to the <code class="language-plaintext highlighter-rouge">run</code> function defined inside the SDK’s <code class="language-plaintext highlighter-rouge">cli/cli.py</code> file.</li>
+  <li><strong>Path Processing:</strong> The <code class="language-plaintext highlighter-rouge">run</code> function calls internal helpers (like <code class="language-plaintext highlighter-rouge">_parse_file_path</code>) to find the full path to <code class="language-plaintext highlighter-rouge">my_first_server.py</code> and check if you specified a particular object within the file (e.g., <code class="language-plaintext highlighter-rouge">my_server.py:my_object</code>).</li>
+  <li><strong>Server Import:</strong> It then uses another helper (<code class="language-plaintext highlighter-rouge">_import_server</code>) to dynamically load the Python code from <code class="language-plaintext highlighter-rouge">my_first_server.py</code> and find the actual server object (like the <code class="language-plaintext highlighter-rouge">server</code> variable we created).</li>
+  <li><strong>Server Execution:</strong> Finally, it calls the <code class="language-plaintext highlighter-rouge">.run()</code> method on the imported server object. This is the signal for your server code to start doing its job – listening for connections, processing requests, etc. The specifics of <code class="language-plaintext highlighter-rouge">.run()</code> depend on the server type, like the <a href="02_fastmcp_server___fastmcp__.md">FastMCP Server (<code class="language-plaintext highlighter-rouge">FastMCP</code>)</a> we’ll see next.</li>
+</ol>
+
+<p>Here’s a simplified diagram of that flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant Terminal
+    participant OS
+    participant MCP_CLI as mcp (cli/cli.py)
+    participant ServerCode as my_first_server.py
+
+    User-&gt;&gt;Terminal: mcp run my_first_server.py
+    Terminal-&gt;&gt;OS: Execute 'mcp' script
+    OS-&gt;&gt;MCP_CLI: Start script with args ['run', 'my_first_server.py']
+    MCP_CLI-&gt;&gt;MCP_CLI: Parse args (Typer finds 'run' command)
+    MCP_CLI-&gt;&gt;MCP_CLI: _parse_file_path('my_first_server.py')
+    MCP_CLI-&gt;&gt;MCP_CLI: _import_server(filepath, object_name)
+    MCP_CLI-&gt;&gt;ServerCode: Import module &amp; find 'server' object
+    ServerCode--&gt;&gt;MCP_CLI: Return server object
+    MCP_CLI-&gt;&gt;ServerCode: server.run()
+    ServerCode-&gt;&gt;ServerCode: Start listening/processing...
+</code></pre>
+
+<h2 id="diving-into-the-code-briefly">Diving into the Code (Briefly!)</h2>
+
+<p>You don’t need to memorize this, but seeing snippets can help understand the structure.</p>
+
+<p><strong>Inside <code class="language-plaintext highlighter-rouge">cli/cli.py</code> (Simplified):</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Import the Typer library for creating CLIs
+</span><span class="kn">import</span> <span class="nn">typer</span>
+<span class="c1"># Import helpers to find/load the server code
+</span><span class="kn">from</span> <span class="nn">.helpers</span> <span class="kn">import</span> <span class="n">_parse_file_path</span><span class="p">,</span> <span class="n">_import_server</span> <span class="c1"># Fictional helper import
+</span>
+<span class="c1"># Create the main CLI application object
+</span><span class="n">app</span> <span class="o">=</span> <span class="n">typer</span><span class="p">.</span><span class="n">Typer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"mcp"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">"MCP development tools"</span><span class="p">)</span>
+
+<span class="c1"># Decorator tells Typer this function handles the 'run' command
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">run</span><span class="p">(</span>
+    <span class="n">file_spec</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">typer</span><span class="p">.</span><span class="n">Argument</span><span class="p">(...),</span> <span class="c1"># Expects the file path argument
+</span>    <span class="c1"># ... other options like --transport ...
+</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+    <span class="s">"""Run a MCP server."""</span>
+    <span class="c1"># 1. Find the file and specific server object (if any)
+</span>    <span class="n">file_path</span><span class="p">,</span> <span class="n">server_object_name</span> <span class="o">=</span> <span class="n">_parse_file_path</span><span class="p">(</span><span class="n">file_spec</span><span class="p">)</span>
+
+    <span class="c1"># 2. Load the code and get the server instance
+</span>    <span class="n">server</span> <span class="o">=</span> <span class="n">_import_server</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">server_object_name</span><span class="p">)</span>
+
+    <span class="c1"># 3. Tell the server instance to start running
+</span>    <span class="n">server</span><span class="p">.</span><span class="n">run</span><span class="p">()</span> <span class="c1"># Additional args like transport might be passed here
+</span>
+<span class="c1"># ... other commands like dev, install, version defined similarly ...
+</span>
+<span class="c1"># Standard Python entry point
+</span><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="n">app</span><span class="p">()</span> <span class="c1"># Start the Typer application
+</span></code></pre></div></div>
+
+<p>This shows how <code class="language-plaintext highlighter-rouge">Typer</code> connects your command (<code class="language-plaintext highlighter-rouge">mcp run</code>) to the <code class="language-plaintext highlighter-rouge">run</code> function, which then orchestrates finding and starting your server code.</p>
+
+<p><strong>Inside <code class="language-plaintext highlighter-rouge">cli/claude.py</code> (Simplified <code class="language-plaintext highlighter-rouge">update_claude_config</code>):</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+
+<span class="c1"># Helper to find where Claude stores its config
+</span><span class="k">def</span> <span class="nf">get_claude_config_path</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Path</span> <span class="o">|</span> <span class="bp">None</span><span class="p">:</span>
+    <span class="c1"># ... platform specific logic to find the path ...
+</span>    <span class="c1"># Returns Path object like /Users/You/Library/Application Support/Claude
+</span>    <span class="k">pass</span> <span class="c1"># Implementation details skipped
+</span>
+<span class="k">def</span> <span class="nf">update_claude_config</span><span class="p">(</span><span class="n">file_spec</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">server_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="s">"""Add or update a FastMCP server in Claude's configuration."""</span>
+    <span class="n">config_dir</span> <span class="o">=</span> <span class="n">get_claude_config_path</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">config_dir</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"Error: Claude config not found."</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="n">config_file</span> <span class="o">=</span> <span class="n">config_dir</span> <span class="o">/</span> <span class="s">"claude_desktop_config.json"</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Read existing config or create an empty one
+</span>        <span class="n">config</span> <span class="o">=</span> <span class="n">json</span><span class="p">.</span><span class="n">loads</span><span class="p">(</span><span class="n">config_file</span><span class="p">.</span><span class="n">read_text</span><span class="p">())</span> <span class="k">if</span> <span class="n">config_file</span><span class="p">.</span><span class="n">exists</span><span class="p">()</span> <span class="k">else</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="s">"mcpServers"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+            <span class="n">config</span><span class="p">[</span><span class="s">"mcpServers"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># Define how to run the server using 'uv' (a tool for running Python code)
+</span>        <span class="c1"># This builds the command: uv run --with mcp mcp run /path/to/server.py
+</span>        <span class="n">run_command</span> <span class="o">=</span> <span class="p">[</span><span class="s">"uv"</span><span class="p">,</span> <span class="s">"run"</span><span class="p">,</span> <span class="s">"--with"</span><span class="p">,</span> <span class="s">"mcp"</span><span class="p">,</span> <span class="s">"mcp"</span><span class="p">,</span> <span class="s">"run"</span><span class="p">,</span> <span class="n">file_spec</span><span class="p">]</span>
+        <span class="c1"># ... logic to add --with-editable or --with packages ...
+</span>
+        <span class="c1"># Add the server entry to the config dictionary
+</span>        <span class="n">config</span><span class="p">[</span><span class="s">"mcpServers"</span><span class="p">][</span><span class="n">server_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s">"command"</span><span class="p">:</span> <span class="s">"uv"</span><span class="p">,</span>
+            <span class="s">"args"</span><span class="p">:</span> <span class="n">run_command</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="c1"># Arguments for the uv command
+</span>            <span class="c1"># ... potentially add 'env' dictionary here ...
+</span>        <span class="p">}</span>
+
+        <span class="c1"># Write the updated configuration back to the file
+</span>        <span class="n">config_file</span><span class="p">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="p">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Successfully installed </span><span class="si">{</span><span class="n">server_name</span><span class="si">}</span><span class="s"> in Claude."</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">True</span>
+    <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error updating Claude config: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</code></pre></div></div>
+
+<p>This snippet shows the core logic of <code class="language-plaintext highlighter-rouge">mcp install</code>: find the Claude config file, construct the command needed to run <em>your</em> server using <code class="language-plaintext highlighter-rouge">uv</code> and <code class="language-plaintext highlighter-rouge">mcp run</code>, and save this information into the JSON configuration file.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the <code class="language-plaintext highlighter-rouge">mcp</code> command-line interface – your essential toolkit for managing MCP servers. You now know how to:</p>
+
+<ul>
+  <li>Check your installation with <code class="language-plaintext highlighter-rouge">mcp version</code>.</li>
+  <li>Run a server directly using <code class="language-plaintext highlighter-rouge">mcp run your_server.py</code>.</li>
+  <li>Run a server with a debugging inspector using <code class="language-plaintext highlighter-rouge">mcp dev your_server.py</code>.</li>
+  <li>Register your server with applications like Claude Desktop using <code class="language-plaintext highlighter-rouge">mcp install your_server.py</code>.</li>
+</ul>
+
+<p>This command is your bridge between writing server code and actually using it.</p>
+
+<p>In the next chapter, we’ll dive into the heart of many MCP servers: the <a href="02_fastmcp_server___fastmcp__.md">FastMCP Server (<code class="language-plaintext highlighter-rouge">FastMCP</code>)</a>, which is the kind of object the <code class="language-plaintext highlighter-rouge">mcp</code> command typically runs.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

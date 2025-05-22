@@ -1,0 +1,33 @@
+<h1 id="tutorial-smolaagents">Tutorial: SmolaAgents</h1>
+
+<blockquote>
+  <p>This tutorial is AI-generated! To learn more, check out <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>
+</blockquote>
+
+<p><code class="language-plaintext highlighter-rouge">SmolaAgents</code><sup><a href="https://github.com/huggingface/smolagents/tree/076cca5e8a130d3fa2ff990ad630231b49767745/src/smolagents">View Repo</a></sup> is a project for building <em>autonomous agents</em> that can solve complex tasks.
+The core component is the <strong>MultiStepAgent</strong>, which acts like a project manager. It uses a <strong>Model Interface</strong> to talk to language models (LLMs), employs <strong>Tools</strong> (like web search or code execution) to interact with the world or perform actions, and keeps track of its progress and conversation history using <strong>AgentMemory</strong>.
+For agents that write and run Python code (<code class="language-plaintext highlighter-rouge">CodeAgent</code>), a <strong>PythonExecutor</strong> provides a safe environment. <strong>PromptTemplates</strong> help structure the instructions given to the LLM, while <strong>AgentType</strong> handles different data formats like images or audio. Finally, <strong>AgentLogger &amp; Monitor</strong> provides logging and tracking for debugging and analysis.</p>
+
+<pre><code class="language-mermaid">flowchart TD
+    A0["MultiStepAgent"]
+    A1["Tool"]
+    A2["Model Interface"]
+    A3["AgentMemory"]
+    A4["PythonExecutor"]
+    A5["PromptTemplates"]
+    A6["AgentType"]
+    A7["AgentLogger &amp; Monitor"]
+    A0 -- "Uses tools" --&gt; A1
+    A0 -- "Uses model" --&gt; A2
+    A0 -- "Uses memory" --&gt; A3
+    A0 -- "Uses templates" --&gt; A5
+    A0 -- "Uses logger/monitor" --&gt; A7
+    A0 -- "Uses executor (CodeAgent)" --&gt; A4
+    A1 -- "Outputs agent types" --&gt; A6
+    A4 -- "Executes tool code" --&gt; A1
+    A2 -- "Generates/Parses tool calls" --&gt; A1
+    A3 -- "Logs tool calls" --&gt; A1
+    A5 -- "Includes tool info" --&gt; A1
+    A6 -- "Handled by agent" --&gt; A0
+    A7 -- "Replays memory" --&gt; A3
+</code></pre>

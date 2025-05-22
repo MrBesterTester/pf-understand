@@ -1,0 +1,341 @@
+<h1 id="chapter-6-result-backend---checking-your-tasks-homework">Chapter 6: Result Backend - Checking Your Task’s Homework</h1>
+
+<p>In <a href="05_worker.md">Chapter 5: Worker</a>, we met the Celery Worker, the diligent entity that picks up task messages from the <a href="04_broker_connection__amqp_.md">Broker Connection (AMQP)</a> and executes the code defined in our <a href="03_task.md">Task</a>.</p>
+
+<p>But what happens after the worker finishes a task? What if the task was supposed to calculate something, like <code class="language-plaintext highlighter-rouge">add(2, 2)</code>? How do we, back in our main application, find out the answer (<code class="language-plaintext highlighter-rouge">4</code>)? Or even just know if the task finished successfully or failed?</p>
+
+<p>This is where the <strong>Result Backend</strong> comes in. It’s like a dedicated place to check the status and results of the homework assigned to the workers.</p>
+
+<h2 id="what-problem-does-the-result-backend-solve">What Problem Does the Result Backend Solve?</h2>
+
+<p>Imagine you give your Celery worker a math problem: “What is 123 + 456?”. The worker goes away, calculates the answer (579), and… then what?</p>
+
+<p>If you don’t tell the worker <em>where</em> to put the answer, it just disappears! You, back in your main program, have no idea if the worker finished, if it got the right answer, or if it encountered an error.</p>
+
+<p>The <strong>Result Backend</strong> solves this by providing a storage location (like a database, a cache like Redis, or even via the message broker itself) where the worker can:</p>
+
+<ol>
+  <li>Record the final <strong>state</strong> of the task (e.g., <code class="language-plaintext highlighter-rouge">SUCCESS</code>, <code class="language-plaintext highlighter-rouge">FAILURE</code>).</li>
+  <li>Store the task’s <strong>return value</strong> (e.g., <code class="language-plaintext highlighter-rouge">579</code>) if it succeeded.</li>
+  <li>Store the <strong>error</strong> information (e.g., <code class="language-plaintext highlighter-rouge">TypeError: unsupported operand type(s)...</code>) if it failed.</li>
+</ol>
+
+<p>Later, your main application can query this Result Backend using the task’s unique ID to retrieve this information.</p>
+
+<p>Think of it as a shared filing cabinet:</p>
+<ul>
+  <li>The <strong>Worker</strong> puts the completed homework (result and status) into a specific folder (identified by the task ID).</li>
+  <li>Your <strong>Application</strong> can later look inside that folder (using the task ID) to see the results.</li>
+</ul>
+
+<h2 id="key-concepts">Key Concepts</h2>
+
+<ol>
+  <li><strong>Storage:</strong> It’s a place to store task results and states. This could be Redis, a relational database (like PostgreSQL or MySQL), MongoDB, RabbitMQ (using RPC), and others.</li>
+  <li><strong>Task ID:</strong> Each task execution gets a unique ID (remember the <code class="language-plaintext highlighter-rouge">result_promise_add.id</code> from Chapter 3?). This ID is the key used to store and retrieve the result from the backend.</li>
+  <li><strong>State:</strong> Besides the return value, the backend stores the task’s current state (e.g., <code class="language-plaintext highlighter-rouge">PENDING</code>, <code class="language-plaintext highlighter-rouge">STARTED</code>, <code class="language-plaintext highlighter-rouge">SUCCESS</code>, <code class="language-plaintext highlighter-rouge">FAILURE</code>, <code class="language-plaintext highlighter-rouge">RETRY</code>, <code class="language-plaintext highlighter-rouge">REVOKED</code>).</li>
+  <li><strong>Return Value / Exception:</strong> If the task finishes successfully (<code class="language-plaintext highlighter-rouge">SUCCESS</code>), the backend stores the value the task function returned. If it fails (<code class="language-plaintext highlighter-rouge">FAILURE</code>), it stores details about the exception that occurred.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">AsyncResult</code> Object:</strong> When you call <code class="language-plaintext highlighter-rouge">task.delay()</code> or <code class="language-plaintext highlighter-rouge">task.apply_async()</code>, Celery gives you back an <code class="language-plaintext highlighter-rouge">AsyncResult</code> object. This object holds the task’s ID and provides methods to interact with the result backend (check status, get the result, etc.).</li>
+</ol>
+
+<h2 id="how-to-use-a-result-backend">How to Use a Result Backend</h2>
+
+<p><strong>1. Configure It!</strong></p>
+
+<p>First, you need to tell your Celery app <em>where</em> the result backend is located. You do this using the <code class="language-plaintext highlighter-rouge">result_backend</code> configuration setting, just like you set the <code class="language-plaintext highlighter-rouge">broker_url</code> in <a href="02_configuration.md">Chapter 2: Configuration</a>.</p>
+
+<p>Let’s configure our app to use Redis (make sure you have Redis running!) as the result backend. We’ll use database number <code class="language-plaintext highlighter-rouge">1</code> for results to keep it separate from the broker which might be using database <code class="language-plaintext highlighter-rouge">0</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># celery_app.py
+</span><span class="kn">from</span> <span class="nn">celery</span> <span class="kn">import</span> <span class="n">Celery</span>
+
+<span class="c1"># Configure BOTH broker and result backend
+</span><span class="n">app</span> <span class="o">=</span> <span class="n">Celery</span><span class="p">(</span><span class="s">'tasks'</span><span class="p">,</span>
+             <span class="n">broker</span><span class="o">=</span><span class="s">'redis://localhost:6379/0'</span><span class="p">,</span>
+             <span class="n">backend</span><span class="o">=</span><span class="s">'redis://localhost:6379/1'</span><span class="p">)</span> <span class="c1"># &lt;-- Result Backend URL
+</span>
+<span class="c1"># You could also use app.config_from_object('celeryconfig')
+# if result_backend = 'redis://localhost:6379/1' is in celeryconfig.py
+</span>
+<span class="c1"># ... your task definitions (@app.task) would go here or be imported ...
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">time</span>
+    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="c1"># Simulate work
+</span>    <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span>
+
+<span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">fail_sometimes</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">random</span>
+    <span class="k">if</span> <span class="n">random</span><span class="p">.</span><span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="nb">ValueError</span><span class="p">(</span><span class="s">"Something went wrong!"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s">"Processed </span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s">"</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">backend='redis://localhost:6379/1'</code>: We provide a URL telling Celery to use the Redis server running on <code class="language-plaintext highlighter-rouge">localhost</code>, port <code class="language-plaintext highlighter-rouge">6379</code>, and specifically database <code class="language-plaintext highlighter-rouge">1</code> for storing results. (The <code class="language-plaintext highlighter-rouge">backend</code> argument is an alias for <code class="language-plaintext highlighter-rouge">result_backend</code>).</li>
+</ul>
+
+<p><strong>2. Send a Task and Get the <code class="language-plaintext highlighter-rouge">AsyncResult</code></strong></p>
+
+<p>When you send a task, the returned object is your key to the result.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># run_tasks.py
+</span><span class="kn">from</span> <span class="nn">celery_app</span> <span class="kn">import</span> <span class="n">add</span><span class="p">,</span> <span class="n">fail_sometimes</span>
+
+<span class="c1"># Send the add task
+</span><span class="n">result_add</span> <span class="o">=</span> <span class="n">add</span><span class="p">.</span><span class="n">delay</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Sent task add(10, 20). Task ID: </span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="nb">id</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Send the task that might fail
+</span><span class="n">result_fail</span> <span class="o">=</span> <span class="n">fail_sometimes</span><span class="p">.</span><span class="n">delay</span><span class="p">(</span><span class="s">"my data"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Sent task fail_sometimes('my data'). Task ID: </span><span class="si">{</span><span class="n">result_fail</span><span class="p">.</span><span class="nb">id</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">result_add</code> and <code class="language-plaintext highlighter-rouge">result_fail</code> are <code class="language-plaintext highlighter-rouge">AsyncResult</code> objects. They contain the <code class="language-plaintext highlighter-rouge">.id</code> attribute, which is the unique identifier for <em>this specific execution</em> of the task.</li>
+</ul>
+
+<p><strong>3. Check the Status and Get the Result</strong></p>
+
+<p>Now, you can use the <code class="language-plaintext highlighter-rouge">AsyncResult</code> object to interact with the result backend.</p>
+
+<p><strong>(Run a worker in another terminal first: <code class="language-plaintext highlighter-rouge">celery -A celery_app worker --loglevel=info</code>)</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># continue in run_tasks.py or a new Python session
+</span><span class="kn">from</span> <span class="nn">celery_app</span> <span class="kn">import</span> <span class="n">app</span> <span class="c1"># Need app for AsyncResult if creating from ID
+</span>
+<span class="c1"># Use the AsyncResult objects we got earlier
+# Or, if you only have the ID, you can recreate the AsyncResult:
+# result_add = app.AsyncResult('the-task-id-you-saved-earlier')
+</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Checking results for add task (</span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="nb">id</span><span class="si">}</span><span class="s">)..."</span><span class="p">)</span>
+
+<span class="c1"># Check if the task is finished (returns True/False immediately)
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Is add ready? </span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="n">ready</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Check the state (returns 'PENDING', 'STARTED', 'SUCCESS', 'FAILURE', etc.)
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"State of add: </span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="n">state</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Get the result. IMPORTANT: This call will BLOCK until the task is finished!
+# If the task failed, this will raise the exception that occurred in the worker.
+</span><span class="k">try</span><span class="p">:</span>
+    <span class="c1"># Set a timeout (in seconds) to avoid waiting forever
+</span>    <span class="n">final_result</span> <span class="o">=</span> <span class="n">result_add</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Result of add: </span><span class="si">{</span><span class="n">final_result</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Did add succeed? </span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="n">successful</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Final state of add: </span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="n">state</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Could not get result for add: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">).</span><span class="n">__name__</span><span class="si">}</span><span class="s"> - </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Final state of add: </span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="n">state</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Did add fail? </span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="n">failed</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Get the traceback if it failed
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Traceback: </span><span class="si">{</span><span class="n">result_add</span><span class="p">.</span><span class="n">traceback</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Checking results for fail_sometimes task (</span><span class="si">{</span><span class="n">result_fail</span><span class="p">.</span><span class="nb">id</span><span class="si">}</span><span class="s">)..."</span><span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="c1"># Wait up to 10 seconds for this task
+</span>    <span class="n">fail_result</span> <span class="o">=</span> <span class="n">result_fail</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Result of fail_sometimes: </span><span class="si">{</span><span class="n">fail_result</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Did fail_sometimes succeed? </span><span class="si">{</span><span class="n">result_fail</span><span class="p">.</span><span class="n">successful</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Final state of fail_sometimes: </span><span class="si">{</span><span class="n">result_fail</span><span class="p">.</span><span class="n">state</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Could not get result for fail_sometimes: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">).</span><span class="n">__name__</span><span class="si">}</span><span class="s"> - </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Final state of fail_sometimes: </span><span class="si">{</span><span class="n">result_fail</span><span class="p">.</span><span class="n">state</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Did fail_sometimes fail? </span><span class="si">{</span><span class="n">result_fail</span><span class="p">.</span><span class="n">failed</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Traceback:</span><span class="se">\n</span><span class="si">{</span><span class="n">result_fail</span><span class="p">.</span><span class="n">traceback</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+</code></pre></div></div>
+
+<p><strong>Explanation &amp; Potential Output:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">result.ready()</code>: Checks if the task has finished (reached a <code class="language-plaintext highlighter-rouge">SUCCESS</code>, <code class="language-plaintext highlighter-rouge">FAILURE</code>, or other final state). Non-blocking.</li>
+  <li><code class="language-plaintext highlighter-rouge">result.state</code>: Gets the current state string. Non-blocking.</li>
+  <li><code class="language-plaintext highlighter-rouge">result.successful()</code>: Returns <code class="language-plaintext highlighter-rouge">True</code> if the state is <code class="language-plaintext highlighter-rouge">SUCCESS</code>. Non-blocking.</li>
+  <li><code class="language-plaintext highlighter-rouge">result.failed()</code>: Returns <code class="language-plaintext highlighter-rouge">True</code> if the state is <code class="language-plaintext highlighter-rouge">FAILURE</code> or another exception state. Non-blocking.</li>
+  <li><code class="language-plaintext highlighter-rouge">result.get(timeout=...)</code>: This is the most common way to get the actual return value.
+    <ul>
+      <li><strong>It blocks</strong> (waits) until the task completes <em>or</em> the timeout expires.</li>
+      <li>If the task state becomes <code class="language-plaintext highlighter-rouge">SUCCESS</code>, it returns the value the task function returned (e.g., <code class="language-plaintext highlighter-rouge">30</code>).</li>
+      <li>If the task state becomes <code class="language-plaintext highlighter-rouge">FAILURE</code>, it <strong>raises</strong> the exception that occurred in the worker (e.g., <code class="language-plaintext highlighter-rouge">ValueError: Something went wrong!</code>).</li>
+      <li>If the timeout is reached before the task finishes, it raises a <code class="language-plaintext highlighter-rouge">celery.exceptions.TimeoutError</code>.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">result.traceback</code>: If the task failed, this contains the error traceback string from the worker.</li>
+</ul>
+
+<p><strong>(Example Output - might vary for <code class="language-plaintext highlighter-rouge">fail_sometimes</code> due to randomness)</strong></p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Sent task add(10, 20). Task ID: f5e8a3f6-c7b1-4a9e-8f0a-1b2c3d4e5f6a
+Sent task fail_sometimes('my data'). Task ID: 9b1d8c7e-a6f5-4b3a-9c8d-7e6f5a4b3c2d
+
+Checking results for add task (f5e8a3f6-c7b1-4a9e-8f0a-1b2c3d4e5f6a)...
+Is add ready? False
+State of add: PENDING  # Or STARTED if checked quickly after worker picks it up
+Result of add: 30
+Did add succeed? True
+Final state of add: SUCCESS
+
+Checking results for fail_sometimes task (9b1d8c7e-a6f5-4b3a-9c8d-7e6f5a4b3c2d)...
+Could not get result for fail_sometimes: ValueError - Something went wrong!
+Final state of fail_sometimes: FAILURE
+Did fail_sometimes fail? True
+Traceback:
+Traceback (most recent call last):
+  File "/path/to/celery/app/trace.py", line ..., in trace_task
+    R = retval = fun(*args, **kwargs)
+  File "/path/to/celery/app/trace.py", line ..., in __protected_call__
+    return self.run(*args, **kwargs)
+  File "/path/to/your/project/celery_app.py", line ..., in fail_sometimes
+    raise ValueError("Something went wrong!")
+ValueError: Something went wrong!
+</code></pre></div></div>
+
+<h2 id="how-it-works-internally">How It Works Internally</h2>
+
+<ol>
+  <li><strong>Task Sent:</strong> Your application calls <code class="language-plaintext highlighter-rouge">add.delay(10, 20)</code>. It sends a message to the <strong>Broker</strong> and gets back an <code class="language-plaintext highlighter-rouge">AsyncResult</code> object containing the unique <code class="language-plaintext highlighter-rouge">task_id</code>.</li>
+  <li><strong>Worker Executes:</strong> A <strong>Worker</strong> picks up the task message from the Broker. It finds the <code class="language-plaintext highlighter-rouge">add</code> function and executes <code class="language-plaintext highlighter-rouge">add(10, 20)</code>. The function returns <code class="language-plaintext highlighter-rouge">30</code>.</li>
+  <li><strong>Worker Stores Result:</strong> Because a <code class="language-plaintext highlighter-rouge">result_backend</code> is configured (<code class="language-plaintext highlighter-rouge">redis://.../1</code>), the Worker:
+    <ul>
+      <li>Connects to the Result Backend (Redis DB 1).</li>
+      <li>Prepares the result data (e.g., <code class="language-plaintext highlighter-rouge">{'status': 'SUCCESS', 'result': 30, 'task_id': 'f5e8...', ...}</code>).</li>
+      <li>Stores this data in the backend, using the <code class="language-plaintext highlighter-rouge">task_id</code> as the key (e.g., in Redis, it might set a key like <code class="language-plaintext highlighter-rouge">celery-task-meta-f5e8a3f6-c7b1-4a9e-8f0a-1b2c3d4e5f6a</code> to the JSON representation of the result data).</li>
+      <li>It might also set an expiry time on the result if configured (<code class="language-plaintext highlighter-rouge">result_expires</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Client Checks Result:</strong> Your application calls <code class="language-plaintext highlighter-rouge">result_add.get(timeout=10)</code> on the <code class="language-plaintext highlighter-rouge">AsyncResult</code> object.</li>
+  <li><strong>Client Queries Backend:</strong> The <code class="language-plaintext highlighter-rouge">AsyncResult</code> object uses the <code class="language-plaintext highlighter-rouge">task_id</code> (<code class="language-plaintext highlighter-rouge">f5e8...</code>) and the configured <code class="language-plaintext highlighter-rouge">result_backend</code> URL:
+    <ul>
+      <li>It connects to the Result Backend (Redis DB 1).</li>
+      <li>It repeatedly fetches the data associated with the <code class="language-plaintext highlighter-rouge">task_id</code> key (e.g., <code class="language-plaintext highlighter-rouge">GET celery-task-meta-f5e8...</code> in Redis).</li>
+      <li>It checks the <code class="language-plaintext highlighter-rouge">status</code> field in the retrieved data.</li>
+      <li>If the status is <code class="language-plaintext highlighter-rouge">PENDING</code> or <code class="language-plaintext highlighter-rouge">STARTED</code>, it waits a short interval and tries again, until the timeout is reached.</li>
+      <li>If the status is <code class="language-plaintext highlighter-rouge">SUCCESS</code>, it extracts the <code class="language-plaintext highlighter-rouge">result</code> field (<code class="language-plaintext highlighter-rouge">30</code>) and returns it.</li>
+      <li>If the status is <code class="language-plaintext highlighter-rouge">FAILURE</code>, it extracts the <code class="language-plaintext highlighter-rouge">result</code> field (which contains exception info), reconstructs the exception, and raises it.</li>
+    </ul>
+  </li>
+</ol>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Client as Your Application
+    participant Task as add.delay(10, 20)
+    participant Broker as Message Broker (Redis DB 0)
+    participant Worker as Celery Worker
+    participant ResultBackend as Result Backend (Redis DB 1)
+    participant AsyncResult as result_add = AsyncResult(...)
+
+    Client-&gt;&gt;Task: Call add.delay(10, 20)
+    Task-&gt;&gt;Broker: Send task message (task_id: 't1')
+    Task--&gt;&gt;Client: Return AsyncResult (id='t1')
+
+    Worker-&gt;&gt;Broker: Fetch message (task_id: 't1')
+    Worker-&gt;&gt;Worker: Execute add(10, 20) -&gt; returns 30
+    Worker-&gt;&gt;ResultBackend: Store result (key='t1', value={'status': 'SUCCESS', 'result': 30, ...})
+    ResultBackend--&gt;&gt;Worker: Ack (Result stored)
+    Worker-&gt;&gt;Broker: Ack message complete
+
+    Client-&gt;&gt;AsyncResult: Call result_add.get(timeout=10)
+    loop Check Backend Until Ready or Timeout
+        AsyncResult-&gt;&gt;ResultBackend: Get result for key='t1'
+        ResultBackend--&gt;&gt;AsyncResult: Return {'status': 'SUCCESS', 'result': 30, ...}
+    end
+    AsyncResult--&gt;&gt;Client: Return 30
+</code></pre>
+
+<h2 id="code-dive-storing-and-retrieving-results">Code Dive: Storing and Retrieving Results</h2>
+
+<ul>
+  <li><strong>Backend Loading (<code class="language-plaintext highlighter-rouge">celery/app/backends.py</code>):</strong> When Celery starts, it uses the <code class="language-plaintext highlighter-rouge">result_backend</code> URL to look up the correct backend class (e.g., <code class="language-plaintext highlighter-rouge">RedisBackend</code>, <code class="language-plaintext highlighter-rouge">DatabaseBackend</code>, <code class="language-plaintext highlighter-rouge">RPCBackend</code>) using functions like <code class="language-plaintext highlighter-rouge">by_url</code> and <code class="language-plaintext highlighter-rouge">by_name</code>. These map URL schemes (<code class="language-plaintext highlighter-rouge">redis://</code>, <code class="language-plaintext highlighter-rouge">db+postgresql://</code>, <code class="language-plaintext highlighter-rouge">rpc://</code>) or aliases (‘redis’, ‘db’, ‘rpc’) to the actual Python classes. The mapping is defined in <code class="language-plaintext highlighter-rouge">BACKEND_ALIASES</code>.</li>
+  <li><strong>Base Classes (<code class="language-plaintext highlighter-rouge">celery/backends/base.py</code>):</strong> All result backends inherit from <code class="language-plaintext highlighter-rouge">BaseBackend</code>. Many common backends (like Redis, Memcached) inherit from <code class="language-plaintext highlighter-rouge">BaseKeyValueStoreBackend</code>, which provides common logic for storing results using keys.</li>
+  <li>
+    <p><strong>Storing Result (<code class="language-plaintext highlighter-rouge">BaseKeyValueStoreBackend._store_result</code> in <code class="language-plaintext highlighter-rouge">celery/backends/base.py</code>):</strong> This method (called by the worker) is responsible for actually saving the result.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from backends/base.py (inside BaseKeyValueStoreBackend)
+</span><span class="k">def</span> <span class="nf">_store_result</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_id</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span>
+                  <span class="n">traceback</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="c1"># 1. Prepare the metadata dictionary
+</span>    <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_get_result_meta</span><span class="p">(</span><span class="n">result</span><span class="o">=</span><span class="n">result</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="n">state</span><span class="p">,</span>
+                                 <span class="n">traceback</span><span class="o">=</span><span class="n">traceback</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+    <span class="n">meta</span><span class="p">[</span><span class="s">'task_id'</span><span class="p">]</span> <span class="o">=</span> <span class="n">bytes_to_str</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span> <span class="c1"># Ensure task_id is str
+</span>
+    <span class="c1"># (Check if already successfully stored to prevent overwrites - omitted for brevity)
+</span>
+    <span class="c1"># 2. Encode the metadata (e.g., to JSON or pickle)
+</span>    <span class="n">encoded_meta</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">encode</span><span class="p">(</span><span class="n">meta</span><span class="p">)</span>
+
+    <span class="c1"># 3. Get the specific key for this task
+</span>    <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_key_for_task</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span> <span class="c1"># e.g., b'celery-task-meta-&lt;task_id&gt;'
+</span>
+    <span class="c1"># 4. Call the specific backend's 'set' method (implemented by RedisBackend etc.)
+</span>    <span class="c1">#    It might also set an expiry time (self.expires)
+</span>    <span class="k">try</span><span class="p">:</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_set_with_state</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">encoded_meta</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span> <span class="c1"># Calls self.set(key, encoded_meta)
+</span>    <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+         <span class="c1"># Handle potential storage errors, maybe retry
+</span>         <span class="k">raise</span> <span class="n">BackendStoreError</span><span class="p">(...)</span> <span class="k">from</span> <span class="n">exc</span>
+
+    <span class="k">return</span> <span class="n">result</span> <span class="c1"># Returns the original (unencoded) result
+</span></code></pre></div>    </div>
+    <p>The <code class="language-plaintext highlighter-rouge">self.set()</code> method is implemented by the concrete backend (e.g., <code class="language-plaintext highlighter-rouge">RedisBackend.set</code> uses <code class="language-plaintext highlighter-rouge">redis-py</code> client’s <code class="language-plaintext highlighter-rouge">setex</code> or <code class="language-plaintext highlighter-rouge">set</code> command).</p>
+  </li>
+  <li>
+    <p><strong>Retrieving Result (<code class="language-plaintext highlighter-rouge">BaseBackend.wait_for</code> or <code class="language-plaintext highlighter-rouge">BaseKeyValueStoreBackend.get_many</code> in <code class="language-plaintext highlighter-rouge">celery/backends/base.py</code>):</strong> When you call <code class="language-plaintext highlighter-rouge">AsyncResult.get()</code>, it often ends up calling <code class="language-plaintext highlighter-rouge">wait_for</code> or similar methods that poll the backend.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from backends/base.py (inside SyncBackendMixin)
+</span><span class="k">def</span> <span class="nf">wait_for</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_id</span><span class="p">,</span>
+             <span class="n">timeout</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">no_ack</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_interval</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="s">"""Wait for task and return its result meta."""</span>
+    <span class="bp">self</span><span class="p">.</span><span class="n">_ensure_not_eager</span><span class="p">()</span> <span class="c1"># Check if running in eager mode
+</span>
+    <span class="n">time_elapsed</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+        <span class="c1"># 1. Get metadata from backend (calls self._get_task_meta_for)
+</span>        <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_task_meta</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span>
+
+        <span class="c1"># 2. Check if the task is in a final state
+</span>        <span class="k">if</span> <span class="n">meta</span><span class="p">[</span><span class="s">'status'</span><span class="p">]</span> <span class="ow">in</span> <span class="n">states</span><span class="p">.</span><span class="n">READY_STATES</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">meta</span> <span class="c1"># Return the full metadata dict
+</span>
+        <span class="c1"># 3. Call interval callback if provided
+</span>        <span class="k">if</span> <span class="n">on_interval</span><span class="p">:</span>
+            <span class="n">on_interval</span><span class="p">()</span>
+
+        <span class="c1"># 4. Sleep to avoid busy-waiting
+</span>        <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span>
+        <span class="n">time_elapsed</span> <span class="o">+=</span> <span class="n">interval</span>
+
+        <span class="c1"># 5. Check for timeout
+</span>        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">and</span> <span class="n">time_elapsed</span> <span class="o">&gt;=</span> <span class="n">timeout</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="nb">TimeoutError</span><span class="p">(</span><span class="s">'The operation timed out.'</span><span class="p">)</span>
+</code></pre></div>    </div>
+    <p>The <code class="language-plaintext highlighter-rouge">self.get_task_meta(task_id)</code> eventually calls <code class="language-plaintext highlighter-rouge">self._get_task_meta_for(task_id)</code>, which in <code class="language-plaintext highlighter-rouge">BaseKeyValueStoreBackend</code> uses <code class="language-plaintext highlighter-rouge">self.get(key)</code> (e.g., <code class="language-plaintext highlighter-rouge">RedisBackend.get</code> uses <code class="language-plaintext highlighter-rouge">redis-py</code> client’s <code class="language-plaintext highlighter-rouge">GET</code> command) and then decodes the result using <code class="language-plaintext highlighter-rouge">self.decode_result</code>.</p>
+  </li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the crucial <strong>Result Backend</strong>:</p>
+
+<ul>
+  <li>It acts as a <strong>storage place</strong> (like a filing cabinet or database) for task results and states.</li>
+  <li>It’s configured using the <code class="language-plaintext highlighter-rouge">result_backend</code> setting in your <a href="01_celery_app.md">Celery App</a>.</li>
+  <li>The <a href="05_worker.md">Worker</a> stores the outcome (success value or failure exception) in the backend after executing a <a href="03_task.md">Task</a>.</li>
+  <li>You use the <code class="language-plaintext highlighter-rouge">AsyncResult</code> object (returned by <code class="language-plaintext highlighter-rouge">.delay()</code> or <code class="language-plaintext highlighter-rouge">.apply_async()</code>) and its methods (<code class="language-plaintext highlighter-rouge">.get()</code>, <code class="language-plaintext highlighter-rouge">.state</code>, <code class="language-plaintext highlighter-rouge">.ready()</code>) to query the backend using the task’s unique ID.</li>
+  <li>Various backend types exist (Redis, Database, RPC, etc.), each with different characteristics.</li>
+</ul>
+
+<p>Result backends allow your application to track the progress and outcome of background work. But what if you want tasks to run automatically at specific times or on a regular schedule, like sending a report every morning? That’s where Celery’s scheduler comes in.</p>
+
+<p><strong>Next:</strong> <a href="07_beat__scheduler_.md">Chapter 7: Beat (Scheduler)</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

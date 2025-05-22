@@ -1,0 +1,388 @@
+<h1 id="chapter-8-canvas-signatures--primitives---building-task-workflows">Chapter 8: Canvas (Signatures &amp; Primitives) - Building Task Workflows</h1>
+
+<p>In the previous chapter, <a href="07_beat__scheduler_.md">Chapter 7: Beat (Scheduler)</a>, we learned how to schedule tasks to run automatically at specific times using Celery Beat. This is great for recurring jobs. But what if you need to run a sequence of tasks, where one task depends on the result of another? Or run multiple tasks in parallel and then collect their results?</p>
+
+<p>Imagine you’re building a feature where a user uploads an article, and you need to:</p>
+<ol>
+  <li>Fetch the article content from a URL.</li>
+  <li>Process the text to extract keywords.</li>
+  <li>Process the text to detect the language.</li>
+  <li>Once <em>both</em> processing steps are done, save the article and the extracted metadata to your database.</li>
+</ol>
+
+<p>Simply running these tasks independently won’t work. Keyword extraction and language detection can happen at the same time, but only <em>after</em> the content is fetched. Saving can only happen <em>after</em> both processing steps are complete. How do you orchestrate this multi-step workflow?</p>
+
+<p>This is where <strong>Celery Canvas</strong> comes in. It provides the building blocks to design complex task workflows.</p>
+
+<h2 id="what-problem-does-canvas-solve">What Problem Does Canvas Solve?</h2>
+
+<p>Canvas helps you connect individual <a href="03_task.md">Task</a>s together to form more sophisticated processes. It solves the problem of defining dependencies and flow control between tasks. Instead of just firing off tasks one by one and hoping they complete in the right order or manually checking results, Canvas lets you declare the desired workflow structure directly.</p>
+
+<p>Think of it like having different types of Lego bricks:</p>
+<ul>
+  <li>Some bricks represent a single task.</li>
+  <li>Other bricks let you connect tasks end-to-end (run in sequence).</li>
+  <li>Some let you stack bricks side-by-side (run in parallel).</li>
+  <li>Others let you build a structure where several parallel steps must finish before the next piece is added.</li>
+</ul>
+
+<p>Canvas gives you these connecting bricks for your Celery tasks.</p>
+
+<h2 id="key-concepts-signatures-and-primitives">Key Concepts: Signatures and Primitives</h2>
+
+<p>The core ideas in Canvas are <strong>Signatures</strong> and <strong>Workflow Primitives</strong>.</p>
+
+<ol>
+  <li><strong>Signature (<code class="language-plaintext highlighter-rouge">signature</code> or <code class="language-plaintext highlighter-rouge">.s()</code>): The Basic Building Block</strong>
+    <ul>
+      <li>A <code class="language-plaintext highlighter-rouge">Signature</code> wraps up everything needed to call a single task: the task’s name, the arguments (<code class="language-plaintext highlighter-rouge">args</code>), the keyword arguments (<code class="language-plaintext highlighter-rouge">kwargs</code>), and any execution options (like <code class="language-plaintext highlighter-rouge">countdown</code>, <code class="language-plaintext highlighter-rouge">eta</code>, queue name).</li>
+      <li>Think of it as a <strong>pre-filled request form</strong> or a <strong>recipe card</strong> for a specific task execution. It doesn’t <em>run</em> the task immediately; it just holds the plan for running it.</li>
+      <li>The easiest way to create a signature is using the <code class="language-plaintext highlighter-rouge">.s()</code> shortcut on a task function.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># tasks.py
+</span><span class="kn">from</span> <span class="nn">celery_app</span> <span class="kn">import</span> <span class="n">app</span> <span class="c1"># Assuming app is defined in celery_app.py
+</span>
+<span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span>
+
+<span class="c1"># Create a signature for add(2, 3)
+</span><span class="n">add_sig</span> <span class="o">=</span> <span class="n">add</span><span class="p">.</span><span class="n">s</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+
+<span class="c1"># add_sig now holds the 'plan' to run add(2, 3)
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Signature: </span><span class="si">{</span><span class="n">add_sig</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Task name: </span><span class="si">{</span><span class="n">add_sig</span><span class="p">.</span><span class="n">task</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Arguments: </span><span class="si">{</span><span class="n">add_sig</span><span class="p">.</span><span class="n">args</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># To actually run it, you call .delay() or .apply_async() ON the signature
+# result_promise = add_sig.delay()
+</span></code></pre></div>    </div>
+
+    <p><strong>Output:</strong></p>
+    <div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Signature: tasks.add(2, 3)
+Task name: tasks.add
+Arguments: (2, 3)
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Primitives: Connecting the Blocks</strong>
+Canvas provides several functions (primitives) to combine signatures into workflows:</p>
+
+    <ul>
+      <li><strong><code class="language-plaintext highlighter-rouge">chain</code>:</strong> Links tasks sequentially. The result of the first task is passed as the first argument to the second task, and so on.
+        <ul>
+          <li>Analogy: An assembly line where each station passes its output to the next.</li>
+          <li>Syntax: <code class="language-plaintext highlighter-rouge">(sig1 | sig2 | sig3)</code> or <code class="language-plaintext highlighter-rouge">chain(sig1, sig2, sig3)</code></li>
+        </ul>
+      </li>
+      <li><strong><code class="language-plaintext highlighter-rouge">group</code>:</strong> Runs a list of tasks in parallel. It returns a special result object that helps track the group.
+        <ul>
+          <li>Analogy: Hiring several workers to do similar jobs independently at the same time.</li>
+          <li>Syntax: <code class="language-plaintext highlighter-rouge">group(sig1, sig2, sig3)</code></li>
+        </ul>
+      </li>
+      <li><strong><code class="language-plaintext highlighter-rouge">chord</code>:</strong> Runs a group of tasks in parallel (the “header”), and <em>then</em>, once <em>all</em> tasks in the group have finished successfully, it runs a single callback task (the “body”) with the results of the header tasks.
+        <ul>
+          <li>Analogy: A team of researchers works on different parts of a project in parallel. Once everyone is done, a lead researcher collects all the findings to write the final report.</li>
+          <li>Syntax: <code class="language-plaintext highlighter-rouge">chord(group(header_sigs), body_sig)</code></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ol>
+
+<p>There are other primitives like <code class="language-plaintext highlighter-rouge">chunks</code>, <code class="language-plaintext highlighter-rouge">xmap</code>, and <code class="language-plaintext highlighter-rouge">starmap</code>, but <code class="language-plaintext highlighter-rouge">chain</code>, <code class="language-plaintext highlighter-rouge">group</code>, and <code class="language-plaintext highlighter-rouge">chord</code> are the most fundamental ones for building workflows.</p>
+
+<h2 id="how-to-use-canvas-building-the-article-processing-workflow">How to Use Canvas: Building the Article Processing Workflow</h2>
+
+<p>Let’s build the workflow we described earlier: Fetch -&gt; (Process Keywords &amp; Detect Language in parallel) -&gt; Save.</p>
+
+<p><strong>1. Define the Tasks</strong></p>
+
+<p>First, we need our basic tasks. Let’s create dummy versions in <code class="language-plaintext highlighter-rouge">tasks.py</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># tasks.py
+</span><span class="kn">from</span> <span class="nn">celery_app</span> <span class="kn">import</span> <span class="n">app</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">random</span>
+
+<span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">fetch_data</span><span class="p">(</span><span class="n">url</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Fetching data from </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="c1"># Simulate fetching some data
+</span>    <span class="n">data</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Content from </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s"> - </span><span class="si">{</span><span class="n">random</span><span class="p">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span><span class="si">}</span><span class="s">"</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Fetched: </span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+<span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">process_part_a</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Processing Part A for: </span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">result_a</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Keywords for '</span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s">'"</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Part A finished."</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result_a</span>
+
+<span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">process_part_b</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Processing Part B for: </span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="c1"># Simulate slightly longer processing
+</span>    <span class="n">result_b</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Language for '</span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s">'"</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Part B finished."</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result_b</span>
+
+<span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">task</span>
+<span class="k">def</span> <span class="nf">combine_results</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+    <span class="c1"># 'results' will be a list containing the return values
+</span>    <span class="c1"># of process_part_a and process_part_b
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Combining results: </span><span class="si">{</span><span class="n">results</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">final_output</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Combined: </span><span class="si">{</span><span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s"> | </span><span class="si">{</span><span class="n">results</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s">"</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Final Output: </span><span class="si">{</span><span class="n">final_output</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">final_output</span>
+</code></pre></div></div>
+
+<p><strong>2. Define the Workflow Using Canvas</strong></p>
+
+<p>Now, in a separate script or Python shell, let’s define the workflow using signatures and primitives.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># run_workflow.py
+</span><span class="kn">from</span> <span class="nn">celery</span> <span class="kn">import</span> <span class="n">chain</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">chord</span>
+<span class="kn">from</span> <span class="nn">tasks</span> <span class="kn">import</span> <span class="n">fetch_data</span><span class="p">,</span> <span class="n">process_part_a</span><span class="p">,</span> <span class="n">process_part_b</span><span class="p">,</span> <span class="n">combine_results</span>
+
+<span class="c1"># The URL we want to process
+</span><span class="n">article_url</span> <span class="o">=</span> <span class="s">"http://example.com/article1"</span>
+
+<span class="c1"># Create the workflow structure
+# 1. Fetch data. The result (data) is passed to the next step.
+# 2. The next step is a chord:
+#    - Header: A group running process_part_a and process_part_b in parallel.
+#              Both tasks receive the 'data' from fetch_data.
+#    - Body: combine_results receives a list of results from the group.
+</span>
+<span class="n">workflow</span> <span class="o">=</span> <span class="n">chain</span><span class="p">(</span>
+    <span class="n">fetch_data</span><span class="p">.</span><span class="n">s</span><span class="p">(</span><span class="n">article_url</span><span class="p">),</span>              <span class="c1"># Step 1: Fetch
+</span>    <span class="n">chord</span><span class="p">(</span>                                  <span class="c1"># Step 2: Chord
+</span>        <span class="n">group</span><span class="p">(</span><span class="n">process_part_a</span><span class="p">.</span><span class="n">s</span><span class="p">(),</span> <span class="n">process_part_b</span><span class="p">.</span><span class="n">s</span><span class="p">()),</span> <span class="c1"># Header: Parallel processing
+</span>        <span class="n">combine_results</span><span class="p">.</span><span class="n">s</span><span class="p">()</span>                            <span class="c1"># Body: Combine results
+</span>    <span class="p">)</span>
+<span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Workflow definition:</span><span class="se">\n</span><span class="si">{</span><span class="n">workflow</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Start the workflow
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Sending workflow to Celery..."</span><span class="p">)</span>
+<span class="n">result_promise</span> <span class="o">=</span> <span class="n">workflow</span><span class="p">.</span><span class="n">apply_async</span><span class="p">()</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Workflow sent! Final result ID: </span><span class="si">{</span><span class="n">result_promise</span><span class="p">.</span><span class="nb">id</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"Run a Celery worker to execute the tasks."</span><span class="p">)</span>
+<span class="c1"># You can optionally wait for the final result:
+# final_result = result_promise.get()
+# print(f"\nWorkflow finished! Final result: {final_result}")
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We import <code class="language-plaintext highlighter-rouge">chain</code>, <code class="language-plaintext highlighter-rouge">group</code>, <code class="language-plaintext highlighter-rouge">chord</code> from <code class="language-plaintext highlighter-rouge">celery</code>.</li>
+  <li>We import our task functions.</li>
+  <li><code class="language-plaintext highlighter-rouge">fetch_data.s(article_url)</code>: Creates a signature for the first step.</li>
+  <li><code class="language-plaintext highlighter-rouge">process_part_a.s()</code> and <code class="language-plaintext highlighter-rouge">process_part_b.s()</code>: Create signatures for the parallel tasks. Note that we <em>don’t</em> provide the <code class="language-plaintext highlighter-rouge">data</code> argument here. <code class="language-plaintext highlighter-rouge">chain</code> automatically passes the result of <code class="language-plaintext highlighter-rouge">fetch_data</code> to the <em>next</em> task in the sequence. Since the next task is a <code class="language-plaintext highlighter-rouge">chord</code> containing a <code class="language-plaintext highlighter-rouge">group</code>, Celery cleverly passes the <code class="language-plaintext highlighter-rouge">data</code> to <em>each</em> task within that group.</li>
+  <li><code class="language-plaintext highlighter-rouge">combine_results.s()</code>: Creates the signature for the final step (the chord’s body). It doesn’t need arguments initially because the <code class="language-plaintext highlighter-rouge">chord</code> will automatically pass the list of results from the header group to it.</li>
+  <li><code class="language-plaintext highlighter-rouge">chain(...)</code>: Connects <code class="language-plaintext highlighter-rouge">fetch_data</code> to the <code class="language-plaintext highlighter-rouge">chord</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">chord(group(...), ...)</code>: Defines that the group must finish before <code class="language-plaintext highlighter-rouge">combine_results</code> is called.</li>
+  <li><code class="language-plaintext highlighter-rouge">group(...)</code>: Defines that <code class="language-plaintext highlighter-rouge">process_part_a</code> and <code class="language-plaintext highlighter-rouge">process_part_b</code> run in parallel.</li>
+  <li><code class="language-plaintext highlighter-rouge">workflow.apply_async()</code>: This sends the <em>first</em> task (<code class="language-plaintext highlighter-rouge">fetch_data</code>) to the broker. The rest of the workflow is encoded in the task’s options (like <code class="language-plaintext highlighter-rouge">link</code> or <code class="language-plaintext highlighter-rouge">chord</code> information) so that Celery knows what to do next after each step completes.</li>
+</ul>
+
+<p>If you run this script (and have a <a href="05_worker.md">Worker</a> running), you’ll see the tasks execute in the worker logs, respecting the defined dependencies and parallelism. <code class="language-plaintext highlighter-rouge">fetch_data</code> runs first, then <code class="language-plaintext highlighter-rouge">process_part_a</code> and <code class="language-plaintext highlighter-rouge">process_part_b</code> run concurrently, and finally <code class="language-plaintext highlighter-rouge">combine_results</code> runs after both A and B are done.</p>
+
+<h2 id="how-it-works-internally-simplified-walkthrough">How It Works Internally (Simplified Walkthrough)</h2>
+
+<p>Let’s trace a simpler workflow: <code class="language-plaintext highlighter-rouge">my_chain = (add.s(2, 2) | add.s(4))</code></p>
+
+<ol>
+  <li><strong>Workflow Definition:</strong> When you create <code class="language-plaintext highlighter-rouge">my_chain</code>, Celery creates a <code class="language-plaintext highlighter-rouge">chain</code> object containing the signatures <code class="language-plaintext highlighter-rouge">add.s(2, 2)</code> and <code class="language-plaintext highlighter-rouge">add.s(4)</code>.</li>
+  <li><strong>Sending (<code class="language-plaintext highlighter-rouge">my_chain.apply_async()</code>):</strong>
+    <ul>
+      <li>Celery looks at the first task in the chain: <code class="language-plaintext highlighter-rouge">add.s(2, 2)</code>.</li>
+      <li>It prepares to send this task message to the <a href="04_broker_connection__amqp_.md">Broker Connection (AMQP)</a>.</li>
+      <li>Crucially, it adds a special option to the message, often called <code class="language-plaintext highlighter-rouge">link</code> (or uses the <code class="language-plaintext highlighter-rouge">chain</code> field in newer protocols). This option contains the <em>signature</em> of the next task in the chain: <code class="language-plaintext highlighter-rouge">add.s(4)</code>.</li>
+      <li>The message for <code class="language-plaintext highlighter-rouge">add(2, 2)</code> (with the link to <code class="language-plaintext highlighter-rouge">add(4)</code>) is sent to the broker.</li>
+    </ul>
+  </li>
+  <li><strong>Worker 1 Executes First Task:</strong>
+    <ul>
+      <li>A <a href="05_worker.md">Worker</a> picks up the message for <code class="language-plaintext highlighter-rouge">add(2, 2)</code>.</li>
+      <li>It runs the <code class="language-plaintext highlighter-rouge">add</code> function with arguments <code class="language-plaintext highlighter-rouge">(2, 2)</code>. The result is <code class="language-plaintext highlighter-rouge">4</code>.</li>
+      <li>The worker stores the result <code class="language-plaintext highlighter-rouge">4</code> in the <a href="06_result_backend.md">Result Backend</a> (if configured).</li>
+      <li>The worker notices the <code class="language-plaintext highlighter-rouge">link</code> option in the original message, pointing to <code class="language-plaintext highlighter-rouge">add.s(4)</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Worker 1 Sends Second Task:</strong>
+    <ul>
+      <li>The worker takes the result of the first task (<code class="language-plaintext highlighter-rouge">4</code>).</li>
+      <li>It uses the linked signature <code class="language-plaintext highlighter-rouge">add.s(4)</code>.</li>
+      <li>It <em>prepends</em> the result (<code class="language-plaintext highlighter-rouge">4</code>) to the arguments of the linked signature, making it effectively <code class="language-plaintext highlighter-rouge">add.s(4, 4)</code>. <em>(Note: The original <code class="language-plaintext highlighter-rouge">4</code> in <code class="language-plaintext highlighter-rouge">add.s(4)</code> came from the chain definition, the first <code class="language-plaintext highlighter-rouge">4</code> is the result)</em>.</li>
+      <li>It sends a <em>new</em> message to the broker for <code class="language-plaintext highlighter-rouge">add(4, 4)</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Worker 2 Executes Second Task:</strong>
+    <ul>
+      <li>Another (or the same) worker picks up the message for <code class="language-plaintext highlighter-rouge">add(4, 4)</code>.</li>
+      <li>It runs <code class="language-plaintext highlighter-rouge">add(4, 4)</code>. The result is <code class="language-plaintext highlighter-rouge">8</code>.</li>
+      <li>It stores the result <code class="language-plaintext highlighter-rouge">8</code> in the backend.</li>
+      <li>There are no more links, so the chain is complete.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><code class="language-plaintext highlighter-rouge">group</code> works by sending all task messages in the group concurrently. <code class="language-plaintext highlighter-rouge">chord</code> is more complex; it involves the workers coordinating via the <a href="06_result_backend.md">Result Backend</a> to count completed tasks in the header before the callback task is finally sent.</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Client as Your Code
+    participant Canvas as workflow = chain(...)
+    participant Broker as Message Broker
+    participant Worker as Celery Worker
+
+    Client-&gt;&gt;Canvas: workflow.apply_async()
+    Note over Canvas: Prepare msg for add(2, 2) with link=add.s(4)
+    Canvas-&gt;&gt;Broker: Send Task 1 msg ('add', (2, 2), link=add.s(4), id=T1)
+    Broker--&gt;&gt;Canvas: Ack
+    Canvas--&gt;&gt;Client: Return AsyncResult(id=T2) # ID of the *last* task in chain
+
+    Worker-&gt;&gt;Broker: Fetch msg (T1)
+    Broker--&gt;&gt;Worker: Deliver Task 1 msg
+    Worker-&gt;&gt;Worker: Execute add(2, 2) -&gt; returns 4
+    Note over Worker: Store result 4 for T1 in Backend
+    Worker-&gt;&gt;Worker: Check 'link' option -&gt; add.s(4)
+    Note over Worker: Prepare msg for add(4, 4) using result 4 + linked args
+    Worker-&gt;&gt;Broker: Send Task 2 msg ('add', (4, 4), id=T2)
+    Broker--&gt;&gt;Worker: Ack
+    Worker-&gt;&gt;Broker: Ack Task 1 msg complete
+
+    Worker-&gt;&gt;Broker: Fetch msg (T2)
+    Broker--&gt;&gt;Worker: Deliver Task 2 msg
+    Worker-&gt;&gt;Worker: Execute add(4, 4) -&gt; returns 8
+    Note over Worker: Store result 8 for T2 in Backend
+    Worker-&gt;&gt;Broker: Ack Task 2 msg complete
+</code></pre>
+
+<h2 id="code-dive-canvas-implementation">Code Dive: Canvas Implementation</h2>
+
+<p>The logic for signatures and primitives resides primarily in <code class="language-plaintext highlighter-rouge">celery/canvas.py</code>.</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">Signature</code> Class:</strong>
+    <ul>
+      <li>Defined in <code class="language-plaintext highlighter-rouge">celery/canvas.py</code>. It’s essentially a dictionary subclass holding <code class="language-plaintext highlighter-rouge">task</code>, <code class="language-plaintext highlighter-rouge">args</code>, <code class="language-plaintext highlighter-rouge">kwargs</code>, <code class="language-plaintext highlighter-rouge">options</code>, etc.</li>
+      <li>The <code class="language-plaintext highlighter-rouge">.s()</code> method on a <code class="language-plaintext highlighter-rouge">Task</code> instance (in <code class="language-plaintext highlighter-rouge">celery/app/task.py</code>) is a shortcut to create a <code class="language-plaintext highlighter-rouge">Signature</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">apply_async</code>: Prepares arguments/options by calling <code class="language-plaintext highlighter-rouge">_merge</code> and then delegates to <code class="language-plaintext highlighter-rouge">self.type.apply_async</code> (the task’s method) or <code class="language-plaintext highlighter-rouge">app.send_task</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">link</code>, <code class="language-plaintext highlighter-rouge">link_error</code>: Methods that modify the <code class="language-plaintext highlighter-rouge">options</code> dictionary to add callbacks.</li>
+      <li><code class="language-plaintext highlighter-rouge">__or__</code>: The pipe operator (<code class="language-plaintext highlighter-rouge">|</code>) overload. It checks the type of the right-hand operand (<code class="language-plaintext highlighter-rouge">other</code>) and constructs a <code class="language-plaintext highlighter-rouge">_chain</code> object accordingly.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from celery/canvas.py
+</span><span class="k">class</span> <span class="nc">Signature</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
+    <span class="c1"># ... methods like __init__, clone, set, apply_async ...
+</span>
+    <span class="k">def</span> <span class="nf">link</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">):</span>
+        <span class="c1"># Appends callback signature to the 'link' list in options
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">append_to_list_option</span><span class="p">(</span><span class="s">'link'</span><span class="p">,</span> <span class="n">callback</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">link_error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">errback</span><span class="p">):</span>
+        <span class="c1"># Appends errback signature to the 'link_error' list in options
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">append_to_list_option</span><span class="p">(</span><span class="s">'link_error'</span><span class="p">,</span> <span class="n">errback</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__or__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="c1"># Called when you use the pipe '|' operator
+</span>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Signature</span><span class="p">):</span>
+            <span class="c1"># task | task -&gt; chain
+</span>            <span class="k">return</span> <span class="n">_chain</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">app</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">_app</span><span class="p">)</span>
+        <span class="c1"># ... other cases for group, chain ...
+</span>        <span class="k">return</span> <span class="nb">NotImplemented</span>
+</code></pre></div>    </div>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">_chain</code> Class:</strong>
+    <ul>
+      <li>Also in <code class="language-plaintext highlighter-rouge">celery/canvas.py</code>, inherits from <code class="language-plaintext highlighter-rouge">Signature</code>. Its <code class="language-plaintext highlighter-rouge">task</code> name is hardcoded to <code class="language-plaintext highlighter-rouge">'celery.chain'</code>. The actual task signatures are stored in <code class="language-plaintext highlighter-rouge">kwargs['tasks']</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">apply_async</code> / <code class="language-plaintext highlighter-rouge">run</code>: Contains the logic to handle sending the first task with the rest of the chain embedded in the options (either via <code class="language-plaintext highlighter-rouge">link</code> for protocol 1 or the <code class="language-plaintext highlighter-rouge">chain</code> message property for protocol 2).</li>
+      <li><code class="language-plaintext highlighter-rouge">prepare_steps</code>: This complex method recursively unwraps nested primitives (like a chain within a chain, or a group that needs to become a chord) and sets up the linking between steps.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified concept from celery/canvas.py (chain execution)
+</span><span class="k">class</span> <span class="nc">_chain</span><span class="p">(</span><span class="n">Signature</span><span class="p">):</span>
+    <span class="c1"># ... __init__, __or__ ...
+</span>
+    <span class="k">def</span> <span class="nf">apply_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="c1"># ... handle always_eager ...
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">app</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">app</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">app</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="c1"># ... setup ...
+</span>        <span class="n">tasks</span><span class="p">,</span> <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">prepare_steps</span><span class="p">(...)</span> <span class="c1"># Unroll and freeze tasks
+</span>
+        <span class="k">if</span> <span class="n">results</span><span class="p">:</span> <span class="c1"># If there are tasks to run
+</span>            <span class="n">first_task</span> <span class="o">=</span> <span class="n">tasks</span><span class="p">.</span><span class="n">pop</span><span class="p">()</span> <span class="c1"># Get the first task (list is reversed)
+</span>            <span class="n">remaining_chain</span> <span class="o">=</span> <span class="n">tasks</span> <span class="k">if</span> <span class="n">tasks</span> <span class="k">else</span> <span class="bp">None</span>
+
+            <span class="c1"># Determine how to pass the chain info (link vs. message field)
+</span>            <span class="n">use_link</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_use_link</span> <span class="c1"># ... logic to decide ...
+</span>
+            <span class="k">if</span> <span class="n">use_link</span><span class="p">:</span>
+                <span class="c1"># Protocol 1: Link first task to the second task
+</span>                <span class="k">if</span> <span class="n">remaining_chain</span><span class="p">:</span>
+                     <span class="n">first_task</span><span class="p">.</span><span class="n">link</span><span class="p">(</span><span class="n">remaining_chain</span><span class="p">.</span><span class="n">pop</span><span class="p">())</span>
+                     <span class="c1"># (Worker handles subsequent links)
+</span>                <span class="n">options_to_apply</span> <span class="o">=</span> <span class="n">options</span> <span class="c1"># Pass original options
+</span>            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Protocol 2: Embed the rest of the reversed chain in options
+</span>                <span class="n">options_to_apply</span> <span class="o">=</span> <span class="n">ChainMap</span><span class="p">({</span><span class="s">'chain'</span><span class="p">:</span> <span class="n">remaining_chain</span><span class="p">},</span> <span class="n">options</span><span class="p">)</span>
+
+            <span class="c1"># Send the *first* task only
+</span>            <span class="n">result_from_apply</span> <span class="o">=</span> <span class="n">first_task</span><span class="p">.</span><span class="n">apply_async</span><span class="p">(</span><span class="o">**</span><span class="n">options_to_apply</span><span class="p">)</span>
+            <span class="c1"># Return AsyncResult of the *last* task in the original chain
+</span>            <span class="k">return</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</code></pre></div>    </div>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">group</code> Class:</strong>
+    <ul>
+      <li>In <code class="language-plaintext highlighter-rouge">celery/canvas.py</code>. Its <code class="language-plaintext highlighter-rouge">task</code> name is <code class="language-plaintext highlighter-rouge">'celery.group'</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">apply_async</code>: Iterates through its <code class="language-plaintext highlighter-rouge">tasks</code>, freezes each one (assigning a common <code class="language-plaintext highlighter-rouge">group_id</code>), sends their messages, and collects the <code class="language-plaintext highlighter-rouge">AsyncResult</code> objects into a <code class="language-plaintext highlighter-rouge">GroupResult</code>. It uses a <code class="language-plaintext highlighter-rouge">barrier</code> (from the <code class="language-plaintext highlighter-rouge">vine</code> library) to track completion.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">chord</code> Class:</strong>
+    <ul>
+      <li>In <code class="language-plaintext highlighter-rouge">celery/canvas.py</code>. Its <code class="language-plaintext highlighter-rouge">task</code> name is <code class="language-plaintext highlighter-rouge">'celery.chord'</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">apply_async</code> / <code class="language-plaintext highlighter-rouge">run</code>: Coordinates with the result backend (<code class="language-plaintext highlighter-rouge">backend.apply_chord</code>). It typically runs the header <code class="language-plaintext highlighter-rouge">group</code> first, configuring it to notify the backend upon completion. The backend then triggers the <code class="language-plaintext highlighter-rouge">body</code> task once the count is reached.</li>
+    </ul>
+  </li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Celery Canvas transforms simple tasks into powerful workflow components.</p>
+
+<ul>
+  <li>A <strong>Signature</strong> (<code class="language-plaintext highlighter-rouge">task.s()</code>) captures the details for a single task call without running it.</li>
+  <li>Primitives like <strong><code class="language-plaintext highlighter-rouge">chain</code></strong> (<code class="language-plaintext highlighter-rouge">|</code>), <strong><code class="language-plaintext highlighter-rouge">group</code></strong>, and <strong><code class="language-plaintext highlighter-rouge">chord</code></strong> combine signatures to define complex execution flows:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">chain</code>: Sequence (output of one to input of next).</li>
+      <li><code class="language-plaintext highlighter-rouge">group</code>: Parallel execution.</li>
+      <li><code class="language-plaintext highlighter-rouge">chord</code>: Parallel execution followed by a callback with all results.</li>
+    </ul>
+  </li>
+  <li>You compose these primitives like building with Lego bricks to model your application’s logic.</li>
+  <li>Calling <code class="language-plaintext highlighter-rouge">.apply_async()</code> on a workflow primitive starts the process by sending the first task(s), embedding the rest of the workflow logic in the task options or using backend coordination.</li>
+</ul>
+
+<p>Canvas allows you to move complex orchestration logic out of your application code and into Celery, making your tasks more modular and your overall system more robust.</p>
+
+<p>Now that you can build and run complex workflows, how do you monitor what’s happening inside Celery? How do you know when tasks start, finish, or fail in real-time?</p>
+
+<p><strong>Next:</strong> <a href="09_events.md">Chapter 9: Events</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

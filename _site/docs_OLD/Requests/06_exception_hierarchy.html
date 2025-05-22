@@ -1,0 +1,392 @@
+<h1 id="chapter-6-when-things-go-wrong---the-exception-hierarchy">Chapter 6: When Things Go Wrong - The Exception Hierarchy</h1>
+
+<p>In <a href="05_authentication_handlers.md">Chapter 5: Authentication Handlers</a>, we learned how to prove our identity to websites that require login or API keys. We assumed our requests would work if we provided the correct credentials.</p>
+
+<p>But what happens when things <em>don’t</em> go as planned? The internet isn’t always reliable. Websites go down, networks have hiccups, URLs might be typed incorrectly, or servers might just be having a bad day. How does <code class="language-plaintext highlighter-rouge">requests</code> tell us about these problems, and how can we handle them gracefully in our code?</p>
+
+<h2 id="the-problem-dealing-with-request-failures">The Problem: Dealing with Request Failures</h2>
+
+<p>Imagine you’re building a script to check the weather using an online weather API. You use <code class="language-plaintext highlighter-rouge">requests.get()</code> to fetch the weather data. What could go wrong?</p>
+
+<ul>
+  <li>Your internet connection might be down.</li>
+  <li>The weather API website might be temporarily offline.</li>
+  <li>You might have mistyped the URL.</li>
+  <li>The website might take too long to respond (a timeout).</li>
+  <li>The website might respond, but with an error message (like “404 Not Found” or “500 Server Error”).</li>
+</ul>
+
+<p>If any of these happen, <code class="language-plaintext highlighter-rouge">requests</code> will encounter an error. If you don’t prepare for these errors, your script might crash! We need a way to:</p>
+
+<ol>
+  <li><strong>Detect</strong> that an error occurred.</li>
+  <li><strong>Understand</strong> <em>what kind</em> of error it was (network issue? timeout? bad URL?).</li>
+  <li><strong>React</strong> appropriately (e.g., print a helpful message, try again later, use a default value).</li>
+</ol>
+
+<h2 id="the-solution-a-family-tree-of-errors">The Solution: A Family Tree of Errors</h2>
+
+<p><code class="language-plaintext highlighter-rouge">Requests</code> helps us by using a system of specific error messages called <strong>exceptions</strong>. When something goes wrong, <code class="language-plaintext highlighter-rouge">requests</code> doesn’t just give up silently; it <strong>raises an exception</strong>.</p>
+
+<p>Think of it like a doctor diagnosing an illness. A doctor doesn’t just say “You’re sick.” They give a specific diagnosis: “You have the flu,” or “You have a broken arm,” or “You have allergies.” Each diagnosis tells you something specific about the problem and how to treat it.</p>
+
+<p><code class="language-plaintext highlighter-rouge">Requests</code> does something similar with its exceptions. It has a main, general exception called <code class="language-plaintext highlighter-rouge">requests.exceptions.RequestException</code>. All other specific <code class="language-plaintext highlighter-rouge">requests</code> errors are “children” or “descendants” of this main one, forming an <strong>Exception Hierarchy</strong> (like a family tree).</p>
+
+<p><strong>Analogy:</strong> The “Sickness” Family Tree 🌳</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">RequestException</code> (The Grandparent):</strong> This is the most general category, like saying “Sickness.” If you catch this, you catch <em>any</em> problem related to <code class="language-plaintext highlighter-rouge">requests</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">ConnectionError</code>, <code class="language-plaintext highlighter-rouge">Timeout</code>, <code class="language-plaintext highlighter-rouge">HTTPError</code>, <code class="language-plaintext highlighter-rouge">URLRequired</code> (The Parents):</strong> These are more specific categories under <code class="language-plaintext highlighter-rouge">RequestException</code>.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">ConnectionError</code> is like saying “Infection.”</li>
+      <li><code class="language-plaintext highlighter-rouge">Timeout</code> is like saying “Fatigue.”</li>
+      <li><code class="language-plaintext highlighter-rouge">HTTPError</code> is like saying “External Injury.”</li>
+      <li><code class="language-plaintext highlighter-rouge">URLRequired</code> is like saying “Genetic Condition” (problem with the input itself).</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">ConnectTimeout</code>, <code class="language-plaintext highlighter-rouge">ReadTimeout</code> (The Children):</strong> These are even <em>more</em> specific.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">ConnectTimeout</code> (child of <code class="language-plaintext highlighter-rouge">Timeout</code>) is like “Trouble Falling Asleep.”</li>
+      <li><code class="language-plaintext highlighter-rouge">ReadTimeout</code> (child of <code class="language-plaintext highlighter-rouge">Timeout</code>) is like “Waking Up Too Early.” Both are types of “Fatigue” (<code class="language-plaintext highlighter-rouge">Timeout</code>).</li>
+    </ul>
+  </li>
+</ul>
+
+<p>This hierarchy allows you to decide how specific you want to be when handling errors.</p>
+
+<h2 id="key-members-of-the-exception-family">Key Members of the Exception Family</h2>
+
+<p>All <code class="language-plaintext highlighter-rouge">requests</code> exceptions live inside the <code class="language-plaintext highlighter-rouge">requests.exceptions</code> module. You usually import the main <code class="language-plaintext highlighter-rouge">requests</code> library and access them like <code class="language-plaintext highlighter-rouge">requests.exceptions.ConnectionError</code>.</p>
+
+<p>Here are some of the most common ones you’ll encounter:</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.RequestException</code></strong>: The base exception. Catching this catches <em>all</em> exceptions listed below.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.ConnectionError</code></strong>: Problems connecting to the server. This could be due to:
+    <ul>
+      <li>DNS failure (can’t find the server’s address).</li>
+      <li>Refused connection (server is there but not accepting connections).</li>
+      <li>Network is unreachable.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.Timeout</code></strong>: The request took too long. This is a parent category for:
+    <ul>
+      <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.ConnectTimeout</code></strong>: Timeout occurred <em>while trying to establish the connection</em>.</li>
+      <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.ReadTimeout</code></strong>: Timeout occurred <em>after connecting</em>, while waiting for the server to send data.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.HTTPError</code></strong>: Raised when the server returns a “bad” status code (4xx for client errors like “404 Not Found”, or 5xx for server errors like “500 Internal Server Error”). <strong>Important:</strong> <code class="language-plaintext highlighter-rouge">requests</code> does <em>not</em> automatically raise this just because the status code is bad. You typically need to call the <code class="language-plaintext highlighter-rouge">response.raise_for_status()</code> method to trigger it.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.TooManyRedirects</code></strong>: The request exceeded the maximum number of allowed redirects (usually 30).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.URLRequired</code></strong>: You tried to make a request without providing a URL.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.MissingSchema</code></strong>: The URL was missing the scheme (like <code class="language-plaintext highlighter-rouge">http://</code> or <code class="language-plaintext highlighter-rouge">https://</code>).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.InvalidURL</code></strong>: The URL was malformed in some way.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">requests.exceptions.InvalidSchema</code></strong>: The URL scheme was not recognized (e.g., <code class="language-plaintext highlighter-rouge">ftp://</code> might not be supported by default).</li>
+</ul>
+
+<h2 id="handling-exceptions-the-tryexcept-block">Handling Exceptions: The <code class="language-plaintext highlighter-rouge">try...except</code> Block</h2>
+
+<p>How do we use this hierarchy in our code? We use Python’s <code class="language-plaintext highlighter-rouge">try...except</code> block.</p>
+
+<ol>
+  <li>Put the code that <em>might</em> cause an error (like <code class="language-plaintext highlighter-rouge">requests.get()</code>) inside the <code class="language-plaintext highlighter-rouge">try:</code> block.</li>
+  <li>Follow it with one or more <code class="language-plaintext highlighter-rouge">except:</code> blocks. Each <code class="language-plaintext highlighter-rouge">except:</code> block specifies the type of exception it’s designed to catch.</li>
+</ol>
+
+<p><strong>Example 1: Catching Any <code class="language-plaintext highlighter-rouge">requests</code> Error</strong></p>
+
+<p>Let’s try fetching a URL that doesn’t exist and catch the most general exception.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="c1"># A URL that might cause a connection error (e.g., non-existent domain)
+</span><span class="n">bad_url</span> <span class="o">=</span> <span class="s">'https://this-domain-probably-does-not-exist-asdfghjkl.com'</span>
+<span class="n">good_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/get'</span>
+
+<span class="n">url_to_try</span> <span class="o">=</span> <span class="n">bad_url</span> <span class="c1"># Change to good_url to see success case
+</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Trying to fetch: </span><span class="si">{</span><span class="n">url_to_try</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">url_to_try</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span> <span class="c1"># Add timeout
+</span>    <span class="n">response</span><span class="p">.</span><span class="n">raise_for_status</span><span class="p">()</span> <span class="c1"># Check for 4xx/5xx errors
+</span>    <span class="k">print</span><span class="p">(</span><span class="s">"Success! Status Code:"</span><span class="p">,</span> <span class="n">response</span><span class="p">.</span><span class="n">status_code</span><span class="p">)</span>
+    <span class="c1"># Process the response... (e.g., print response.text)
+</span>
+<span class="k">except</span> <span class="n">requests</span><span class="p">.</span><span class="n">exceptions</span><span class="p">.</span><span class="n">RequestException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="c1"># This will catch ANY error originating from requests
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Oh no! A requests-related error occurred:"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error Type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">).</span><span class="n">__name__</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error Details: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Script continues after handling the error."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Possible Output (if <code class="language-plaintext highlighter-rouge">url_to_try = bad_url</code>):</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Trying to fetch: https://this-domain-probably-does-not-exist-asdfghjkl.com
+
+Oh no! A requests-related error occurred:
+Error Type: ConnectionError
+Error Details: HTTPSConnectionPool(host='this-domain-probably-does-not-exist-asdfghjkl.com', port=443): Max retries exceeded with url: / (Caused by NameResolutionError("&lt;urllib3.connection.HTTPSConnection object at 0x...&gt;: Failed to resolve 'this-domain-probably-does-not-exist-asdfghjkl.com' ([Errno ...)"))
+
+Script continues after handling the error.
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We put <code class="language-plaintext highlighter-rouge">requests.get()</code> and <code class="language-plaintext highlighter-rouge">response.raise_for_status()</code> inside the <code class="language-plaintext highlighter-rouge">try</code> block.</li>
+  <li>If <code class="language-plaintext highlighter-rouge">requests.get()</code> fails (e.g., due to <code class="language-plaintext highlighter-rouge">ConnectionError</code> or <code class="language-plaintext highlighter-rouge">Timeout</code>), or if <code class="language-plaintext highlighter-rouge">raise_for_status()</code> detects a 4xx/5xx code (<code class="language-plaintext highlighter-rouge">HTTPError</code>), an exception is raised.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">except requests.exceptions.RequestException as e:</code> block catches it because <code class="language-plaintext highlighter-rouge">ConnectionError</code>, <code class="language-plaintext highlighter-rouge">Timeout</code>, and <code class="language-plaintext highlighter-rouge">HTTPError</code> are all descendants of <code class="language-plaintext highlighter-rouge">RequestException</code>.</li>
+  <li>We print a helpful message and the details of the error (<code class="language-plaintext highlighter-rouge">e</code>). Crucially, the script <em>doesn’t crash</em>.</li>
+</ul>
+
+<p><strong>Example 2: Catching Specific Errors</strong></p>
+
+<p>Sometimes, you want to react differently based on the <em>type</em> of error. Was it a temporary network glitch, or did the server permanently remove the page?</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="c1"># URL that gives a 404 error
+</span><span class="n">not_found_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/status/404'</span>
+<span class="c1"># URL that is slow and might time out
+</span><span class="n">timeout_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/delay/5'</span> <span class="c1"># Delays response by 5 seconds
+</span>
+<span class="n">url_to_try</span> <span class="o">=</span> <span class="n">timeout_url</span> <span class="c1"># Change to not_found_url to see HTTPError
+</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Trying to fetch: </span><span class="si">{</span><span class="n">url_to_try</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="c1"># Set a short timeout to demonstrate Timeout exception
+</span>    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">url_to_try</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">response</span><span class="p">.</span><span class="n">raise_for_status</span><span class="p">()</span> <span class="c1"># Check for 4xx/5xx status codes
+</span>    <span class="k">print</span><span class="p">(</span><span class="s">"Success! Status Code:"</span><span class="p">,</span> <span class="n">response</span><span class="p">.</span><span class="n">status_code</span><span class="p">)</span>
+    <span class="c1"># Process response...
+</span>
+<span class="k">except</span> <span class="n">requests</span><span class="p">.</span><span class="n">exceptions</span><span class="p">.</span><span class="n">ConnectTimeout</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Error: Could not connect to the server in time."</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Details: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Maybe retry later?
+</span>
+<span class="k">except</span> <span class="n">requests</span><span class="p">.</span><span class="n">exceptions</span><span class="p">.</span><span class="n">ReadTimeout</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Error: Server took too long to send data."</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Details: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Maybe the server is slow, could try again?
+</span>
+<span class="k">except</span> <span class="n">requests</span><span class="p">.</span><span class="n">exceptions</span><span class="p">.</span><span class="nb">ConnectionError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Error: Network problem (e.g., DNS error, refused connection)."</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Details: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Check internet connection?
+</span>
+<span class="k">except</span> <span class="n">requests</span><span class="p">.</span><span class="n">exceptions</span><span class="p">.</span><span class="n">HTTPError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Error: Bad HTTP status code received from server."</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Status Code: </span><span class="si">{</span><span class="n">e</span><span class="p">.</span><span class="n">response</span><span class="p">.</span><span class="n">status_code</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Details: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Was it a 404 Not Found? 500 Server Error?
+</span>
+<span class="k">except</span> <span class="n">requests</span><span class="p">.</span><span class="n">exceptions</span><span class="p">.</span><span class="n">RequestException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="c1"># Catch any other requests error that wasn't specifically handled above
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">An unexpected requests error occurred:"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error Type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">).</span><span class="n">__name__</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Details: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Script continues..."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Possible Output (if <code class="language-plaintext highlighter-rouge">url_to_try = timeout_url</code>):</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Trying to fetch: https://httpbin.org/delay/5
+
+Error: Server took too long to send data.
+Details: HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=2)
+
+Script continues...
+</code></pre></div></div>
+
+<p><strong>Possible Output (if <code class="language-plaintext highlighter-rouge">url_to_try = not_found_url</code>):</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Trying to fetch: https://httpbin.org/status/404
+
+Error: Bad HTTP status code received from server.
+Status Code: 404
+Details: 404 Client Error: NOT FOUND for url: https://httpbin.org/status/404
+
+Script continues...
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We have multiple <code class="language-plaintext highlighter-rouge">except</code> blocks, ordered from most specific (<code class="language-plaintext highlighter-rouge">ConnectTimeout</code>, <code class="language-plaintext highlighter-rouge">ReadTimeout</code>) to more general (<code class="language-plaintext highlighter-rouge">ConnectionError</code>, <code class="language-plaintext highlighter-rouge">HTTPError</code>) and finally the catch-all <code class="language-plaintext highlighter-rouge">RequestException</code>.</li>
+  <li>Python tries the <code class="language-plaintext highlighter-rouge">except</code> blocks in order. When an exception occurs, the <em>first</em> matching block is executed.</li>
+  <li>If a <code class="language-plaintext highlighter-rouge">ReadTimeout</code> occurs, the <code class="language-plaintext highlighter-rouge">except requests.exceptions.ReadTimeout</code> block handles it. It won’t fall through to the <code class="language-plaintext highlighter-rouge">except requests.exceptions.ConnectionError</code> or <code class="language-plaintext highlighter-rouge">except requests.exceptions.RequestException</code> blocks, even though <code class="language-plaintext highlighter-rouge">ReadTimeout</code> <em>is</em> a type of <code class="language-plaintext highlighter-rouge">RequestException</code>.</li>
+  <li>This allows us to provide specific feedback or recovery logic for different error scenarios.</li>
+</ul>
+
+<p><strong>Inheritance Benefit:</strong> If you write <code class="language-plaintext highlighter-rouge">except requests.exceptions.Timeout as e:</code>, this block will catch <em>both</em> <code class="language-plaintext highlighter-rouge">ConnectTimeout</code> and <code class="language-plaintext highlighter-rouge">ReadTimeout</code> because they inherit from <code class="language-plaintext highlighter-rouge">Timeout</code>.</p>
+
+<h2 id="how-it-works-internally-wrapping-lower-level-errors">How It Works Internally: Wrapping Lower-Level Errors</h2>
+
+<p><code class="language-plaintext highlighter-rouge">Requests</code> doesn’t handle network connections directly. It uses a lower-level library called <code class="language-plaintext highlighter-rouge">urllib3</code> under the hood (managed via <a href="07_transport_adapters.md">Transport Adapters</a>). When <code class="language-plaintext highlighter-rouge">urllib3</code> encounters a network problem (like a connection error or timeout), it raises its <em>own</em> specific exceptions (e.g., <code class="language-plaintext highlighter-rouge">urllib3.exceptions.MaxRetryError</code>, <code class="language-plaintext highlighter-rouge">urllib3.exceptions.NewConnectionError</code>, <code class="language-plaintext highlighter-rouge">urllib3.exceptions.ReadTimeoutError</code>).</p>
+
+<p><code class="language-plaintext highlighter-rouge">Requests</code> catches these <code class="language-plaintext highlighter-rouge">urllib3</code> exceptions inside its <a href="07_transport_adapters.md">Transport Adapters</a> (specifically, the <code class="language-plaintext highlighter-rouge">HTTPAdapter.send</code> method) and then <strong>raises its own corresponding exception</strong> from the <code class="language-plaintext highlighter-rouge">requests.exceptions</code> hierarchy. This simplifies things for you – you only need to worry about catching <code class="language-plaintext highlighter-rouge">requests</code> exceptions, not the underlying <code class="language-plaintext highlighter-rouge">urllib3</code> ones.</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant UserCode as Your Code
+    participant ReqAPI as requests.get()
+    participant Adapter as HTTPAdapter
+    participant Urllib3 as urllib3 library
+    participant Network
+
+    UserCode-&gt;&gt;ReqAPI: requests.get(bad_url, timeout=1)
+    ReqAPI-&gt;&gt;Adapter: send(prepared_request)
+    Adapter-&gt;&gt;Urllib3: urlopen(method, url, ..., timeout=1)
+    Urllib3-&gt;&gt;Network: Attempt connection...
+    Network--&gt;&gt;Urllib3: Fails (e.g., DNS lookup fails)
+    Urllib3-&gt;&gt;Urllib3: Raise urllib3.exceptions.NewConnectionError
+    Urllib3--&gt;&gt;Adapter: Propagate NewConnectionError
+    Adapter-&gt;&gt;Adapter: Catch NewConnectionError
+    Adapter-&gt;&gt;Adapter: Raise requests.exceptions.ConnectionError(original_error)
+    Adapter--&gt;&gt;ReqAPI: Propagate ConnectionError
+    ReqAPI--&gt;&gt;UserCode: Propagate ConnectionError
+    UserCode-&gt;&gt;UserCode: Catch requests.exceptions.ConnectionError
+</code></pre>
+
+<p>Let’s look at the definitions in <code class="language-plaintext highlighter-rouge">requests/exceptions.py</code>. You can see the inheritance structure clearly:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: requests/exceptions.py (Simplified View)
+</span>
+<span class="kn">from</span> <span class="nn">urllib3.exceptions</span> <span class="kn">import</span> <span class="n">HTTPError</span> <span class="k">as</span> <span class="n">BaseHTTPError</span>
+
+<span class="c1"># The base class for all requests exceptions
+</span><span class="k">class</span> <span class="nc">RequestException</span><span class="p">(</span><span class="nb">IOError</span><span class="p">):</span>
+    <span class="s">"""There was an ambiguous exception that occurred while handling your request."""</span>
+    <span class="c1"># ... (stores request/response objects) ...
+</span>
+<span class="c1"># Specific exceptions inheriting from RequestException or other requests exceptions
+</span><span class="k">class</span> <span class="nc">HTTPError</span><span class="p">(</span><span class="n">RequestException</span><span class="p">):</span>
+    <span class="s">"""An HTTP error occurred."""</span> <span class="c1"># Typically raised by response.raise_for_status()
+</span>
+<span class="k">class</span> <span class="nc">ConnectionError</span><span class="p">(</span><span class="n">RequestException</span><span class="p">):</span>
+    <span class="s">"""A Connection error occurred."""</span>
+
+<span class="k">class</span> <span class="nc">ProxyError</span><span class="p">(</span><span class="nb">ConnectionError</span><span class="p">):</span> <span class="c1"># Inherits from ConnectionError
+</span>    <span class="s">"""A proxy error occurred."""</span>
+
+<span class="k">class</span> <span class="nc">SSLError</span><span class="p">(</span><span class="nb">ConnectionError</span><span class="p">):</span> <span class="c1"># Inherits from ConnectionError
+</span>    <span class="s">"""An SSL error occurred."""</span>
+
+<span class="k">class</span> <span class="nc">Timeout</span><span class="p">(</span><span class="n">RequestException</span><span class="p">):</span> <span class="c1"># Inherits directly from RequestException
+</span>    <span class="s">"""The request timed out."""</span>
+
+<span class="k">class</span> <span class="nc">ConnectTimeout</span><span class="p">(</span><span class="nb">ConnectionError</span><span class="p">,</span> <span class="n">Timeout</span><span class="p">):</span> <span class="c1"># Inherits from BOTH ConnectionError and Timeout!
+</span>    <span class="s">"""The request timed out while trying to connect to the remote server."""</span>
+
+<span class="k">class</span> <span class="nc">ReadTimeout</span><span class="p">(</span><span class="n">Timeout</span><span class="p">):</span> <span class="c1"># Inherits from Timeout
+</span>    <span class="s">"""The server did not send any data in the allotted amount of time."""</span>
+
+<span class="k">class</span> <span class="nc">URLRequired</span><span class="p">(</span><span class="n">RequestException</span><span class="p">):</span>
+    <span class="s">"""A valid URL is required to make a request."""</span>
+
+<span class="k">class</span> <span class="nc">TooManyRedirects</span><span class="p">(</span><span class="n">RequestException</span><span class="p">):</span>
+    <span class="s">"""Too many redirects."""</span>
+
+<span class="c1"># ... other specific errors like MissingSchema, InvalidURL, etc. ...
+</span>
+<span class="c1"># Some exceptions might also inherit from standard Python errors
+</span><span class="k">class</span> <span class="nc">JSONDecodeError</span><span class="p">(</span><span class="n">RequestException</span><span class="p">,</span> <span class="nb">ValueError</span><span class="p">):</span> <span class="c1"># Inherits from RequestException and ValueError
+</span>    <span class="s">"""Couldn't decode the text into json"""</span>
+    <span class="c1"># Uses Python's built-in JSONDecodeError capabilities
+</span>
+</code></pre></div></div>
+
+<p>And here’s a simplified view of how <code class="language-plaintext highlighter-rouge">requests/adapters.py</code> (<code class="language-plaintext highlighter-rouge">HTTPAdapter.send</code>) catches <code class="language-plaintext highlighter-rouge">urllib3</code> errors and raises <code class="language-plaintext highlighter-rouge">requests</code> errors:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: requests/adapters.py (Simplified View in HTTPAdapter.send method)
+</span>
+<span class="kn">from</span> <span class="nn">urllib3.exceptions</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">MaxRetryError</span><span class="p">,</span> <span class="n">ConnectTimeoutError</span><span class="p">,</span> <span class="n">NewConnectionError</span><span class="p">,</span> <span class="n">ResponseError</span><span class="p">,</span>
+    <span class="n">ProxyError</span> <span class="k">as</span> <span class="n">_ProxyError</span><span class="p">,</span> <span class="n">SSLError</span> <span class="k">as</span> <span class="n">_SSLError</span><span class="p">,</span> <span class="n">ReadTimeoutError</span><span class="p">,</span>
+    <span class="n">ProtocolError</span><span class="p">,</span> <span class="n">ClosedPoolError</span><span class="p">,</span> <span class="n">InvalidHeader</span> <span class="k">as</span> <span class="n">_InvalidHeader</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">..exceptions</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="nb">ConnectionError</span><span class="p">,</span> <span class="n">ConnectTimeout</span><span class="p">,</span> <span class="n">ReadTimeout</span><span class="p">,</span> <span class="n">SSLError</span><span class="p">,</span> <span class="n">ProxyError</span><span class="p">,</span>
+    <span class="n">RetryError</span><span class="p">,</span> <span class="n">InvalidHeader</span><span class="p">,</span> <span class="n">RequestException</span> <span class="c1"># And others
+</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">HTTPAdapter</span><span class="p">(</span><span class="n">BaseAdapter</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verify</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">cert</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">proxies</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c1"># ... (prepare connection using self.get_connection_with_tls_context) ...
+</span>        <span class="n">conn</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_connection_with_tls_context</span><span class="p">(...)</span>
+        <span class="c1"># ... (verify certs, prepare URL, add headers) ...
+</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># === Make the actual request using urllib3 ===
+</span>            <span class="n">resp</span> <span class="o">=</span> <span class="n">conn</span><span class="p">.</span><span class="n">urlopen</span><span class="p">(</span>
+                <span class="n">method</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">method</span><span class="p">,</span>
+                <span class="n">url</span><span class="o">=</span><span class="n">url</span><span class="p">,</span>
+                <span class="c1"># ... other args like body, headers ...
+</span>                <span class="n">retries</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">max_retries</span><span class="p">,</span>
+                <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="c1"># === Catch specific urllib3 errors and raise corresponding requests errors ===
+</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">ProtocolError</span><span class="p">,</span> <span class="nb">OSError</span><span class="p">)</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span> <span class="c1"># General network/protocol errors
+</span>            <span class="k">raise</span> <span class="nb">ConnectionError</span><span class="p">(</span><span class="n">err</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="n">MaxRetryError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span> <span class="c1"># urllib3 retried but failed
+</span>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">reason</span><span class="p">,</span> <span class="n">ConnectTimeoutError</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">ConnectTimeout</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">reason</span><span class="p">,</span> <span class="n">ResponseError</span><span class="p">):</span> <span class="c1"># Errors related to retry logic
+</span>                <span class="k">raise</span> <span class="n">RetryError</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">reason</span><span class="p">,</span> <span class="n">_ProxyError</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">ProxyError</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">reason</span><span class="p">,</span> <span class="n">_SSLError</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">SSLError</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+            <span class="c1"># Fallback for other retry errors
+</span>            <span class="k">raise</span> <span class="nb">ConnectionError</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="n">ClosedPoolError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span> <span class="c1"># Connection pool was closed
+</span>            <span class="k">raise</span> <span class="nb">ConnectionError</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="n">_ProxyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span> <span class="c1"># Direct proxy error
+</span>            <span class="k">raise</span> <span class="n">ProxyError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="p">(</span><span class="n">_SSLError</span><span class="p">,</span> <span class="n">ReadTimeoutError</span><span class="p">,</span> <span class="n">_InvalidHeader</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span> <span class="c1"># Other specific errors
+</span>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">_SSLError</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">SSLError</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">ReadTimeoutError</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">ReadTimeout</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">_InvalidHeader</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">InvalidHeader</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Should not happen, but raise generic RequestException if needed
+</span>                <span class="k">raise</span> <span class="n">RequestException</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="c1"># ... (build and return the Response object if successful) ...
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">build_response</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">resp</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This wrapping makes your life easier by providing a consistent set of exceptions (<code class="language-plaintext highlighter-rouge">requests.exceptions</code>) to handle, regardless of the underlying <code class="language-plaintext highlighter-rouge">urllib3</code> details.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the <code class="language-plaintext highlighter-rouge">requests</code> <strong>Exception Hierarchy</strong> – a family tree of error types that <code class="language-plaintext highlighter-rouge">requests</code> raises when things go wrong.</p>
+
+<ul>
+  <li>You saw that all <code class="language-plaintext highlighter-rouge">requests</code> exceptions inherit from the base <code class="language-plaintext highlighter-rouge">requests.exceptions.RequestException</code>.</li>
+  <li>You learned about key specific exceptions like <code class="language-plaintext highlighter-rouge">ConnectionError</code>, <code class="language-plaintext highlighter-rouge">Timeout</code> (and its children <code class="language-plaintext highlighter-rouge">ConnectTimeout</code>, <code class="language-plaintext highlighter-rouge">ReadTimeout</code>), and <code class="language-plaintext highlighter-rouge">HTTPError</code> (raised by <code class="language-plaintext highlighter-rouge">response.raise_for_status()</code>).</li>
+  <li>You practiced using <code class="language-plaintext highlighter-rouge">try...except</code> blocks to catch both general (<code class="language-plaintext highlighter-rouge">RequestException</code>) and specific exceptions, allowing for tailored error handling.</li>
+  <li>You understood that <code class="language-plaintext highlighter-rouge">requests</code> wraps lower-level errors (from <code class="language-plaintext highlighter-rouge">urllib3</code>) into its own exception types, simplifying error handling for you.</li>
+</ul>
+
+<p>Understanding this hierarchy is crucial for writing robust Python code that can gracefully handle the inevitable problems that occur when dealing with networks and web services.</p>
+
+<p>So far, we’ve mostly used the default way <code class="language-plaintext highlighter-rouge">requests</code> handles connections. But what if we need more control over how connections are made, maybe to configure retries differently, or use different SSL settings? That’s where Transport Adapters come in.</p>
+
+<p><strong>Next:</strong> <a href="07_transport_adapters.md">Chapter 7: Transport Adapters</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

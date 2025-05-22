@@ -1,0 +1,220 @@
+<h1 id="chapter-1-crew---your-ai-team-manager">Chapter 1: Crew - Your AI Team Manager</h1>
+
+<p>Welcome to the world of CrewAI! We’re excited to help you build teams of AI agents that can work together to accomplish complex tasks.</p>
+
+<p>Imagine you have a big project, like planning a surprise birthday trip for a friend. Doing it all yourself – researching destinations, checking flight prices, finding hotels, planning activities – can be overwhelming. Wouldn’t it be great if you had a team to help? Maybe one person researches cool spots, another finds the best travel deals, and you coordinate everything.</p>
+
+<p>That’s exactly what a <code class="language-plaintext highlighter-rouge">Crew</code> does in CrewAI! It acts like the <strong>project manager</strong> or even the <strong>entire team</strong> itself, bringing together specialized AI assistants (<a href="02_agent.md">Agents</a>) and telling them what <a href="03_task.md">Tasks</a> to do and in what order.</p>
+
+<p><strong>What Problem Does <code class="language-plaintext highlighter-rouge">Crew</code> Solve?</strong></p>
+
+<p>Single AI models are powerful, but complex goals often require multiple steps and different kinds of expertise. A <code class="language-plaintext highlighter-rouge">Crew</code> allows you to break down a big goal into smaller, manageable <a href="03_task.md">Tasks</a> and assign each task to the best AI <a href="02_agent.md">Agent</a> for the job. It then manages how these agents work together to achieve the overall objective.</p>
+
+<h2 id="what-is-a-crew">What is a Crew?</h2>
+
+<p>Think of a <code class="language-plaintext highlighter-rouge">Crew</code> as the central coordinator. It holds everything together:</p>
+
+<ol>
+  <li><strong>The Team (<a href="02_agent.md">Agents</a>):</strong> It knows which AI agents are part of the team. Each agent might have a specific role (like ‘Travel Researcher’ or ‘Booking Specialist’).</li>
+  <li><strong>The Plan (<a href="03_task.md">Tasks</a>):</strong> It holds the list of tasks that need to be completed to achieve the final goal (e.g., ‘Research European cities’, ‘Find affordable flights’, ‘Book hotel’).</li>
+  <li><strong>The Workflow (<a href="05_process.md">Process</a>):</strong> It defines <em>how</em> the team works. Should they complete tasks one after another (<code class="language-plaintext highlighter-rouge">sequential</code>)? Or should there be a manager agent delegating work (<code class="language-plaintext highlighter-rouge">hierarchical</code>)?</li>
+  <li><strong>Collaboration:</strong> It orchestrates how agents share information and pass results from one task to the next.</li>
+</ol>
+
+<h2 id="lets-build-a-simple-crew">Let’s Build a Simple Crew!</h2>
+
+<p>Let’s try building a very basic <code class="language-plaintext highlighter-rouge">Crew</code> for our trip planning example. For now, we’ll just set up the structure. We’ll learn more about creating sophisticated <a href="02_agent.md">Agents</a> and <a href="03_task.md">Tasks</a> in the next chapters.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Import necessary classes (we'll learn about these soon!)
+</span><span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Task</span><span class="p">,</span> <span class="n">Crew</span><span class="p">,</span> <span class="n">Process</span>
+
+<span class="c1"># Define our agents (don't worry about the details for now)
+# Agent 1: The Researcher
+</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+  <span class="n">role</span><span class="o">=</span><span class="s">'Travel Researcher'</span><span class="p">,</span>
+  <span class="n">goal</span><span class="o">=</span><span class="s">'Find interesting cities in Europe for a birthday trip'</span><span class="p">,</span>
+  <span class="n">backstory</span><span class="o">=</span><span class="s">'An expert travel researcher.'</span><span class="p">,</span>
+  <span class="c1"># verbose=True, # Optional: Shows agent's thinking process
+</span>  <span class="n">allow_delegation</span><span class="o">=</span><span class="bp">False</span> <span class="c1"># This agent doesn't delegate work
+</span>  <span class="c1"># llm=your_llm # We'll cover LLMs later!
+</span><span class="p">)</span>
+
+<span class="c1"># Agent 2: The Planner
+</span><span class="n">planner</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+  <span class="n">role</span><span class="o">=</span><span class="s">'Activity Planner'</span><span class="p">,</span>
+  <span class="n">goal</span><span class="o">=</span><span class="s">'Create a fun 3-day itinerary for the chosen city'</span><span class="p">,</span>
+  <span class="n">backstory</span><span class="o">=</span><span class="s">'An experienced activity planner.'</span><span class="p">,</span>
+  <span class="c1"># verbose=True,
+</span>  <span class="n">allow_delegation</span><span class="o">=</span><span class="bp">False</span>
+  <span class="c1"># llm=your_llm
+</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We import <code class="language-plaintext highlighter-rouge">Agent</code>, <code class="language-plaintext highlighter-rouge">Task</code>, <code class="language-plaintext highlighter-rouge">Crew</code>, and <code class="language-plaintext highlighter-rouge">Process</code> from the <code class="language-plaintext highlighter-rouge">crewai</code> library.</li>
+  <li>We create two simple <a href="02_agent.md">Agents</a>. We give them a <code class="language-plaintext highlighter-rouge">role</code> and a <code class="language-plaintext highlighter-rouge">goal</code>. Think of these as job titles and descriptions for our AI assistants. (We’ll dive deep into Agents in <a href="02_agent.md">Chapter 2</a>).</li>
+</ul>
+
+<p>Now, let’s define the <a href="03_task.md">Tasks</a> for these agents:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Define the tasks
+</span><span class="n">task1</span> <span class="o">=</span> <span class="n">Task</span><span class="p">(</span>
+  <span class="n">description</span><span class="o">=</span><span class="s">'Identify the top 3 European cities suitable for a sunny birthday trip in May.'</span><span class="p">,</span>
+  <span class="n">expected_output</span><span class="o">=</span><span class="s">'A list of 3 cities with brief reasons.'</span><span class="p">,</span>
+  <span class="n">agent</span><span class="o">=</span><span class="n">researcher</span> <span class="c1"># Assign task1 to the researcher agent
+</span><span class="p">)</span>
+
+<span class="n">task2</span> <span class="o">=</span> <span class="n">Task</span><span class="p">(</span>
+  <span class="n">description</span><span class="o">=</span><span class="s">'Based on the chosen city from task 1, create a 3-day activity plan.'</span><span class="p">,</span>
+  <span class="n">expected_output</span><span class="o">=</span><span class="s">'A detailed itinerary for 3 days.'</span><span class="p">,</span>
+  <span class="n">agent</span><span class="o">=</span><span class="n">planner</span> <span class="c1"># Assign task2 to the planner agent
+</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We create two <a href="03_task.md">Tasks</a>. Each task has a <code class="language-plaintext highlighter-rouge">description</code> (what to do) and an <code class="language-plaintext highlighter-rouge">expected_output</code> (what the result should look like).</li>
+  <li>Crucially, we assign each task to an <code class="language-plaintext highlighter-rouge">agent</code>. <code class="language-plaintext highlighter-rouge">task1</code> goes to the <code class="language-plaintext highlighter-rouge">researcher</code>, and <code class="language-plaintext highlighter-rouge">task2</code> goes to the <code class="language-plaintext highlighter-rouge">planner</code>. (More on Tasks in <a href="03_task.md">Chapter 3</a>).</li>
+</ul>
+
+<p>Finally, let’s assemble the <code class="language-plaintext highlighter-rouge">Crew</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Create the Crew
+</span><span class="n">trip_crew</span> <span class="o">=</span> <span class="n">Crew</span><span class="p">(</span>
+  <span class="n">agents</span><span class="o">=</span><span class="p">[</span><span class="n">researcher</span><span class="p">,</span> <span class="n">planner</span><span class="p">],</span>
+  <span class="n">tasks</span><span class="o">=</span><span class="p">[</span><span class="n">task1</span><span class="p">,</span> <span class="n">task2</span><span class="p">],</span>
+  <span class="n">process</span><span class="o">=</span><span class="n">Process</span><span class="p">.</span><span class="n">sequential</span> <span class="c1"># Tasks will run one after another
+</span>  <span class="c1"># verbose=2 # Optional: Sets verbosity level for the crew execution
+</span><span class="p">)</span>
+
+<span class="c1"># Start the Crew's work!
+</span><span class="n">result</span> <span class="o">=</span> <span class="n">trip_crew</span><span class="p">.</span><span class="n">kickoff</span><span class="p">()</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n\n</span><span class="s">########################"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"## Here is the result"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s">"########################</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>We create an instance of the <code class="language-plaintext highlighter-rouge">Crew</code> class.</li>
+  <li>We pass the list of <code class="language-plaintext highlighter-rouge">agents</code> we defined earlier.</li>
+  <li>We pass the list of <code class="language-plaintext highlighter-rouge">tasks</code>. The order in this list matters for the sequential process.</li>
+  <li>We set the <code class="language-plaintext highlighter-rouge">process</code> to <code class="language-plaintext highlighter-rouge">Process.sequential</code>. This means <code class="language-plaintext highlighter-rouge">task1</code> will be completed first by the <code class="language-plaintext highlighter-rouge">researcher</code>, and its output will <em>automatically</em> be available as context for <code class="language-plaintext highlighter-rouge">task2</code> when the <code class="language-plaintext highlighter-rouge">planner</code> starts working.</li>
+  <li>We call the <code class="language-plaintext highlighter-rouge">kickoff()</code> method. This is like saying “Okay team, start working!”</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Crew</code> manages the execution, ensuring the <code class="language-plaintext highlighter-rouge">researcher</code> does <code class="language-plaintext highlighter-rouge">task1</code>, then the <code class="language-plaintext highlighter-rouge">planner</code> does <code class="language-plaintext highlighter-rouge">task2</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">result</code> will contain the final output from the <em>last</em> task (<code class="language-plaintext highlighter-rouge">task2</code> in this case).</li>
+</ol>
+
+<p><strong>Expected Outcome (Conceptual):</strong></p>
+
+<p>When you run this (assuming you have underlying AI models configured, which we’ll cover in the <a href="06_llm.md">LLM chapter</a>), the <code class="language-plaintext highlighter-rouge">Crew</code> will:</p>
+
+<ol>
+  <li>Ask the <code class="language-plaintext highlighter-rouge">researcher</code> agent to perform <code class="language-plaintext highlighter-rouge">task1</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">researcher</code> will (conceptually) think and produce a list like: “1. Barcelona (Sunny, vibrant) 2. Lisbon (Coastal, historic) 3. Rome (Iconic, warm)”.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Crew</code> takes this output and gives it to the <code class="language-plaintext highlighter-rouge">planner</code> agent along with <code class="language-plaintext highlighter-rouge">task2</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">planner</code> agent uses the city list (and likely picks one, or you’d refine the task) and creates a 3-day itinerary.</li>
+  <li>The final <code class="language-plaintext highlighter-rouge">result</code> printed will be the 3-day itinerary generated by the <code class="language-plaintext highlighter-rouge">planner</code>.</li>
+</ol>
+
+<h2 id="how-does-crewkickoff-work-inside">How Does <code class="language-plaintext highlighter-rouge">Crew.kickoff()</code> Work Inside?</h2>
+
+<p>You don’t <em>need</em> to know the deep internals to use CrewAI, but understanding the basics helps! When you call <code class="language-plaintext highlighter-rouge">kickoff()</code>:</p>
+
+<ol>
+  <li><strong>Input Check:</strong> It checks if you provided any starting inputs (we didn’t in this simple example, but you could provide a starting topic or variable).</li>
+  <li><strong>Agent &amp; Task Setup:</strong> It makes sure all agents and tasks are ready to go. It ensures agents have the necessary configurations (<a href="06_llm.md">LLMs</a>, <a href="04_tool.md">Tools</a> - more on these later!).</li>
+  <li><strong>Process Execution:</strong> It looks at the chosen <code class="language-plaintext highlighter-rouge">process</code> (e.g., <code class="language-plaintext highlighter-rouge">sequential</code>).
+    <ul>
+      <li><strong>Sequential:</strong> It runs tasks one by one. The output of task <code class="language-plaintext highlighter-rouge">N</code> is added to the context for task <code class="language-plaintext highlighter-rouge">N+1</code>.</li>
+      <li><strong>Hierarchical (Advanced):</strong> If you chose this process, the Crew would use a dedicated ‘manager’ agent to coordinate the other agents and decide who does what next. We’ll stick to sequential for now.</li>
+    </ul>
+  </li>
+  <li><strong>Task Execution Loop:</strong>
+    <ul>
+      <li>It picks the next task based on the process.</li>
+      <li>It finds the assigned agent for that task.</li>
+      <li>It gives the agent the task description and any relevant context (like outputs from previous tasks).</li>
+      <li>The agent performs the task using its underlying AI model (<a href="06_llm.md">LLM</a>).</li>
+      <li>The agent returns the result (output) of the task.</li>
+      <li>The Crew stores this output.</li>
+      <li>Repeat until all tasks are done.</li>
+    </ul>
+  </li>
+  <li><strong>Final Output:</strong> The <code class="language-plaintext highlighter-rouge">Crew</code> packages the output from the final task (and potentially outputs from all tasks) and returns it.</li>
+</ol>
+
+<p>Let’s visualize the <code class="language-plaintext highlighter-rouge">sequential</code> process:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant MyCrew as Crew
+    participant ResearcherAgent as Researcher
+    participant PlannerAgent as Planner
+
+    User-&gt;&gt;MyCrew: kickoff()
+    MyCrew-&gt;&gt;ResearcherAgent: Execute Task 1 ("Find cities...")
+    Note right of ResearcherAgent: Researcher thinks... generates city list.
+    ResearcherAgent--&gt;&gt;MyCrew: Task 1 Output ("Barcelona, Lisbon, Rome...")
+    MyCrew-&gt;&gt;PlannerAgent: Execute Task 2 ("Create itinerary...") \nwith Task 1 Output as context
+    Note right of PlannerAgent: Planner thinks... uses city list, creates itinerary.
+    PlannerAgent--&gt;&gt;MyCrew: Task 2 Output ("Day 1: ..., Day 2: ...")
+    MyCrew--&gt;&gt;User: Final Result (Task 2 Output)
+</code></pre>
+
+<p><strong>Code Glimpse (<code class="language-plaintext highlighter-rouge">crew.py</code> simplified):</strong></p>
+
+<p>The <code class="language-plaintext highlighter-rouge">Crew</code> class itself is defined in <code class="language-plaintext highlighter-rouge">crewai/crew.py</code>. It takes parameters like <code class="language-plaintext highlighter-rouge">agents</code>, <code class="language-plaintext highlighter-rouge">tasks</code>, and <code class="language-plaintext highlighter-rouge">process</code> when you create it.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from crewai/crew.py
+</span><span class="k">class</span> <span class="nc">Crew</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">tasks</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Task</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">agents</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">BaseAgent</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">Process</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">Process</span><span class="p">.</span><span class="n">sequential</span><span class="p">)</span>
+    <span class="c1"># ... other configurations like memory, cache, etc.
+</span>
+    <span class="k">def</span> <span class="nf">kickoff</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CrewOutput</span><span class="p">:</span>
+        <span class="c1"># ... setup steps ...
+</span>
+        <span class="c1"># Decides which execution path based on the process
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">Process</span><span class="p">.</span><span class="n">sequential</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_run_sequential_process</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="p">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">Process</span><span class="p">.</span><span class="n">hierarchical</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_run_hierarchical_process</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Handle other processes or errors
+</span>            <span class="k">raise</span> <span class="nb">NotImplementedError</span><span class="p">(...)</span>
+
+        <span class="c1"># ... cleanup and formatting steps ...
+</span>        <span class="k">return</span> <span class="n">result</span> <span class="c1"># Returns a CrewOutput object
+</span>
+    <span class="k">def</span> <span class="nf">_run_sequential_process</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CrewOutput</span><span class="p">:</span>
+        <span class="c1"># Simplified loop logic
+</span>        <span class="n">task_outputs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">tasks</span><span class="p">:</span>
+            <span class="n">agent</span> <span class="o">=</span> <span class="n">task</span><span class="p">.</span><span class="n">agent</span> <span class="c1"># Find the agent for this task
+</span>            <span class="n">context</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_get_context</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">task_outputs</span><span class="p">)</span> <span class="c1"># Get outputs from previous tasks
+</span>            <span class="c1"># Execute the task (sync or async)
+</span>            <span class="n">output</span> <span class="o">=</span> <span class="n">task</span><span class="p">.</span><span class="n">execute_sync</span><span class="p">(</span><span class="n">agent</span><span class="o">=</span><span class="n">agent</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">)</span>
+            <span class="n">task_outputs</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+            <span class="c1"># ... logging/callbacks ...
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_create_crew_output</span><span class="p">(</span><span class="n">task_outputs</span><span class="p">)</span> <span class="c1"># Package final result
+</span></code></pre></div></div>
+
+<p>This simplified view shows how the <code class="language-plaintext highlighter-rouge">Crew</code> holds the <code class="language-plaintext highlighter-rouge">agents</code> and <code class="language-plaintext highlighter-rouge">tasks</code>, and the <code class="language-plaintext highlighter-rouge">kickoff</code> method directs traffic based on the chosen <code class="language-plaintext highlighter-rouge">process</code>, eventually looping through tasks sequentially if <code class="language-plaintext highlighter-rouge">Process.sequential</code> is selected.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the most fundamental concept in CrewAI: the <code class="language-plaintext highlighter-rouge">Crew</code>! It’s the manager that brings your AI agents together, gives them tasks, and defines how they collaborate to achieve a larger goal. We saw how to define agents and tasks (at a high level) and assemble them into a <code class="language-plaintext highlighter-rouge">Crew</code> using a <code class="language-plaintext highlighter-rouge">sequential</code> process.</p>
+
+<p>But a Crew is nothing without its members! In the next chapter, we’ll dive deep into the first core component: the <a href="02_agent.md">Agent</a>. What makes an agent tick? How do you define their roles, goals, and capabilities? Let’s find out!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

@@ -1,0 +1,288 @@
+<h1 id="chapter-1-agent---the-workers-of-autogen">Chapter 1: Agent - The Workers of AutoGen</h1>
+
+<p>Welcome to the AutoGen Core tutorial! We’re excited to guide you through building powerful applications with autonomous agents.</p>
+
+<h2 id="motivation-why-do-we-need-agents">Motivation: Why Do We Need Agents?</h2>
+
+<p>Imagine you want to build an automated system to write blog posts. You might need one part of the system to research a topic and another part to write the actual post based on the research. How do you represent these different “workers” and make them talk to each other?</p>
+
+<p>This is where the concept of an <strong>Agent</strong> comes in. In AutoGen Core, an <code class="language-plaintext highlighter-rouge">Agent</code> is the fundamental building block representing an actor or worker in your system. Think of it like an employee in an office.</p>
+
+<h2 id="key-concepts-understanding-agents">Key Concepts: Understanding Agents</h2>
+
+<p>Let’s break down what makes an Agent:</p>
+
+<ol>
+  <li><strong>It’s a Worker:</strong> An Agent is designed to <em>do</em> things. This could be running calculations, calling a Large Language Model (LLM) like ChatGPT, using a tool (like a search engine), or managing a piece of data.</li>
+  <li><strong>It Has an Identity (<code class="language-plaintext highlighter-rouge">AgentId</code>):</strong> Just like every employee has a name and a job title, every Agent needs a unique identity. This identity, called <code class="language-plaintext highlighter-rouge">AgentId</code>, has two parts:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">type</code>: What kind of role does the agent have? (e.g., “researcher”, “writer”, “coder”). This helps organize agents.</li>
+      <li><code class="language-plaintext highlighter-rouge">key</code>: A unique name for this specific agent instance (e.g., “researcher-01”, “amy-the-writer”).</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: _agent_id.py
+</span><span class="k">class</span> <span class="nc">AgentId</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="c1"># ... (validation checks omitted for brevity)
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_type</span> <span class="o">=</span> <span class="nb">type</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_key</span> <span class="o">=</span> <span class="n">key</span>
+
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_type</span>
+
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">key</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_key</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="c1"># Creates an id like "researcher/amy-the-writer"
+</span>        <span class="k">return</span> <span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">_type</span><span class="si">}</span><span class="s">/</span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">_key</span><span class="si">}</span><span class="s">"</span>
+</code></pre></div>    </div>
+    <p>This <code class="language-plaintext highlighter-rouge">AgentId</code> acts like the agent’s address, allowing other agents (or the system) to send messages specifically to it.</p>
+  </li>
+  <li><strong>It Has Metadata (<code class="language-plaintext highlighter-rouge">AgentMetadata</code>):</strong> Besides its core identity, an agent often has descriptive information.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">type</code>: Same as in <code class="language-plaintext highlighter-rouge">AgentId</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">key</code>: Same as in <code class="language-plaintext highlighter-rouge">AgentId</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">description</code>: A human-readable explanation of what the agent does (e.g., “Researches topics using web search”).</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: _agent_metadata.py
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TypedDict</span>
+
+<span class="k">class</span> <span class="nc">AgentMetadata</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">key</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span>
+</code></pre></div>    </div>
+    <p>This metadata helps understand the agent’s purpose within the system.</p>
+  </li>
+  <li>
+    <p><strong>It Communicates via Messages:</strong> Agents don’t work in isolation. They collaborate by sending and receiving messages. The primary way an agent receives work is through its <code class="language-plaintext highlighter-rouge">on_message</code> method. Think of this like the agent’s inbox.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: _agent.py (Simplified Agent Protocol)
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Protocol</span>
+<span class="c1"># ... other imports
+</span>
+<span class="k">class</span> <span class="nc">Agent</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">id</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AgentId</span><span class="p">:</span> <span class="p">...</span> <span class="c1"># The agent's unique ID
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">on_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">MessageContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="s">"""Handles an incoming message."""</span>
+        <span class="c1"># Agent's logic to process the message goes here
+</span>        <span class="p">...</span>
+</code></pre></div>    </div>
+    <p>When an agent receives a message, <code class="language-plaintext highlighter-rouge">on_message</code> is called. The <code class="language-plaintext highlighter-rouge">message</code> contains the data or task, and <code class="language-plaintext highlighter-rouge">ctx</code> (MessageContext) provides extra information about the message (like who sent it). We’ll cover <code class="language-plaintext highlighter-rouge">MessageContext</code> more later.</p>
+  </li>
+  <li>
+    <p><strong>It Can Remember Things (State):</strong> Sometimes, an agent needs to remember information between tasks, like keeping notes on research progress. Agents can optionally implement <code class="language-plaintext highlighter-rouge">save_state</code> and <code class="language-plaintext highlighter-rouge">load_state</code> methods to store and retrieve their internal memory.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: _agent.py (Simplified Agent Protocol)
+</span><span class="k">class</span> <span class="nc">Agent</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="c1"># ... other methods
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">save_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="s">"""Save the agent's internal memory."""</span>
+        <span class="c1"># Return a dictionary representing the state
+</span>        <span class="p">...</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">load_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="s">"""Load the agent's internal memory."""</span>
+        <span class="c1"># Restore state from the dictionary
+</span>        <span class="p">...</span>
+</code></pre></div>    </div>
+    <p>We’ll explore state and memory in more detail in <a href="07_memory.md">Chapter 7: Memory</a>.</p>
+  </li>
+  <li><strong>Different Agent Types:</strong> AutoGen Core provides base classes to make creating agents easier:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">BaseAgent</code>: The fundamental class most agents inherit from. It provides common setup.</li>
+      <li><code class="language-plaintext highlighter-rouge">ClosureAgent</code>: A very quick way to create simple agents using just a function (like hiring a temp worker for a specific task defined on the spot).</li>
+      <li><code class="language-plaintext highlighter-rouge">RoutedAgent</code>: An agent that can automatically direct different types of messages to different internal handler methods (like a smart receptionist).</li>
+    </ul>
+  </li>
+</ol>
+
+<h2 id="use-case-example-researcher-and-writer">Use Case Example: Researcher and Writer</h2>
+
+<p>Let’s revisit our blog post example. We want a <code class="language-plaintext highlighter-rouge">Researcher</code> agent and a <code class="language-plaintext highlighter-rouge">Writer</code> agent.</p>
+
+<p><strong>Goal:</strong></p>
+<ol>
+  <li>Tell the <code class="language-plaintext highlighter-rouge">Researcher</code> a topic (e.g., “AutoGen Agents”).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Researcher</code> finds some facts (we’ll keep it simple and just make them up for now).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Researcher</code> sends these facts to the <code class="language-plaintext highlighter-rouge">Writer</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Writer</code> receives the facts and drafts a short post.</li>
+</ol>
+
+<p><strong>Simplified Implementation Idea (using <code class="language-plaintext highlighter-rouge">ClosureAgent</code> for brevity):</strong></p>
+
+<p>First, let’s define the messages they might exchange:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+
+<span class="o">@</span><span class="n">dataclass</span>
+<span class="k">class</span> <span class="nc">ResearchTopic</span><span class="p">:</span>
+    <span class="n">topic</span><span class="p">:</span> <span class="nb">str</span>
+
+<span class="o">@</span><span class="n">dataclass</span>
+<span class="k">class</span> <span class="nc">ResearchFacts</span><span class="p">:</span>
+    <span class="n">topic</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">facts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+
+<span class="o">@</span><span class="n">dataclass</span>
+<span class="k">class</span> <span class="nc">DraftPost</span><span class="p">:</span>
+    <span class="n">topic</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">draft</span><span class="p">:</span> <span class="nb">str</span>
+</code></pre></div></div>
+<p>These are simple Python classes to hold the data being passed around.</p>
+
+<p>Now, let’s imagine defining the <code class="language-plaintext highlighter-rouge">Researcher</code> using a <code class="language-plaintext highlighter-rouge">ClosureAgent</code>. This agent will listen for <code class="language-plaintext highlighter-rouge">ResearchTopic</code> messages.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified concept - requires AgentRuntime (Chapter 3) to actually run
+</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">researcher_logic</span><span class="p">(</span><span class="n">agent_context</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">ResearchTopic</span><span class="p">,</span> <span class="n">msg_context</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Researcher received topic: </span><span class="si">{</span><span class="n">message</span><span class="p">.</span><span class="n">topic</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># In a real scenario, this would involve searching, calling an LLM, etc.
+</span>    <span class="c1"># For now, we just make up facts.
+</span>    <span class="n">facts</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s">"Fact 1 about </span><span class="si">{</span><span class="n">message</span><span class="p">.</span><span class="n">topic</span><span class="si">}</span><span class="s">"</span><span class="p">,</span> <span class="sa">f</span><span class="s">"Fact 2 about </span><span class="si">{</span><span class="n">message</span><span class="p">.</span><span class="n">topic</span><span class="si">}</span><span class="s">"</span><span class="p">]</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Researcher found facts: </span><span class="si">{</span><span class="n">facts</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+    <span class="c1"># Find the Writer agent's ID (we assume we know it)
+</span>    <span class="n">writer_id</span> <span class="o">=</span> <span class="n">AgentId</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s">"writer"</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="s">"blog_writer_1"</span><span class="p">)</span>
+
+    <span class="c1"># Send the facts to the Writer
+</span>    <span class="k">await</span> <span class="n">agent_context</span><span class="p">.</span><span class="n">send_message</span><span class="p">(</span>
+        <span class="n">message</span><span class="o">=</span><span class="n">ResearchFacts</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="n">message</span><span class="p">.</span><span class="n">topic</span><span class="p">,</span> <span class="n">facts</span><span class="o">=</span><span class="n">facts</span><span class="p">),</span>
+        <span class="n">recipient</span><span class="o">=</span><span class="n">writer_id</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Researcher sent facts to Writer."</span><span class="p">)</span>
+    <span class="c1"># This agent doesn't return a direct reply
+</span>    <span class="k">return</span> <span class="bp">None</span>
+</code></pre></div></div>
+<p>This <code class="language-plaintext highlighter-rouge">researcher_logic</code> function defines <em>what</em> the researcher does when it gets a <code class="language-plaintext highlighter-rouge">ResearchTopic</code> message. It processes the topic, creates <code class="language-plaintext highlighter-rouge">ResearchFacts</code>, and uses <code class="language-plaintext highlighter-rouge">agent_context.send_message</code> to send them to the <code class="language-plaintext highlighter-rouge">writer</code> agent.</p>
+
+<p>Similarly, the <code class="language-plaintext highlighter-rouge">Writer</code> agent would have its own logic:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified concept - requires AgentRuntime (Chapter 3) to actually run
+</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">writer_logic</span><span class="p">(</span><span class="n">agent_context</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">ResearchFacts</span><span class="p">,</span> <span class="n">msg_context</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Writer received facts for topic: </span><span class="si">{</span><span class="n">message</span><span class="p">.</span><span class="n">topic</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># In a real scenario, this would involve LLM prompting
+</span>    <span class="n">draft</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Blog Post about </span><span class="si">{</span><span class="n">message</span><span class="p">.</span><span class="n">topic</span><span class="si">}</span><span class="s">:</span><span class="se">\n</span><span class="s">"</span>
+    <span class="k">for</span> <span class="n">fact</span> <span class="ow">in</span> <span class="n">message</span><span class="p">.</span><span class="n">facts</span><span class="p">:</span>
+        <span class="n">draft</span> <span class="o">+=</span> <span class="sa">f</span><span class="s">"- </span><span class="si">{</span><span class="n">fact</span><span class="si">}</span><span class="se">\n</span><span class="s">"</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Writer drafted post:</span><span class="se">\n</span><span class="si">{</span><span class="n">draft</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+    <span class="c1"># Perhaps save the draft or send it somewhere else
+</span>    <span class="c1"># For now, we just print it. We don't send another message.
+</span>    <span class="k">return</span> <span class="bp">None</span> <span class="c1"># Or maybe return a confirmation/result
+</span></code></pre></div></div>
+<p>This <code class="language-plaintext highlighter-rouge">writer_logic</code> function defines how the writer reacts to receiving <code class="language-plaintext highlighter-rouge">ResearchFacts</code>.</p>
+
+<p><strong>Important:</strong> To actually <em>run</em> these agents and make them communicate, we need the <code class="language-plaintext highlighter-rouge">AgentRuntime</code> (covered in <a href="03_agentruntime.md">Chapter 3: AgentRuntime</a>) and the <code class="language-plaintext highlighter-rouge">Messaging System</code> (covered in <a href="02_messaging_system__topic___subscription_.md">Chapter 2: Messaging System</a>). For now, focus on the <em>idea</em> that Agents are distinct workers defined by their logic (<code class="language-plaintext highlighter-rouge">on_message</code>) and identified by their <code class="language-plaintext highlighter-rouge">AgentId</code>.</p>
+
+<h2 id="under-the-hood-how-an-agent-gets-a-message">Under the Hood: How an Agent Gets a Message</h2>
+
+<p>While the full message delivery involves the <code class="language-plaintext highlighter-rouge">Messaging System</code> and <code class="language-plaintext highlighter-rouge">AgentRuntime</code>, let’s look at the agent’s role when it receives a message.</p>
+
+<p><strong>Conceptual Flow:</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Sender as Sender Agent
+    participant Runtime as AgentRuntime
+    participant Recipient as Recipient Agent
+
+    Sender-&gt;&gt;+Runtime: send_message(message, recipient_id)
+    Runtime-&gt;&gt;+Recipient: Locate agent by recipient_id
+    Runtime-&gt;&gt;+Recipient: on_message(message, context)
+    Recipient-&gt;&gt;Recipient: Process message using internal logic
+    alt Response Needed
+        Recipient-&gt;&gt;-Runtime: Return response value
+        Runtime-&gt;&gt;-Sender: Deliver response value
+    else No Response
+        Recipient-&gt;&gt;-Runtime: Return None (or no return)
+    end
+</code></pre>
+
+<ol>
+  <li>Some other agent (Sender) or the system decides to send a message to our agent (Recipient).</li>
+  <li>It tells the <code class="language-plaintext highlighter-rouge">AgentRuntime</code> (the manager): “Deliver this <code class="language-plaintext highlighter-rouge">message</code> to the agent with <code class="language-plaintext highlighter-rouge">recipient_id</code>”.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">AgentRuntime</code> finds the correct <code class="language-plaintext highlighter-rouge">Recipient</code> agent instance.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">AgentRuntime</code> calls the <code class="language-plaintext highlighter-rouge">Recipient.on_message(message, context)</code> method.</li>
+  <li>The agent’s internal logic inside <code class="language-plaintext highlighter-rouge">on_message</code> (or methods called by it, like in <code class="language-plaintext highlighter-rouge">RoutedAgent</code>) runs to process the message.</li>
+  <li>If the message requires a direct response (like an RPC call), the agent returns a value from <code class="language-plaintext highlighter-rouge">on_message</code>. If not (like a general notification or event), it might return <code class="language-plaintext highlighter-rouge">None</code>.</li>
+</ol>
+
+<p><strong>Code Glimpse:</strong></p>
+
+<p>The core definition is the <code class="language-plaintext highlighter-rouge">Agent</code> Protocol (<code class="language-plaintext highlighter-rouge">_agent.py</code>). It’s like an interface or a contract – any class wanting to be an Agent <em>must</em> provide these methods.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: _agent.py - The Agent blueprint (Protocol)
+</span>
+<span class="o">@</span><span class="n">runtime_checkable</span>
+<span class="k">class</span> <span class="nc">Agent</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AgentMetadata</span><span class="p">:</span> <span class="p">...</span>
+
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">id</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AgentId</span><span class="p">:</span> <span class="p">...</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">on_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">MessageContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span> <span class="p">...</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">save_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span> <span class="p">...</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">load_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span> <span class="p">...</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span> <span class="p">...</span>
+</code></pre></div></div>
+
+<p>Most agents you create will inherit from <code class="language-plaintext highlighter-rouge">BaseAgent</code> (<code class="language-plaintext highlighter-rouge">_base_agent.py</code>). It provides some standard setup:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: _base_agent.py (Simplified)
+</span><span class="k">class</span> <span class="nc">BaseAgent</span><span class="p">(</span><span class="n">ABC</span><span class="p">,</span> <span class="n">Agent</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">description</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="c1"># Gets runtime &amp; id from a special context when created by the runtime
+</span>        <span class="c1"># Raises error if you try to create it directly!
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_runtime</span><span class="p">:</span> <span class="n">AgentRuntime</span> <span class="o">=</span> <span class="n">AgentInstantiationContext</span><span class="p">.</span><span class="n">current_runtime</span><span class="p">()</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_id</span><span class="p">:</span> <span class="n">AgentId</span> <span class="o">=</span> <span class="n">AgentInstantiationContext</span><span class="p">.</span><span class="n">current_agent_id</span><span class="p">()</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_description</span> <span class="o">=</span> <span class="n">description</span>
+        <span class="c1"># ...
+</span>
+    <span class="c1"># This is the final version called by the runtime
+</span>    <span class="o">@</span><span class="n">final</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">on_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">MessageContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="c1"># It calls the implementation method you need to write
+</span>        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">on_message_impl</span><span class="p">(</span><span class="n">message</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+
+    <span class="c1"># You MUST implement this in your subclass
+</span>    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">on_message_impl</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">MessageContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span> <span class="p">...</span>
+
+    <span class="c1"># Helper to send messages easily
+</span>    <span class="k">async</span> <span class="k">def</span> <span class="nf">send_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">recipient</span><span class="p">:</span> <span class="n">AgentId</span><span class="p">,</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="c1"># It just asks the runtime to do the actual sending
+</span>        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_runtime</span><span class="p">.</span><span class="n">send_message</span><span class="p">(</span>
+            <span class="n">message</span><span class="p">,</span> <span class="n">sender</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="nb">id</span><span class="p">,</span> <span class="n">recipient</span><span class="o">=</span><span class="n">recipient</span><span class="p">,</span> <span class="p">...</span>
+        <span class="p">)</span>
+    <span class="c1"># ... other methods like publish_message, save_state, load_state
+</span></code></pre></div></div>
+<p>Notice how <code class="language-plaintext highlighter-rouge">BaseAgent</code> handles getting its <code class="language-plaintext highlighter-rouge">id</code> and <code class="language-plaintext highlighter-rouge">runtime</code> during creation and provides a convenient <code class="language-plaintext highlighter-rouge">send_message</code> method that uses the runtime. When inheriting from <code class="language-plaintext highlighter-rouge">BaseAgent</code>, you primarily focus on implementing the <code class="language-plaintext highlighter-rouge">on_message_impl</code> method to define your agent’s unique behavior.</p>
+
+<h2 id="next-steps">Next Steps</h2>
+
+<p>You now understand the core concept of an <code class="language-plaintext highlighter-rouge">Agent</code> in AutoGen Core! It’s the fundamental worker unit with an identity, the ability to process messages, and optionally maintain state.</p>
+
+<p>In the next chapters, we’ll explore:</p>
+
+<ul>
+  <li><a href="02_messaging_system__topic___subscription_.md">Chapter 2: Messaging System</a>: How messages actually travel between agents.</li>
+  <li><a href="03_agentruntime.md">Chapter 3: AgentRuntime</a>: The manager responsible for creating, running, and connecting agents.</li>
+</ul>
+
+<p>Let’s continue building your understanding!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

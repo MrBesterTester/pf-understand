@@ -1,0 +1,260 @@
+<h1 id="chapter-3-a2a-protocol--core-types">Chapter 3: A2A Protocol &amp; Core Types</h1>
+
+<p>In the previous chapters, we learned how to find an agent using its <a href="01_agent_card.md">Agent Card</a> and how to give it work using a <a href="02_task.md">Task</a>. Think of it like finding a specific workshop (Agent Card) and submitting a work order (Task).</p>
+
+<p>But how do the client (who submits the order) and the agent (the workshop) actually <em>talk</em> to each other? What language do they use? If the client writes the order in English, but the workshop only understands Spanish, nothing will get done!</p>
+
+<p>This chapter tackles that problem: <strong>How do different AI agents, possibly built by different teams using different technologies, communicate reliably?</strong></p>
+
+<p>The answer lies in the <strong>A2A Protocol</strong> and its <strong>Core Types</strong>.</p>
+
+<h2 id="what-is-a-protocol-the-rules-of-the-road">What is a Protocol? The Rules of the Road</h2>
+
+<p>Imagine trying to drive in a country where you don’t know the traffic rules. Do you drive on the left or right? What do the signs mean? It would be chaos! Traffic rules are a <strong>protocol</strong> – a shared set of rules everyone agrees on so things run smoothly.</p>
+
+<p>Similarly, the <strong>A2A Protocol</strong> is the set of rules for how AI agents communicate. It defines:</p>
+
+<ol>
+  <li><strong>The Transport:</strong> <em>How</em> messages physically travel (usually over the internet using standard HTTP requests, like your web browser uses).</li>
+  <li><strong>The Format:</strong> <em>What</em> the messages look like (the structure and language used).</li>
+  <li><strong>The Actions:</strong> <em>What</em> commands one agent can send to another (like “start a task” or “cancel a task”).</li>
+</ol>
+
+<p>Think of it as the <strong>shared language</strong> for AI agents. Just like humans use languages like English or Spanish, which have grammar (rules) and vocabulary (words), the A2A protocol provides the grammar and vocabulary for agents.</p>
+
+<h2 id="the-grammar-json-rpc-20">The Grammar: JSON-RPC 2.0</h2>
+
+<p>For the A2A protocol, the chosen “grammar” is a standard called <strong>JSON-RPC 2.0</strong>. Don’t let the name scare you! It’s just a simple way to structure messages using JSON (JavaScript Object Notation - a very common text format for data).</p>
+
+<p>Here’s the basic idea:</p>
+
+<ul>
+  <li><strong>Client sends a Request:</strong> The client wanting the agent to do something sends a <code class="language-plaintext highlighter-rouge">Request</code> message.</li>
+  <li><strong>Agent sends a Response:</strong> The agent replies with a <code class="language-plaintext highlighter-rouge">Response</code> message.</li>
+</ul>
+
+<p>A typical JSON-RPC Request looks like this:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"jsonrpc"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span><span class="w">        </span><span class="err">//</span><span class="w"> </span><span class="err">Specifies</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="err">protocol</span><span class="w"> </span><span class="err">version</span><span class="w">
+  </span><span class="nl">"method"</span><span class="p">:</span><span class="w"> </span><span class="s2">"some_action"</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">What</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="err">client</span><span class="w"> </span><span class="err">wants</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="err">agent</span><span class="w"> </span><span class="err">to</span><span class="w"> </span><span class="err">DO</span><span class="w">
+  </span><span class="nl">"params"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span><span class="w">       </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">details</span><span class="w"> </span><span class="err">needed</span><span class="w"> </span><span class="err">for</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="err">action</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"request-123"</span><span class="w">      </span><span class="err">//</span><span class="w"> </span><span class="err">A</span><span class="w"> </span><span class="err">unique</span><span class="w"> </span><span class="err">ID</span><span class="w"> </span><span class="err">to</span><span class="w"> </span><span class="err">match</span><span class="w"> </span><span class="err">request</span><span class="w"> </span><span class="err">and</span><span class="w"> </span><span class="err">response</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">jsonrpc</code>: Always “2.0”.</li>
+  <li><code class="language-plaintext highlighter-rouge">method</code>: The name of the command or function the client wants the agent to run (like <code class="language-plaintext highlighter-rouge">tasks/send</code> from Chapter 2).</li>
+  <li><code class="language-plaintext highlighter-rouge">params</code>: The input data needed for that command (like the text to translate). This can be an object <code class="language-plaintext highlighter-rouge">{}</code> or a list <code class="language-plaintext highlighter-rouge">[]</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">id</code>: A unique identifier the client makes up.</li>
+</ul>
+
+<p>The agent then processes this request and sends back a Response matching that <code class="language-plaintext highlighter-rouge">id</code>:</p>
+
+<p><strong>Success Response:</strong></p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"jsonrpc"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"result"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span><span class="w">      </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">output/result</span><span class="w"> </span><span class="err">of</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="err">action</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"request-123"</span><span class="w">     </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">SAME</span><span class="w"> </span><span class="err">ID</span><span class="w"> </span><span class="err">as</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="err">request</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>Error Response:</strong></p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"jsonrpc"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"error"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">             </span><span class="err">//</span><span class="w"> </span><span class="err">Details</span><span class="w"> </span><span class="err">about</span><span class="w"> </span><span class="err">what</span><span class="w"> </span><span class="err">went</span><span class="w"> </span><span class="err">wrong</span><span class="w">
+    </span><span class="nl">"code"</span><span class="p">:</span><span class="w"> </span><span class="mi">-32601</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Method not found"</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"request-123"</span><span class="w">     </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">SAME</span><span class="w"> </span><span class="err">ID</span><span class="w"> </span><span class="err">as</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="err">request</span><span class="w"> </span><span class="err">(or</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="err">if</span><span class="w"> </span><span class="err">error</span><span class="w"> </span><span class="err">was</span><span class="w"> </span><span class="err">severe)</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>If the action worked, the response includes a <code class="language-plaintext highlighter-rouge">result</code> field containing the output.</li>
+  <li>If something went wrong, it includes an <code class="language-plaintext highlighter-rouge">error</code> field with a numeric <code class="language-plaintext highlighter-rouge">code</code> and a descriptive <code class="language-plaintext highlighter-rouge">message</code>.</li>
+  <li>Crucially, the <code class="language-plaintext highlighter-rouge">id</code> matches the request, so the client knows which request this response belongs to.</li>
+</ul>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant C as Client App
+    participant A as Agent Server
+
+    C-&gt;&gt;A: JSON-RPC Request (id: "req-abc", method: "tasks/send", params: {...})
+    Note right of A: Agent parses JSON, finds method 'tasks/send'
+
+    alt Action Successful
+        A--&gt;&gt;C: JSON-RPC Response (id: "req-abc", result: {Task Object})
+    else Action Failed
+        A--&gt;&gt;C: JSON-RPC Response (id: "req-abc", error: {code:..., message:...})
+    end
+    Note left of C: Client matches response 'id' to original request
+</code></pre>
+
+<p>This simple request/response structure using JSON-RPC is the foundation of how A2A agents talk.</p>
+
+<h2 id="the-vocabulary-core-data-types">The Vocabulary: Core Data Types</h2>
+
+<p>If JSON-RPC is the grammar, then the <strong>Core Types</strong> are the standard vocabulary – the specific kinds of “words” or data structures used within the <code class="language-plaintext highlighter-rouge">params</code> and <code class="language-plaintext highlighter-rouge">result</code> fields. We’ve already seen some of these!</p>
+
+<p>Let’s recap the most important ones:</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">AgentCard</code></strong>: (<a href="01_agent_card.md">Chapter 1</a>) The agent’s profile. Describes its name, skills, and communication endpoint (<code class="language-plaintext highlighter-rouge">url</code>). Found in <code class="language-plaintext highlighter-rouge">/.well-known/agent.json</code>.
+    <ul>
+      <li>Defined in: <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:AgentCard</code>, <code class="language-plaintext highlighter-rouge">samples/python/common/types.py:AgentCard</code></li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Task</code></strong>: (<a href="02_task.md">Chapter 2</a>) The work order. Contains the unique <code class="language-plaintext highlighter-rouge">id</code>, current <code class="language-plaintext highlighter-rouge">status</code>, final <code class="language-plaintext highlighter-rouge">artifacts</code> (results), etc.
+    <ul>
+      <li>Defined in: <code class="language-plaintext highlighter-rouge">samples/python/common/types.py:Task</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:Task</code></li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Message</code></strong>: Represents one turn in the conversation (either from the <code class="language-plaintext highlighter-rouge">user</code> or the <code class="language-plaintext highlighter-rouge">agent</code>). Contains one or more <code class="language-plaintext highlighter-rouge">Parts</code>.
+    <ul>
+      <li>Defined in: <code class="language-plaintext highlighter-rouge">samples/python/common/types.py:Message</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:Message</code></li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Part</code></strong>: The actual content within a <code class="language-plaintext highlighter-rouge">Message</code> or <code class="language-plaintext highlighter-rouge">Artifact</code>. This is how we send different kinds of data:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">TextPart</code>: For plain text.</li>
+      <li><code class="language-plaintext highlighter-rouge">FilePart</code>: For files (either included directly as encoded text (<code class="language-plaintext highlighter-rouge">bytes</code>) or as a link (<code class="language-plaintext highlighter-rouge">uri</code>)).</li>
+      <li><code class="language-plaintext highlighter-rouge">DataPart</code>: For structured JSON data (like filling out a form).</li>
+      <li>Defined in: <code class="language-plaintext highlighter-rouge">samples/python/common/types.py:Part</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:Part</code></li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Artifact</code></strong>: Represents an output generated by the agent during a <code class="language-plaintext highlighter-rouge">Task</code>. It also contains <code class="language-plaintext highlighter-rouge">Parts</code>. For example, if a Task was “create a presentation about cats”, an Artifact might be a <code class="language-plaintext highlighter-rouge">FilePart</code> containing the presentation file.
+    <ul>
+      <li>Defined in: <code class="language-plaintext highlighter-rouge">samples/python/common/types.py:Artifact</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:Artifact</code></li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">TaskStatus</code></strong>: Holds the current progress state of a <code class="language-plaintext highlighter-rouge">Task</code>. Includes the <code class="language-plaintext highlighter-rouge">state</code> itself and a <code class="language-plaintext highlighter-rouge">timestamp</code>.
+    <ul>
+      <li>Defined in: <code class="language-plaintext highlighter-rouge">samples/python/common/types.py:TaskStatus</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:TaskStatus</code></li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">TaskState</code></strong>: The specific state within <code class="language-plaintext highlighter-rouge">TaskStatus</code>. Common values are: <code class="language-plaintext highlighter-rouge">submitted</code>, <code class="language-plaintext highlighter-rouge">working</code>, <code class="language-plaintext highlighter-rouge">completed</code>, <code class="language-plaintext highlighter-rouge">failed</code>, <code class="language-plaintext highlighter-rouge">canceled</code>.
+    <ul>
+      <li>Defined in: <code class="language-plaintext highlighter-rouge">samples/python/common/types.py:TaskState</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:TaskState</code></li>
+    </ul>
+  </li>
+</ul>
+
+<p><strong>Example: Building a <code class="language-plaintext highlighter-rouge">Message</code></strong></p>
+
+<p>Let’s say the user wants to send the text “Translate ‘hello’ to French”. This would be structured as a <code class="language-plaintext highlighter-rouge">Message</code> containing a <code class="language-plaintext highlighter-rouge">TextPart</code>:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">//</span><span class="w"> </span><span class="err">This</span><span class="w"> </span><span class="err">structure</span><span class="w"> </span><span class="err">would</span><span class="w"> </span><span class="err">go</span><span class="w"> </span><span class="err">inside</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="s2">"params"</span><span class="w"> </span><span class="err">of</span><span class="w"> </span><span class="err">a</span><span class="w"> </span><span class="err">tasks/send</span><span class="w"> </span><span class="err">request</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"user"</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">Who</span><span class="w"> </span><span class="err">is</span><span class="w"> </span><span class="err">sending</span><span class="w"> </span><span class="err">this</span><span class="w"> </span><span class="err">message</span><span class="w">
+  </span><span class="nl">"parts"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">      </span><span class="err">//</span><span class="w"> </span><span class="err">List</span><span class="w"> </span><span class="err">of</span><span class="w"> </span><span class="err">content</span><span class="w"> </span><span class="err">parts</span><span class="w"> </span><span class="err">(here</span><span class="p">,</span><span class="w"> </span><span class="err">just</span><span class="w"> </span><span class="err">one)</span><span class="w">
+    </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">Specifies</span><span class="w"> </span><span class="err">this</span><span class="w"> </span><span class="err">is</span><span class="w"> </span><span class="err">a</span><span class="w"> </span><span class="err">TextPart</span><span class="w">
+      </span><span class="nl">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Translate 'hello' to French"</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If the user also wanted to attach a document for translation, the <code class="language-plaintext highlighter-rouge">parts</code> list would have two items: a <code class="language-plaintext highlighter-rouge">TextPart</code> with instructions and a <code class="language-plaintext highlighter-rouge">FilePart</code> with the document.</p>
+
+<h2 id="putting-it-together-the-taskssend-example">Putting It Together: The <code class="language-plaintext highlighter-rouge">tasks/send</code> Example</h2>
+
+<p>Remember the <code class="language-plaintext highlighter-rouge">tasks/send</code> request from Chapter 2? Let’s look at the full JSON-RPC structure that the client sends over HTTP:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">//</span><span class="w"> </span><span class="err">Client</span><span class="w"> </span><span class="err">Sends</span><span class="w"> </span><span class="err">This</span><span class="w"> </span><span class="err">(HTTP</span><span class="w"> </span><span class="err">POST</span><span class="w"> </span><span class="err">body</span><span class="w"> </span><span class="err">to</span><span class="w"> </span><span class="err">Agent's</span><span class="w"> </span><span class="err">URL)</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"jsonrpc"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"method"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tasks/send"</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">action:</span><span class="w"> </span><span class="err">start/continue</span><span class="w"> </span><span class="err">a</span><span class="w"> </span><span class="err">task</span><span class="w">
+  </span><span class="nl">"params"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">            </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">details</span><span class="w"> </span><span class="err">(TaskSendParams</span><span class="w"> </span><span class="err">structure)</span><span class="w">
+    </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"task-xyz-789"</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">Unique</span><span class="w"> </span><span class="err">Task</span><span class="w"> </span><span class="err">ID</span><span class="w">
+    </span><span class="nl">"message"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">         </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">user's</span><span class="w"> </span><span class="err">message</span><span class="w">
+      </span><span class="nl">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"user"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"parts"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span><span class="w">
+          </span><span class="nl">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Translate 'hello' to French"</span><span class="w">
+        </span><span class="p">}</span><span class="w">
+      </span><span class="p">]</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+    </span><span class="err">//</span><span class="w"> </span><span class="err">Other</span><span class="w"> </span><span class="err">optional</span><span class="w"> </span><span class="err">params</span><span class="w"> </span><span class="err">like</span><span class="w"> </span><span class="err">sessionId</span><span class="w"> </span><span class="err">could</span><span class="w"> </span><span class="err">go</span><span class="w"> </span><span class="err">here</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"client-req-001"</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">Unique</span><span class="w"> </span><span class="err">ID</span><span class="w"> </span><span class="err">for</span><span class="w"> </span><span class="err">*this</span><span class="w"> </span><span class="err">specific</span><span class="w"> </span><span class="err">request*</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If the agent accepts the task, it sends back a success response containing the initial <code class="language-plaintext highlighter-rouge">Task</code> object:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">//</span><span class="w"> </span><span class="err">Agent</span><span class="w"> </span><span class="err">Sends</span><span class="w"> </span><span class="err">This</span><span class="w"> </span><span class="err">Back</span><span class="w"> </span><span class="err">(HTTP</span><span class="w"> </span><span class="err">Response</span><span class="w"> </span><span class="err">body)</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"jsonrpc"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"result"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">          </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">result:</span><span class="w"> </span><span class="err">a</span><span class="w"> </span><span class="err">Task</span><span class="w"> </span><span class="err">object</span><span class="w">
+    </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"task-xyz-789"</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">same</span><span class="w"> </span><span class="err">Task</span><span class="w"> </span><span class="err">ID</span><span class="w">
+    </span><span class="nl">"status"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">        </span><span class="err">//</span><span class="w"> </span><span class="err">The</span><span class="w"> </span><span class="err">initial</span><span class="w"> </span><span class="err">status</span><span class="w">
+      </span><span class="nl">"state"</span><span class="p">:</span><span class="w"> </span><span class="s2">"submitted"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"timestamp"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2023-10-27T10:00:00Z"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"artifacts"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">No</span><span class="w"> </span><span class="err">results</span><span class="w"> </span><span class="err">yet</span><span class="w">
+    </span><span class="nl">"history"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">    </span><span class="err">//</span><span class="w"> </span><span class="err">History</span><span class="w"> </span><span class="err">might</span><span class="w"> </span><span class="err">be</span><span class="w"> </span><span class="err">omitted</span><span class="w"> </span><span class="err">initially</span><span class="w">
+    </span><span class="err">//</span><span class="w"> </span><span class="err">Other</span><span class="w"> </span><span class="err">Task</span><span class="w"> </span><span class="err">fields</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"client-req-001"</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">Matches</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="err">request</span><span class="w"> </span><span class="err">ID</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This exchange uses the JSON-RPC grammar (<code class="language-plaintext highlighter-rouge">method</code>, <code class="language-plaintext highlighter-rouge">params</code>, <code class="language-plaintext highlighter-rouge">result</code>, <code class="language-plaintext highlighter-rouge">id</code>) and the A2A vocabulary (<code class="language-plaintext highlighter-rouge">Task</code>, <code class="language-plaintext highlighter-rouge">Message</code>, <code class="language-plaintext highlighter-rouge">Part</code>, <code class="language-plaintext highlighter-rouge">TaskStatus</code>, <code class="language-plaintext highlighter-rouge">TaskState</code>) to communicate clearly.</p>
+
+<h2 id="handling-mistakes-errors-in-the-protocol">Handling Mistakes: Errors in the Protocol</h2>
+
+<p>What if the client sends a request for a method the agent doesn’t understand, like <code class="language-plaintext highlighter-rouge">tasks/make_coffee</code>? The agent would respond with a JSON-RPC error:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"jsonrpc"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"error"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"code"</span><span class="p">:</span><span class="w"> </span><span class="mi">-32601</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">Standard</span><span class="w"> </span><span class="err">JSON-RPC</span><span class="w"> </span><span class="err">code</span><span class="w"> </span><span class="err">for</span><span class="w"> </span><span class="s2">"Method not found"</span><span class="w">
+    </span><span class="nl">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Method not found: tasks/make_coffee"</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"client-req-002"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The A2A protocol also defines some specific error codes for common agent issues:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">-32001</code>: <code class="language-plaintext highlighter-rouge">Task Not Found</code> (e.g., client asks for status of a task ID that doesn’t exist)</li>
+  <li><code class="language-plaintext highlighter-rouge">-32002</code>: <code class="language-plaintext highlighter-rouge">Task Not Cancelable</code> (e.g., trying to cancel an already completed task)</li>
+  <li><code class="language-plaintext highlighter-rouge">-32004</code>: <code class="language-plaintext highlighter-rouge">Unsupported Operation</code></li>
+</ul>
+
+<p>These standard errors help clients understand what went wrong in a predictable way. You can find definitions in the schema files:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts</code> (search for <code class="language-plaintext highlighter-rouge">ErrorCode</code>)</li>
+  <li><code class="language-plaintext highlighter-rouge">samples/python/common/types.py</code> (search for error classes like <code class="language-plaintext highlighter-rouge">MethodNotFoundError</code>, <code class="language-plaintext highlighter-rouge">TaskNotFoundError</code>)</li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The A2A Protocol acts as the universal translator for AI agents. By defining:</p>
+
+<ol>
+  <li>A common <strong>grammar</strong> (JSON-RPC 2.0) for structuring requests and responses.</li>
+  <li>A standard <strong>vocabulary</strong> (Core Types like <code class="language-plaintext highlighter-rouge">Task</code>, <code class="language-plaintext highlighter-rouge">Message</code>, <code class="language-plaintext highlighter-rouge">Part</code>, <code class="language-plaintext highlighter-rouge">Artifact</code>) for the data being exchanged.</li>
+</ol>
+
+<p>…it allows agents built by anyone, using any framework, to communicate and collaborate effectively. It ensures that when one agent asks another to do something, the request is understood, progress can be tracked, and results can be returned in a predictable format.</p>
+
+<p>Now that we understand the language agents speak, let’s see how to build an agent that can actually listen and respond using this protocol.</p>
+
+<p><strong>Next:</strong> <a href="04_a2a_server_implementation.md">Chapter 4: A2A Server Implementation</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

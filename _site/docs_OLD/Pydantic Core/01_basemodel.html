@@ -1,0 +1,268 @@
+<h1 id="chapter-1-basemodel---your-data-blueprint">Chapter 1: BaseModel - Your Data Blueprint</h1>
+
+<p>Welcome to the Pydantic tutorial! We’re excited to guide you through the powerful features of Pydantic, starting with the absolute core concept: <code class="language-plaintext highlighter-rouge">BaseModel</code>.</p>
+
+<h2 id="why-do-we-need-structured-data">Why Do We Need Structured Data?</h2>
+
+<p>Imagine you’re building a web application. You receive data from users – maybe their name and age when they sign up. This data might come as JSON, form data, or just plain Python dictionaries.</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">//</span><span class="w"> </span><span class="err">Example</span><span class="w"> </span><span class="err">user</span><span class="w"> </span><span class="err">data</span><span class="w"> </span><span class="err">from</span><span class="w"> </span><span class="err">an</span><span class="w"> </span><span class="err">API</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"username"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cool_cat_123"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"28"</span><span class="p">,</span><span class="w"> </span><span class="err">//</span><span class="w"> </span><span class="err">Oops</span><span class="p">,</span><span class="w"> </span><span class="err">age</span><span class="w"> </span><span class="err">is</span><span class="w"> </span><span class="err">a</span><span class="w"> </span><span class="err">string!</span><span class="w">
+  </span><span class="nl">"email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cat@example.com"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>How do you make sure this data is correct? Is <code class="language-plaintext highlighter-rouge">username</code> always provided? Is <code class="language-plaintext highlighter-rouge">age</code> actually a number, or could it be text like <code class="language-plaintext highlighter-rouge">"twenty-eight"</code>? Handling all these checks manually can be tedious and error-prone.</p>
+
+<p>This is where Pydantic and <code class="language-plaintext highlighter-rouge">BaseModel</code> come in!</p>
+
+<h2 id="introducing-basemodel-the-blueprint">Introducing <code class="language-plaintext highlighter-rouge">BaseModel</code>: The Blueprint</h2>
+
+<p>Think of <code class="language-plaintext highlighter-rouge">BaseModel</code> as a <strong>blueprint</strong> for your data. You define the structure you expect – what fields should exist and what their types should be (like <code class="language-plaintext highlighter-rouge">string</code>, <code class="language-plaintext highlighter-rouge">integer</code>, <code class="language-plaintext highlighter-rouge">boolean</code>, etc.). Pydantic then uses this blueprint to automatically:</p>
+
+<ol>
+  <li><strong>Parse:</strong> Read incoming data (like a dictionary).</li>
+  <li><strong>Validate:</strong> Check if the data matches your blueprint (e.g., is <code class="language-plaintext highlighter-rouge">age</code> really an integer?). If not, it tells you exactly what’s wrong.</li>
+  <li><strong>Serialize:</strong> Convert your structured data back into simple formats (like a dictionary or JSON) when you need to send it somewhere else.</li>
+</ol>
+
+<p>It’s like having an automatic quality checker and translator for your data!</p>
+
+<h2 id="defining-your-first-model">Defining Your First Model</h2>
+
+<p>Let’s create a blueprint for a simple <code class="language-plaintext highlighter-rouge">User</code>. We want each user to have a <code class="language-plaintext highlighter-rouge">name</code> (which should be text) and an <code class="language-plaintext highlighter-rouge">age</code> (which should be a whole number).</p>
+
+<p>In Pydantic, you do this by creating a class that inherits from <code class="language-plaintext highlighter-rouge">BaseModel</code> and using standard Python type hints:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Import BaseModel from Pydantic
+</span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+
+<span class="c1"># Define your data blueprint (Model)
+</span><span class="k">class</span> <span class="nc">User</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># The user's name must be a string
+</span>    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span>   <span class="c1"># The user's age must be an integer
+</span></code></pre></div></div>
+
+<p>That’s it! This simple class <code class="language-plaintext highlighter-rouge">User</code> is now a Pydantic model. It acts as the blueprint for creating user objects.</p>
+
+<h2 id="using-your-basemodel-blueprint">Using Your <code class="language-plaintext highlighter-rouge">BaseModel</code> Blueprint</h2>
+
+<p>Now that we have our <code class="language-plaintext highlighter-rouge">User</code> blueprint, let’s see how to use it.</p>
+
+<h3 id="creating-instances-parsing-and-validation">Creating Instances (Parsing and Validation)</h3>
+
+<p>You create instances of your model just like any regular Python class, passing the data as keyword arguments. Pydantic automatically parses and validates the data against your type hints (<code class="language-plaintext highlighter-rouge">name: str</code>, <code class="language-plaintext highlighter-rouge">age: int</code>).</p>
+
+<p><strong>1. Valid Data:</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Input data (e.g., from a dictionary)
+</span><span class="n">user_data</span> <span class="o">=</span> <span class="p">{</span><span class="s">'name'</span><span class="p">:</span> <span class="s">'Alice'</span><span class="p">,</span> <span class="s">'age'</span><span class="p">:</span> <span class="mi">30</span><span class="p">}</span>
+
+<span class="c1"># Create a User instance
+</span><span class="n">user_alice</span> <span class="o">=</span> <span class="n">User</span><span class="p">(</span><span class="o">**</span><span class="n">user_data</span><span class="p">)</span> <span class="c1"># The ** unpacks the dictionary
+</span>
+<span class="c1"># Pydantic checked that 'name' is a string and 'age' is an integer.
+# It worked! Let's see the created object.
+</span><span class="k">print</span><span class="p">(</span><span class="n">user_alice</span><span class="p">)</span>
+<span class="c1"># Expected Output: name='Alice' age=30
+</span></code></pre></div></div>
+
+<p>Behind the scenes, Pydantic looked at <code class="language-plaintext highlighter-rouge">user_data</code>, compared it to the <code class="language-plaintext highlighter-rouge">User</code> blueprint, saw that <code class="language-plaintext highlighter-rouge">'Alice'</code> is a valid <code class="language-plaintext highlighter-rouge">str</code> and <code class="language-plaintext highlighter-rouge">30</code> is a valid <code class="language-plaintext highlighter-rouge">int</code>, and created the <code class="language-plaintext highlighter-rouge">user_alice</code> object.</p>
+
+<p><strong>2. Invalid Data:</strong></p>
+
+<p>What happens if the data doesn’t match the blueprint?</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span> <span class="nc">User</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span>
+
+<span class="c1"># Input data with age as a string that isn't a number
+</span><span class="n">invalid_data</span> <span class="o">=</span> <span class="p">{</span><span class="s">'name'</span><span class="p">:</span> <span class="s">'Bob'</span><span class="p">,</span> <span class="s">'age'</span><span class="p">:</span> <span class="s">'twenty-eight'</span><span class="p">}</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">user_bob</span> <span class="o">=</span> <span class="n">User</span><span class="p">(</span><span class="o">**</span><span class="n">invalid_data</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+    <span class="s">"""
+    Expected Output (simplified):
+    1 validation error for User
+    age
+      Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='twenty-eight', input_type=str]
+    """</span>
+</code></pre></div></div>
+
+<p>Pydantic catches the error! Because <code class="language-plaintext highlighter-rouge">'twenty-eight'</code> cannot be understood as an <code class="language-plaintext highlighter-rouge">int</code> for the <code class="language-plaintext highlighter-rouge">age</code> field, it raises a helpful <code class="language-plaintext highlighter-rouge">ValidationError</code> telling you exactly which field (<code class="language-plaintext highlighter-rouge">age</code>) failed and why.</p>
+
+<p><strong>3. Type Coercion (Smart Conversion):</strong></p>
+
+<p>Pydantic is often smart enough to convert types when it makes sense. For example, if you provide <code class="language-plaintext highlighter-rouge">age</code> as a string containing digits:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+
+<span class="k">class</span> <span class="nc">User</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span>
+
+<span class="c1"># Input data with age as a numeric string
+</span><span class="n">data_with_string_age</span> <span class="o">=</span> <span class="p">{</span><span class="s">'name'</span><span class="p">:</span> <span class="s">'Charlie'</span><span class="p">,</span> <span class="s">'age'</span><span class="p">:</span> <span class="s">'35'</span><span class="p">}</span>
+
+<span class="c1"># Create a User instance
+</span><span class="n">user_charlie</span> <span class="o">=</span> <span class="n">User</span><span class="p">(</span><span class="o">**</span><span class="n">data_with_string_age</span><span class="p">)</span>
+
+<span class="c1"># Pydantic converted the string '35' into the integer 35!
+</span><span class="k">print</span><span class="p">(</span><span class="n">user_charlie</span><span class="p">)</span>
+<span class="c1"># Expected Output: name='Charlie' age=35
+</span><span class="k">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">user_charlie</span><span class="p">.</span><span class="n">age</span><span class="p">))</span>
+<span class="c1"># Expected Output: &lt;class 'int'&gt;
+</span></code></pre></div></div>
+
+<p>Pydantic automatically <em>coerced</em> the string <code class="language-plaintext highlighter-rouge">'35'</code> into the integer <code class="language-plaintext highlighter-rouge">35</code> because the blueprint specified <code class="language-plaintext highlighter-rouge">age: int</code>. This leniency is often very convenient.</p>
+
+<h3 id="accessing-data">Accessing Data</h3>
+
+<p>Once you have a valid model instance, you access its data using standard attribute access:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Continuing from the user_alice example:
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"User's Name: </span><span class="si">{</span><span class="n">user_alice</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Expected Output: User's Name: Alice
+</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"User's Age: </span><span class="si">{</span><span class="n">user_alice</span><span class="p">.</span><span class="n">age</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Expected Output: User's Age: 30
+</span></code></pre></div></div>
+
+<h3 id="serialization-converting-back">Serialization (Converting Back)</h3>
+
+<p>Often, you’ll need to convert your model instance back into a basic Python dictionary (e.g., to send it as JSON over a network). <code class="language-plaintext highlighter-rouge">BaseModel</code> provides easy ways to do this:</p>
+
+<p><strong>1. <code class="language-plaintext highlighter-rouge">model_dump()</code>:</strong> Converts the model to a dictionary.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Continuing from the user_alice example:
+</span><span class="n">user_dict</span> <span class="o">=</span> <span class="n">user_alice</span><span class="p">.</span><span class="n">model_dump</span><span class="p">()</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">user_dict</span><span class="p">)</span>
+<span class="c1"># Expected Output: {'name': 'Alice', 'age': 30}
+</span><span class="k">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">user_dict</span><span class="p">))</span>
+<span class="c1"># Expected Output: &lt;class 'dict'&gt;
+</span></code></pre></div></div>
+
+<p><strong>2. <code class="language-plaintext highlighter-rouge">model_dump_json()</code>:</strong> Converts the model directly to a JSON string.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Continuing from the user_alice example:
+</span><span class="n">user_json</span> <span class="o">=</span> <span class="n">user_alice</span><span class="p">.</span><span class="n">model_dump_json</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="c1"># indent for pretty printing
+</span>
+<span class="k">print</span><span class="p">(</span><span class="n">user_json</span><span class="p">)</span>
+<span class="c1"># Expected Output:
+# {
+#   "name": "Alice",
+#   "age": 30
+# }
+</span><span class="k">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">user_json</span><span class="p">))</span>
+<span class="c1"># Expected Output: &lt;class 'str'&gt;
+</span></code></pre></div></div>
+
+<p>These methods allow you to easily share your structured data.</p>
+
+<h2 id="under-the-hood-how-does-basemodel-work">Under the Hood: How Does <code class="language-plaintext highlighter-rouge">BaseModel</code> Work?</h2>
+
+<p>You don’t <em>need</em> to know the internals to use Pydantic effectively, but a little insight can be helpful!</p>
+
+<p><strong>High-Level Steps:</strong></p>
+
+<p>When Python creates your <code class="language-plaintext highlighter-rouge">User</code> class (which inherits from <code class="language-plaintext highlighter-rouge">BaseModel</code>), some Pydantic magic happens via its <code class="language-plaintext highlighter-rouge">ModelMetaclass</code>:</p>
+
+<ol>
+  <li><strong>Inspection:</strong> Pydantic looks at your class definition (<code class="language-plaintext highlighter-rouge">User</code>), finding the fields (<code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">age</code>) and their type hints (<code class="language-plaintext highlighter-rouge">str</code>, <code class="language-plaintext highlighter-rouge">int</code>).</li>
+  <li><strong>Schema Generation:</strong> It generates an internal “Core Schema”. This is a detailed, language-agnostic description of your data structure and validation rules. Think of it as an even more detailed blueprint used internally by Pydantic’s fast validation engine (written in Rust!). We’ll explore this more in <a href="05_core_schema___validation_serialization.md">Chapter 5</a>.</li>
+  <li><strong>Validator/Serializer Creation:</strong> Based on this Core Schema, Pydantic creates highly optimized functions (internally) for validating input data and serializing model instances for <em>this specific model</em> (<code class="language-plaintext highlighter-rouge">User</code>).</li>
+</ol>
+
+<p>Here’s a simplified diagram:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Dev as Developer
+    participant Py as Python Interpreter
+    participant Meta as BaseModel Metaclass
+    participant Core as Pydantic Core Engine
+
+    Dev-&gt;&gt;Py: Define `class User(BaseModel): name: str, age: int`
+    Py-&gt;&gt;Meta: Ask to create the `User` class
+    Meta-&gt;&gt;Meta: Inspect fields (`name: str`, `age: int`)
+    Meta-&gt;&gt;Core: Request schema based on fields &amp; types
+    Core--&gt;&gt;Meta: Provide internal Core Schema for User
+    Meta-&gt;&gt;Core: Request validator function from schema
+    Core--&gt;&gt;Meta: Provide optimized validator
+    Meta-&gt;&gt;Core: Request serializer function from schema
+    Core--&gt;&gt;Meta: Provide optimized serializer
+    Meta--&gt;&gt;Py: Return the fully prepared `User` class (with hidden validator/serializer attached)
+    Py--&gt;&gt;Dev: `User` class is ready to use
+</code></pre>
+
+<p><strong>Instantiation and Serialization Flow:</strong></p>
+
+<ul>
+  <li>When you call <code class="language-plaintext highlighter-rouge">User(name='Alice', age=30)</code>, Python calls the <code class="language-plaintext highlighter-rouge">User</code> class’s <code class="language-plaintext highlighter-rouge">__init__</code> method. Pydantic intercepts this and uses the optimized <strong>validator</strong> created earlier to check the input data against the Core Schema. If valid, it creates the instance; otherwise, it raises <code class="language-plaintext highlighter-rouge">ValidationError</code>.</li>
+  <li>When you call <code class="language-plaintext highlighter-rouge">user_alice.model_dump()</code>, Pydantic uses the optimized <strong>serializer</strong> created earlier to convert the instance’s data back into a dictionary, again following the rules defined in the Core Schema.</li>
+</ul>
+
+<p><strong>Code Location:</strong></p>
+
+<p>Most of this intricate setup logic happens within the <code class="language-plaintext highlighter-rouge">ModelMetaclass</code> found in <code class="language-plaintext highlighter-rouge">pydantic._internal._model_construction.py</code>. It coordinates with the <code class="language-plaintext highlighter-rouge">pydantic-core</code> Rust engine to build the schema and the validation/serialization logic.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Extremely simplified conceptual view of metaclass action
+</span><span class="k">class</span> <span class="nc">ModelMetaclass</span><span class="p">(</span><span class="nb">type</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__new__</span><span class="p">(</span><span class="n">mcs</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">bases</span><span class="p">,</span> <span class="n">namespace</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># 1. Find fields and type hints in 'namespace'
+</span>        <span class="n">fields</span> <span class="o">=</span> <span class="p">{}</span> <span class="c1"># Simplified: find 'name: str', 'age: int'
+</span>        <span class="n">annotations</span> <span class="o">=</span> <span class="p">{}</span> <span class="c1"># Simplified
+</span>
+        <span class="c1"># ... collect fields, config, etc. ...
+</span>
+        <span class="c1"># 2. Generate Core Schema (pseudo-code)
+</span>        <span class="c1"># core_schema = pydantic_core.generate_schema(fields, annotations, config)
+</span>        <span class="c1"># (This happens internally, see Chapter 5)
+</span>
+        <span class="c1"># 3. Create validator &amp; serializer (pseudo-code)
+</span>        <span class="c1"># validator = pydantic_core.SchemaValidator(core_schema)
+</span>        <span class="c1"># serializer = pydantic_core.SchemaSerializer(core_schema)
+</span>
+        <span class="c1"># Create the actual class object
+</span>        <span class="n">cls</span> <span class="o">=</span> <span class="nb">super</span><span class="p">().</span><span class="n">__new__</span><span class="p">(</span><span class="n">mcs</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">bases</span><span class="p">,</span> <span class="n">namespace</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Attach the generated validator/serializer (simplified)
+</span>        <span class="c1"># cls.__pydantic_validator__ = validator
+</span>        <span class="c1"># cls.__pydantic_serializer__ = serializer
+</span>        <span class="c1"># cls.__pydantic_core_schema__ = core_schema # Store the schema
+</span>
+        <span class="k">return</span> <span class="n">cls</span>
+
+<span class="c1"># class BaseModel(metaclass=ModelMetaclass):
+#    ... rest of BaseModel implementation ...
+</span></code></pre></div></div>
+
+<p>This setup ensures that validation and serialization are defined <em>once</em> when the class is created, making instance creation (<code class="language-plaintext highlighter-rouge">User(...)</code>) and dumping (<code class="language-plaintext highlighter-rouge">model_dump()</code>) very fast.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned the fundamentals of <code class="language-plaintext highlighter-rouge">pydantic.BaseModel</code>:</p>
+
+<ul>
+  <li>It acts as a <strong>blueprint</strong> for your data structures.</li>
+  <li>You define fields and their types using standard <strong>Python type hints</strong>.</li>
+  <li>Pydantic automatically handles <strong>parsing</strong>, <strong>validation</strong> (with helpful errors), and <strong>serialization</strong> (<code class="language-plaintext highlighter-rouge">model_dump</code>, <code class="language-plaintext highlighter-rouge">model_dump_json</code>).</li>
+  <li>It uses a powerful internal <strong>Core Schema</strong> and optimized validators/serializers for great performance.</li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">BaseModel</code> is the cornerstone of Pydantic. Now that you understand the basics, you might be wondering how to add more specific validation rules (like “age must be positive”) or control how fields are handled during serialization.</p>
+
+<p>In the next chapter, we’ll dive into customizing fields using the <code class="language-plaintext highlighter-rouge">Field</code> function.</p>
+
+<p>Next: <a href="02_fields__fieldinfo___field_function_.md">Chapter 2: Fields (FieldInfo / Field function)</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

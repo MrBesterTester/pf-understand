@@ -1,0 +1,262 @@
+<h1 id="chapter-3-parameter-option--argument---giving-your-commands-input">Chapter 3: Parameter (Option / Argument) - Giving Your Commands Input</h1>
+
+<p>In the last chapter, <a href="02_decorators.md">Decorators</a>, we saw how decorators like <code class="language-plaintext highlighter-rouge">@click.command()</code> and <code class="language-plaintext highlighter-rouge">@click.option()</code> act like magic wands, transforming our Python functions into CLI commands and adding features like command-line options.</p>
+
+<p>But how do our commands actually <em>receive</em> information from the user? If we have a command <code class="language-plaintext highlighter-rouge">greet</code>, how do we tell it <em>who</em> to greet, like <code class="language-plaintext highlighter-rouge">greet --name Alice</code>? Or if we have a <code class="language-plaintext highlighter-rouge">copy</code> command, how do we specify the source and destination files, like <code class="language-plaintext highlighter-rouge">copy report.txt backup.txt</code>?</p>
+
+<p>This is where <strong>Parameters</strong> come in. Parameters define the inputs your commands can accept, just like arguments define the inputs for a regular Python function. Click handles parsing these inputs from the command line, validating them, and making them available to your command function.</p>
+
+<p>There are two main types of parameters in Click:</p>
+
+<ol>
+  <li><strong>Options:</strong> These are usually preceded by flags like <code class="language-plaintext highlighter-rouge">--verbose</code> or <code class="language-plaintext highlighter-rouge">-f</code>. They are often optional and can either take a value (like <code class="language-plaintext highlighter-rouge">--name Alice</code>) or act as simple on/off switches (like <code class="language-plaintext highlighter-rouge">--verbose</code>). You define them using the <code class="language-plaintext highlighter-rouge">@click.option()</code> decorator.</li>
+  <li><strong>Arguments:</strong> These are typically positional values that come <em>after</em> any options. They often represent required inputs, like a filename (<code class="language-plaintext highlighter-rouge">report.txt</code>). You define them using the <code class="language-plaintext highlighter-rouge">@click.argument()</code> decorator.</li>
+</ol>
+
+<p>Let’s see how to use them!</p>
+
+<h2 id="options-the-named-inputs-clickoption">Options: The Named Inputs (<code class="language-plaintext highlighter-rouge">@click.option</code>)</h2>
+
+<p>Think of options like keyword arguments in Python functions. In <code class="language-plaintext highlighter-rouge">def greet(name="World"):</code>, <code class="language-plaintext highlighter-rouge">name</code> is a keyword argument with a default value. Options serve a similar purpose for your CLI.</p>
+
+<p>Let’s modify our <code class="language-plaintext highlighter-rouge">hello</code> command from the previous chapter to accept a <code class="language-plaintext highlighter-rouge">--name</code> option.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># greet_app.py
+</span><span class="kn">import</span> <span class="nn">click</span>
+
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">group</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">cli</span><span class="p">():</span>
+  <span class="s">"""A simple tool with a greeting command."""</span>
+  <span class="k">pass</span>
+
+<span class="o">@</span><span class="n">cli</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">option</span><span class="p">(</span><span class="s">'--name'</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">'World'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">'Who to greet.'</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">hello</span><span class="p">(</span><span class="n">name</span><span class="p">):</span> <span class="c1"># &lt;-- The 'name' parameter matches the option
+</span>  <span class="s">"""Greets the person specified by the --name option."""</span>
+  <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Hello </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">!"</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+  <span class="n">cli</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Let’s break down the new parts:</p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">@click.option('--name', default='World', help='Who to greet.')</code>: This decorator defines an option.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">'--name'</code>: This is the primary name of the option on the command line.</li>
+      <li><code class="language-plaintext highlighter-rouge">default='World'</code>: If the user doesn’t provide the <code class="language-plaintext highlighter-rouge">--name</code> option, the value <code class="language-plaintext highlighter-rouge">World</code> will be used.</li>
+      <li><code class="language-plaintext highlighter-rouge">help='Who to greet.'</code>: This text will appear in the help message for the <code class="language-plaintext highlighter-rouge">hello</code> command.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">def hello(name):</code>: Notice how the <code class="language-plaintext highlighter-rouge">hello</code> function now accepts an argument named <code class="language-plaintext highlighter-rouge">name</code>. Click cleverly matches the option name (<code class="language-plaintext highlighter-rouge">name</code>) to the function parameter name and passes the value automatically!</li>
+</ol>
+
+<p><strong>Try running it!</strong></p>
+
+<p>First, check the help message for the <code class="language-plaintext highlighter-rouge">hello</code> command:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>python greet_app.py hello <span class="nt">--help</span>
+Usage: greet_app.py hello <span class="o">[</span>OPTIONS]
+
+  Greets the person specified by the <span class="nt">--name</span> option.
+
+Options:
+  <span class="nt">--name</span> TEXT  Who to greet.  <span class="o">[</span>default: World]
+  <span class="nt">--help</span>       Show this message and exit.
+</code></pre></div></div>
+
+<p>See? Click added our <code class="language-plaintext highlighter-rouge">--name</code> option to the help screen, including the help text and default value we provided. The <code class="language-plaintext highlighter-rouge">TEXT</code> part indicates the type of value expected (we’ll cover types in <a href="04_paramtype.md">ParamType</a>).</p>
+
+<p>Now, run it with and without the option:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>python greet_app.py hello
+Hello World!
+
+<span class="nv">$ </span>python greet_app.py hello <span class="nt">--name</span> Alice
+Hello Alice!
+</code></pre></div></div>
+
+<p>It works perfectly! Click parsed the <code class="language-plaintext highlighter-rouge">--name Alice</code> option and passed <code class="language-plaintext highlighter-rouge">"Alice"</code> to our <code class="language-plaintext highlighter-rouge">hello</code> function’s <code class="language-plaintext highlighter-rouge">name</code> parameter. When we didn’t provide the option, it used the default value <code class="language-plaintext highlighter-rouge">"World"</code>.</p>
+
+<h3 id="option-flavors-short-names-and-flags">Option Flavors: Short Names and Flags</h3>
+
+<p>Options can have variations:</p>
+
+<ul>
+  <li><strong>Short Names:</strong> You can provide shorter aliases, like <code class="language-plaintext highlighter-rouge">-n</code> for <code class="language-plaintext highlighter-rouge">--name</code>.</li>
+  <li><strong>Flags:</strong> Options that don’t take a value but act as switches (e.g., <code class="language-plaintext highlighter-rouge">--verbose</code>).</li>
+</ul>
+
+<p>Let’s add a short name <code class="language-plaintext highlighter-rouge">-n</code> to our <code class="language-plaintext highlighter-rouge">--name</code> option and a <code class="language-plaintext highlighter-rouge">--shout</code> flag to make the greeting uppercase.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># greet_app_v2.py
+</span><span class="kn">import</span> <span class="nn">click</span>
+
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">group</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">cli</span><span class="p">():</span>
+  <span class="s">"""A simple tool with a greeting command."""</span>
+  <span class="k">pass</span>
+
+<span class="o">@</span><span class="n">cli</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">option</span><span class="p">(</span><span class="s">'--name'</span><span class="p">,</span> <span class="s">'-n'</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">'World'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">'Who to greet.'</span><span class="p">)</span> <span class="c1"># Added '-n'
+</span><span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">option</span><span class="p">(</span><span class="s">'--shout'</span><span class="p">,</span> <span class="n">is_flag</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">'Greet loudly.'</span><span class="p">)</span>        <span class="c1"># Added '--shout' flag
+</span><span class="k">def</span> <span class="nf">hello</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">shout</span><span class="p">):</span> <span class="c1"># &lt;-- Function now accepts 'shout' too
+</span>  <span class="s">"""Greets the person, optionally shouting."""</span>
+  <span class="n">greeting</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Hello </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">!"</span>
+  <span class="k">if</span> <span class="n">shout</span><span class="p">:</span>
+    <span class="n">greeting</span> <span class="o">=</span> <span class="n">greeting</span><span class="p">.</span><span class="n">upper</span><span class="p">()</span>
+  <span class="k">print</span><span class="p">(</span><span class="n">greeting</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+  <span class="n">cli</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Changes:</p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">@click.option('--name', '-n', ...)</code>: We added <code class="language-plaintext highlighter-rouge">'-n'</code> as the second argument to the decorator. Now, both <code class="language-plaintext highlighter-rouge">--name</code> and <code class="language-plaintext highlighter-rouge">-n</code> work.</li>
+  <li><code class="language-plaintext highlighter-rouge">@click.option('--shout', is_flag=True, ...)</code>: This defines a flag. <code class="language-plaintext highlighter-rouge">is_flag=True</code> tells Click this option doesn’t take a value; its presence makes the corresponding parameter <code class="language-plaintext highlighter-rouge">True</code>, otherwise it’s <code class="language-plaintext highlighter-rouge">False</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">def hello(name, shout):</code>: The function signature is updated to accept the <code class="language-plaintext highlighter-rouge">shout</code> parameter.</li>
+</ol>
+
+<p><strong>Run it again!</strong></p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>python greet_app_v2.py hello <span class="nt">-n</span> Bob
+Hello Bob!
+
+<span class="nv">$ </span>python greet_app_v2.py hello <span class="nt">--name</span> Carol <span class="nt">--shout</span>
+HELLO CAROL!
+
+<span class="nv">$ </span>python greet_app_v2.py hello <span class="nt">--shout</span>
+HELLO WORLD!
+</code></pre></div></div>
+
+<p>Flags and short names make your CLI more flexible and conventional!</p>
+
+<h2 id="arguments-the-positional-inputs-clickargument">Arguments: The Positional Inputs (<code class="language-plaintext highlighter-rouge">@click.argument</code>)</h2>
+
+<p>Arguments are like positional arguments in Python functions. In <code class="language-plaintext highlighter-rouge">def copy(src, dst):</code>, <code class="language-plaintext highlighter-rouge">src</code> and <code class="language-plaintext highlighter-rouge">dst</code> are required positional arguments. Click arguments usually represent mandatory inputs that follow the command and any options.</p>
+
+<p>Let’s create a simple command that takes two arguments, <code class="language-plaintext highlighter-rouge">SRC</code> and <code class="language-plaintext highlighter-rouge">DST</code>, representing source and destination files (though we’ll just print them for now).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># copy_app.py
+</span><span class="kn">import</span> <span class="nn">click</span>
+
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">command</span><span class="p">()</span>
+<span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">argument</span><span class="p">(</span><span class="s">'src'</span><span class="p">)</span>  <span class="c1"># Defines the first argument
+</span><span class="o">@</span><span class="n">click</span><span class="p">.</span><span class="n">argument</span><span class="p">(</span><span class="s">'dst'</span><span class="p">)</span>  <span class="c1"># Defines the second argument
+</span><span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">):</span>     <span class="c1"># Function parameters match argument names
+</span>  <span class="s">"""Copies SRC file to DST."""</span>
+  <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Pretending to copy '</span><span class="si">{</span><span class="n">src</span><span class="si">}</span><span class="s">' to '</span><span class="si">{</span><span class="n">dst</span><span class="si">}</span><span class="s">'"</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+  <span class="n">copy</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>What’s happening here?</p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">@click.argument('src')</code>: Defines a positional argument named <code class="language-plaintext highlighter-rouge">src</code>. By default, arguments are required. The name <code class="language-plaintext highlighter-rouge">'src'</code> is used both internally and often capitalized (<code class="language-plaintext highlighter-rouge">SRC</code>) in help messages by convention.</li>
+  <li><code class="language-plaintext highlighter-rouge">@click.argument('dst')</code>: Defines the second required positional argument.</li>
+  <li><code class="language-plaintext highlighter-rouge">def copy(src, dst):</code>: The function parameters <code class="language-plaintext highlighter-rouge">src</code> and <code class="language-plaintext highlighter-rouge">dst</code> receive the values provided on the command line in the order they appear.</li>
+</ol>
+
+<p><strong>Let’s try it!</strong></p>
+
+<p>First, see what happens if we forget the arguments:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>python copy_app.py
+Usage: copy_app.py <span class="o">[</span>OPTIONS] SRC DST
+Try <span class="s1">'copy_app.py --help'</span> <span class="k">for </span>help.
+
+Error: Missing argument <span class="s1">'SRC'</span><span class="nb">.</span>
+</code></pre></div></div>
+
+<p>Click automatically detects the missing argument and gives a helpful error message!</p>
+
+<p>Now, provide the arguments:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>python copy_app.py report.txt backup/report.txt
+Pretending to copy <span class="s1">'report.txt'</span> to <span class="s1">'backup/report.txt'</span>
+</code></pre></div></div>
+
+<p>Click correctly captured the positional arguments and passed them to our <code class="language-plaintext highlighter-rouge">copy</code> function.</p>
+
+<p>Arguments are essential for inputs that are fundamental to the command’s operation, like the files to operate on. Options are better suited for modifying the command’s behavior.</p>
+
+<p><em>(Note: Arguments can also be made optional or accept variable numbers of inputs, often involving the <code class="language-plaintext highlighter-rouge">required</code> and <code class="language-plaintext highlighter-rouge">nargs</code> settings, which tie into concepts we’ll explore more in <a href="04_paramtype.md">ParamType</a>.)</em></p>
+
+<h2 id="how-parameters-work-together">How Parameters Work Together</h2>
+
+<p>When you run a command like <code class="language-plaintext highlighter-rouge">python greet_app_v2.py hello --shout -n Alice</code>, Click performs a sequence of steps:</p>
+
+<ol>
+  <li><strong>Parsing:</strong> Click looks at the command-line arguments (<code class="language-plaintext highlighter-rouge">sys.argv</code>) provided by the operating system: <code class="language-plaintext highlighter-rouge">['greet_app_v2.py', 'hello', '--shout', '-n', 'Alice']</code>.</li>
+  <li><strong>Command Identification:</strong> It identifies <code class="language-plaintext highlighter-rouge">hello</code> as the command to execute.</li>
+  <li><strong>Parameter Matching:</strong> It scans the remaining arguments (<code class="language-plaintext highlighter-rouge">['--shout', '-n', 'Alice']</code>).
+    <ul>
+      <li>It sees <code class="language-plaintext highlighter-rouge">--shout</code>. It looks up the parameters defined for the <code class="language-plaintext highlighter-rouge">hello</code> command (using the <code class="language-plaintext highlighter-rouge">@click.option</code> and <code class="language-plaintext highlighter-rouge">@click.argument</code> decorators). It finds the <code class="language-plaintext highlighter-rouge">shout</code> option definition (which has <code class="language-plaintext highlighter-rouge">is_flag=True</code>). It marks the value for <code class="language-plaintext highlighter-rouge">shout</code> as <code class="language-plaintext highlighter-rouge">True</code>.</li>
+      <li>It sees <code class="language-plaintext highlighter-rouge">-n</code>. It finds the <code class="language-plaintext highlighter-rouge">name</code> option definition (which includes <code class="language-plaintext highlighter-rouge">-n</code> as an alias and expects a value).</li>
+      <li>It sees <code class="language-plaintext highlighter-rouge">Alice</code>. Since the previous token (<code class="language-plaintext highlighter-rouge">-n</code>) expected a value, Click associates <code class="language-plaintext highlighter-rouge">"Alice"</code> with the <code class="language-plaintext highlighter-rouge">-n</code> (and thus <code class="language-plaintext highlighter-rouge">--name</code>) option. It marks the value for <code class="language-plaintext highlighter-rouge">name</code> as <code class="language-plaintext highlighter-rouge">"Alice"</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Validation &amp; Conversion:</strong> Click checks if all required parameters are present (they are). It also performs type conversion (though in this case, the default is string, which matches “Alice”). We’ll see more complex conversions in the next chapter.</li>
+  <li><strong>Function Call:</strong> Finally, Click calls the command’s underlying Python function (<code class="language-plaintext highlighter-rouge">hello</code>) with the collected values as keyword arguments: <code class="language-plaintext highlighter-rouge">hello(name='Alice', shout=True)</code>.</li>
+</ol>
+
+<p>Here’s a simplified view of the process:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant Terminal
+    participant PythonScript as python greet_app_v2.py
+    participant ClickRuntime
+    participant hello_func as hello(name, shout)
+
+    User-&gt;&gt;Terminal: python greet_app_v2.py hello --shout -n Alice
+    Terminal-&gt;&gt;PythonScript: Executes script with args ["hello", "--shout", "-n", "Alice"]
+    PythonScript-&gt;&gt;ClickRuntime: Calls cli() entry point
+    ClickRuntime-&gt;&gt;ClickRuntime: Parses args, finds 'hello' command
+    ClickRuntime-&gt;&gt;ClickRuntime: Identifies '--shout' as flag for 'shout' parameter (value=True)
+    ClickRuntime-&gt;&gt;ClickRuntime: Identifies '-n' as option for 'name' parameter
+    ClickRuntime-&gt;&gt;ClickRuntime: Consumes 'Alice' as value for '-n'/'name' parameter (value="Alice")
+    ClickRuntime-&gt;&gt;ClickRuntime: Validates parameters, performs type conversion
+    ClickRuntime-&gt;&gt;hello_func: Calls callback: hello(name="Alice", shout=True)
+    hello_func--&gt;&gt;PythonScript: Prints "HELLO ALICE!"
+    PythonScript--&gt;&gt;Terminal: Shows output
+    Terminal--&gt;&gt;User: Displays "HELLO ALICE!"
+</code></pre>
+
+<h2 id="under-the-hood-decorators-and-parameter-objects">Under the Hood: Decorators and Parameter Objects</h2>
+
+<p>How do <code class="language-plaintext highlighter-rouge">@click.option</code> and <code class="language-plaintext highlighter-rouge">@click.argument</code> actually work with <code class="language-plaintext highlighter-rouge">@click.command</code>?</p>
+
+<ol>
+  <li><strong>Parameter Definition (<code class="language-plaintext highlighter-rouge">decorators.py</code>, <code class="language-plaintext highlighter-rouge">core.py</code>):</strong> When you use <code class="language-plaintext highlighter-rouge">@click.option(...)</code> or <code class="language-plaintext highlighter-rouge">@click.argument(...)</code>, these functions (defined in <code class="language-plaintext highlighter-rouge">click/decorators.py</code>) create instances of the <code class="language-plaintext highlighter-rouge">Option</code> or <code class="language-plaintext highlighter-rouge">Argument</code> classes (defined in <code class="language-plaintext highlighter-rouge">click/core.py</code>). These objects store all the configuration you provided (like <code class="language-plaintext highlighter-rouge">--name</code>, <code class="language-plaintext highlighter-rouge">-n</code>, <code class="language-plaintext highlighter-rouge">default='World'</code>, <code class="language-plaintext highlighter-rouge">is_flag=True</code>, etc.).</li>
+  <li><strong>Attaching to Function (<code class="language-plaintext highlighter-rouge">decorators.py</code>):</strong> Crucially, these decorators don’t immediately add the parameters to a command. Instead, they attach the created <code class="language-plaintext highlighter-rouge">Option</code> or <code class="language-plaintext highlighter-rouge">Argument</code> object to the function they are decorating. Click uses a helper mechanism (like the internal <code class="language-plaintext highlighter-rouge">_param_memo</code> function which adds to a <code class="language-plaintext highlighter-rouge">__click_params__</code> list) to store these parameter objects <em>on</em> the function object temporarily.</li>
+  <li><strong>Command Creation (<code class="language-plaintext highlighter-rouge">decorators.py</code>, <code class="language-plaintext highlighter-rouge">core.py</code>):</strong> The <code class="language-plaintext highlighter-rouge">@click.command()</code> decorator (or <code class="language-plaintext highlighter-rouge">@group.command()</code>) runs <em>after</em> all the <code class="language-plaintext highlighter-rouge">@option</code> and <code class="language-plaintext highlighter-rouge">@argument</code> decorators for that function. It looks for the attached parameter objects (the <code class="language-plaintext highlighter-rouge">__click_params__</code> list). It gathers these objects and passes them to the constructor of the <code class="language-plaintext highlighter-rouge">Command</code> (or <code class="language-plaintext highlighter-rouge">Group</code>) object it creates. The <code class="language-plaintext highlighter-rouge">Command</code> object stores these parameters in its <code class="language-plaintext highlighter-rouge">params</code> attribute.</li>
+  <li><strong>Parsing (<code class="language-plaintext highlighter-rouge">parser.py</code>, <code class="language-plaintext highlighter-rouge">core.py</code>):</strong> When the command is invoked, the <code class="language-plaintext highlighter-rouge">Command</code> object uses its <code class="language-plaintext highlighter-rouge">params</code> list to configure an internal parser (historically based on Python’s <code class="language-plaintext highlighter-rouge">optparse</code>, see <code class="language-plaintext highlighter-rouge">click/parser.py</code>). This parser processes the command-line string (<code class="language-plaintext highlighter-rouge">sys.argv</code>) according to the rules defined by the <code class="language-plaintext highlighter-rouge">Option</code> and <code class="language-plaintext highlighter-rouge">Argument</code> objects in the <code class="language-plaintext highlighter-rouge">params</code> list.</li>
+  <li><strong>Callback Invocation (<code class="language-plaintext highlighter-rouge">core.py</code>):</strong> After parsing and validation, Click takes the resulting values and calls the original Python function (stored as the <code class="language-plaintext highlighter-rouge">Command.callback</code>), passing the values as arguments.</li>
+</ol>
+
+<p>So, the decorators work together: <code class="language-plaintext highlighter-rouge">@option</code>/<code class="language-plaintext highlighter-rouge">@argument</code> define the parameters and temporarily attach them to the function, while <code class="language-plaintext highlighter-rouge">@command</code> collects these definitions and builds the final <code class="language-plaintext highlighter-rouge">Command</code> object, ready for parsing.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned how to make your Click commands interactive by defining inputs using <strong>Parameters</strong>:</p>
+
+<ul>
+  <li><strong>Options (<code class="language-plaintext highlighter-rouge">@click.option</code>):</strong> Named inputs, often optional, specified with flags (<code class="language-plaintext highlighter-rouge">--name</code>, <code class="language-plaintext highlighter-rouge">-n</code>). Great for controlling behavior (like <code class="language-plaintext highlighter-rouge">--verbose</code>, <code class="language-plaintext highlighter-rouge">--shout</code>) or providing specific pieces of data (<code class="language-plaintext highlighter-rouge">--output file.txt</code>).</li>
+  <li><strong>Arguments (<code class="language-plaintext highlighter-rouge">@click.argument</code>):</strong> Positional inputs, often required, that follow options (<code class="language-plaintext highlighter-rouge">input.csv</code>). Ideal for core data the command operates on (like source/destination files).</li>
+</ul>
+
+<p>You saw how Click uses decorators to define these parameters and automatically handles parsing the command line, providing default values, generating help messages, and passing the final values to your Python function.</p>
+
+<p>But what if you want an option to accept only numbers? Or a choice from a predefined list? Or maybe an argument that represents a file path that must exist? Click handles this through <strong>Parameter Types</strong>. Let’s explore those next!</p>
+
+<p>Next up: <a href="04_paramtype.md">Chapter 4: ParamType</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

@@ -1,0 +1,218 @@
+<h1 id="chapter-2-task---the-ais-work-order">Chapter 2: Task - The AI’s Work Order</h1>
+
+<p>In the <a href="01_agent_card.md">previous chapter</a>, we learned how to find an AI agent and read its “business card” – the <strong>Agent Card</strong> – to understand what it can do and how to contact it. Think of it like finding a translator’s contact information.</p>
+
+<p>But just knowing the translator exists isn’t enough. You need to actually <em>give them something to translate</em>! How do you formally request work from an A2A agent?</p>
+
+<p>That’s where the <strong>Task</strong> comes in. It solves the problem of <strong>requesting and tracking work</strong>.</p>
+
+<h2 id="what-is-a-task">What is a Task?</h2>
+
+<p>Imagine you run a busy workshop. When a customer comes in wanting something built or fixed, you don’t just rely on a verbal request. You create a <strong>work order</strong> or a <strong>job ticket</strong>. This ticket contains:</p>
+
+<ol>
+  <li><strong>What needs to be done?</strong> (The customer’s request - e.g., “Build a small bookshelf”)</li>
+  <li><strong>Who requested it?</strong> (Customer details)</li>
+  <li><strong>A unique ID</strong> to track this specific job.</li>
+  <li><strong>The current status</strong> (e.g., “Not Started”, “In Progress”, “Awaiting Materials”, “Completed”).</li>
+  <li><strong>The final result</strong> (e.g., the finished bookshelf, or notes about why it couldn’t be done).</li>
+</ol>
+
+<p>In the A2A world, a <strong>Task</strong> is exactly like that work order. It’s the main way agents exchange work:</p>
+
+<ol>
+  <li><strong>Instructions:</strong> It starts with the initial request message from the client (e.g., “Translate ‘hello world’ to French”).</li>
+  <li><strong>Tracking ID:</strong> Each task gets a unique ID so both the client and the agent know which job they’re talking about.</li>
+  <li><strong>Status:</strong> It has a state that changes as the agent works on it (e.g., <code class="language-plaintext highlighter-rouge">submitted</code>, <code class="language-plaintext highlighter-rouge">working</code>, <code class="language-plaintext highlighter-rouge">completed</code>, <code class="language-plaintext highlighter-rouge">failed</code>).</li>
+  <li><strong>Results:</strong> When finished, it holds the output, called <strong>Artifacts</strong> (e.g., the translated text “Bonjour le monde”).</li>
+</ol>
+
+<p>So, if our “Translator Agent” receives a Task asking for a translation, that Task object will contain the text to translate, track whether the agent is currently translating it, and eventually hold the French translation once it’s done.</p>
+
+<h2 id="creating-and-sending-a-task">Creating and Sending a Task</h2>
+
+<p>How does a client (like your application, or another agent) actually create and send a Task to an agent server? It uses a specific command defined by the A2A protocol, usually called <code class="language-plaintext highlighter-rouge">tasks/send</code>.</p>
+
+<p>Let’s say our client found the “Translator Agent” from Chapter 1 and knows its <code class="language-plaintext highlighter-rouge">url</code> is <code class="language-plaintext highlighter-rouge">http://translator-agent.com/a2a</code>. The client wants to translate “hello”.</p>
+
+<p>Here’s a simplified Python example of how the client might send this request:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: samples/python/hosts/cli/cli_host.py (Conceptual Snippet)
+</span><span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">uuid</span> <span class="c1"># To generate unique IDs
+</span><span class="kn">from</span> <span class="nn">common.types</span> <span class="kn">import</span> <span class="n">TaskSendParams</span><span class="p">,</span> <span class="n">Message</span><span class="p">,</span> <span class="n">TextPart</span><span class="p">,</span> <span class="n">Task</span>
+
+<span class="c1"># Agent's communication endpoint (from Agent Card)
+</span><span class="n">agent_a2a_url</span> <span class="o">=</span> <span class="s">"http://translator-agent.com/a2a"</span>
+
+<span class="c1"># 1. Prepare the Task request details
+</span><span class="n">task_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="p">.</span><span class="n">uuid4</span><span class="p">())</span> <span class="c1"># Generate a unique ID for this job
+</span><span class="n">user_message</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span>
+    <span class="n">role</span><span class="o">=</span><span class="s">"user"</span><span class="p">,</span>
+    <span class="n">parts</span><span class="o">=</span><span class="p">[</span><span class="n">TextPart</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="s">"Translate 'hello' to French"</span><span class="p">)]</span>
+<span class="p">)</span>
+<span class="n">task_params</span> <span class="o">=</span> <span class="n">TaskSendParams</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="n">task_id</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="n">user_message</span><span class="p">)</span>
+
+<span class="c1"># 2. Create the JSON-RPC request structure
+</span><span class="n">request_payload</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">"jsonrpc"</span><span class="p">:</span> <span class="s">"2.0"</span><span class="p">,</span>
+    <span class="s">"method"</span><span class="p">:</span> <span class="s">"tasks/send"</span><span class="p">,</span> <span class="c1"># The command to send a task
+</span>    <span class="s">"params"</span><span class="p">:</span> <span class="n">task_params</span><span class="p">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="bp">True</span><span class="p">),</span> <span class="c1"># Our task details
+</span>    <span class="s">"id"</span><span class="p">:</span> <span class="s">"req-1"</span> <span class="c1"># An ID for *this specific web request*
+</span><span class="p">}</span>
+
+<span class="c1"># 3. Send the request to the agent's URL
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Sending task </span><span class="si">{</span><span class="n">task_id</span><span class="si">}</span><span class="s"> to </span><span class="si">{</span><span class="n">agent_a2a_url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">post</span><span class="p">(</span><span class="n">agent_a2a_url</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="n">request_payload</span><span class="p">)</span>
+<span class="n">response</span><span class="p">.</span><span class="n">raise_for_status</span><span class="p">()</span> <span class="c1"># Check for HTTP errors
+</span>
+<span class="c1"># 4. Process the response
+</span><span class="n">response_data</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">json</span><span class="p">()</span>
+<span class="k">if</span> <span class="n">response_data</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"result"</span><span class="p">):</span>
+  <span class="c1"># Agent accepted the task! It returns the initial Task object.
+</span>  <span class="n">initial_task</span> <span class="o">=</span> <span class="n">Task</span><span class="p">(</span><span class="o">**</span><span class="n">response_data</span><span class="p">[</span><span class="s">"result"</span><span class="p">])</span>
+  <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Task created! ID: </span><span class="si">{</span><span class="n">initial_task</span><span class="p">.</span><span class="nb">id</span><span class="si">}</span><span class="s">, State: </span><span class="si">{</span><span class="n">initial_task</span><span class="p">.</span><span class="n">status</span><span class="p">.</span><span class="n">state</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">elif</span> <span class="n">response_data</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"error"</span><span class="p">):</span>
+  <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error creating task: </span><span class="si">{</span><span class="n">response_data</span><span class="p">[</span><span class="s">'error'</span><span class="p">]</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Prepare Details:</strong> We generate a unique <code class="language-plaintext highlighter-rouge">task_id</code> and create the <code class="language-plaintext highlighter-rouge">Message</code> containing the text we want translated. These become the <code class="language-plaintext highlighter-rouge">params</code> for our request.</li>
+  <li><strong>Build Request:</strong> We wrap our <code class="language-plaintext highlighter-rouge">params</code> in a standard structure specifying the <code class="language-plaintext highlighter-rouge">method</code> (<code class="language-plaintext highlighter-rouge">tasks/send</code>) we want the agent to execute. (This structure is part of JSON-RPC, which is used by A2A - more on this in the <a href="03_a2a_protocol___core_types.md">next chapter</a>).</li>
+  <li><strong>Send:</strong> We use the <code class="language-plaintext highlighter-rouge">requests</code> library to send this structure as JSON data via an HTTP POST request to the agent’s A2A <code class="language-plaintext highlighter-rouge">url</code>.</li>
+  <li><strong>Process Response:</strong> The agent sends back a response. If successful, the <code class="language-plaintext highlighter-rouge">result</code> contains the newly created <code class="language-plaintext highlighter-rouge">Task</code> object, likely in the <code class="language-plaintext highlighter-rouge">submitted</code> state. We print its ID and initial state. If something went wrong, the <code class="language-plaintext highlighter-rouge">error</code> field will contain details.</li>
+</ol>
+
+<p><strong>Example Output:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Sending task a1b2c3d4-e5f6-7890-abcd-ef1234567890 to http://translator-agent.com/a2a
+Task created! ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890, State: submitted
+</code></pre></div></div>
+
+<p>Now the client knows the task was received and has its unique ID (<code class="language-plaintext highlighter-rouge">a1b2c3d4-...</code>). It can use this ID later to check the status or get the final result.</p>
+
+<h2 id="task-lifecycle-states">Task Lifecycle: States</h2>
+
+<p>A task doesn’t just get created and instantly completed. It goes through different stages, represented by its <code class="language-plaintext highlighter-rouge">state</code> field. Here are the main states:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">submitted</code>: The agent has received the task request but hasn’t started working on it yet.</li>
+  <li><code class="language-plaintext highlighter-rouge">working</code>: The agent is actively processing the request (e.g., performing the translation).</li>
+  <li><code class="language-plaintext highlighter-rouge">input-required</code>: (Optional) The agent needs more information from the client to continue. The client would then send another message using the same Task ID.</li>
+  <li><code class="language-plaintext highlighter-rouge">completed</code>: The agent finished successfully. The results are available in the Task’s <code class="language-plaintext highlighter-rouge">artifacts</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">failed</code>: The agent encountered an error and could not complete the task.</li>
+  <li><code class="language-plaintext highlighter-rouge">canceled</code>: The client (or agent) explicitly canceled the task before completion.</li>
+  <li><code class="language-plaintext highlighter-rouge">unknown</code>: The state couldn’t be determined.</li>
+</ul>
+
+<p>These states allow the client to understand the progress of their request. For long-running tasks, the agent might even send updates as the state changes (we’ll cover this in <a href="07_streaming_communication__sse_.md">Chapter 7: Streaming Communication (SSE)</a>).</p>
+
+<h2 id="under-the-hood-how-a-task-is-handled">Under the Hood: How a Task is Handled</h2>
+
+<p>Let’s trace what happens when the client sends that <code class="language-plaintext highlighter-rouge">tasks/send</code> request:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant C as Client App
+    participant A as Agent Server (A2A Endpoint)
+    participant TS as Task Store (e.g., Memory, DB)
+    participant TL as Task Logic (e.g., Translator)
+
+    C-&gt;&gt;A: POST /a2a (JSON-RPC: method="tasks/send", params={id="T1", msg="Translate..."})
+    Note right of A: Receives HTTP request, parses JSON-RPC
+
+    A-&gt;&gt;TS: Create/Find Task Record (ID: "T1")
+    Note right of TS: Creates a new Task object in 'submitted' state
+    TS--&gt;&gt;A: New Task Object (ID: "T1", state: "submitted")
+
+    A--&gt;&gt;C: 200 OK (JSON-RPC: result={Task Object with state 'submitted'})
+    Note left of C: Client receives confirmation Task is created
+
+    Note over A,TL: Agent asynchronously starts processing...
+    A-&gt;&gt;TL: Start processing Task "T1" (Input: "Translate...")
+    A-&gt;&gt;TS: Update Task "T1" status to 'working'
+    Note right of TS: Updates Task record state
+
+    TL-&gt;&gt;A: Processing finished (Output: "Bonjour")
+    Note over A,TS: Agent updates Task with result and 'completed' state
+    A-&gt;&gt;TS: Update Task "T1" (state: 'completed', artifacts: ["Bonjour"])
+
+</code></pre>
+
+<p><strong>Steps:</strong></p>
+
+<ol>
+  <li><strong>Client Sends Request:</strong> The client sends the <code class="language-plaintext highlighter-rouge">tasks/send</code> JSON-RPC request via HTTP POST to the agent’s A2A URL.</li>
+  <li><strong>Server Receives:</strong> The agent server receives the request and understands it wants to start a task.</li>
+  <li><strong>Server Stores Task:</strong> The server creates a new <code class="language-plaintext highlighter-rouge">Task</code> record (using something like the <code class="language-plaintext highlighter-rouge">InMemoryTaskStore</code> or <code class="language-plaintext highlighter-rouge">FileStore</code> shown in <code class="language-plaintext highlighter-rouge">samples/js/src/server/store.ts</code> or conceptually managed by <code class="language-plaintext highlighter-rouge">samples/python/common/server/task_manager.py</code>). It assigns the initial <code class="language-plaintext highlighter-rouge">submitted</code> state and stores the user’s message.</li>
+  <li><strong>Server Responds:</strong> The server immediately sends a response back to the client confirming the task was created, including the initial <code class="language-plaintext highlighter-rouge">Task</code> object.</li>
+  <li><strong>Server Processes (Async):</strong> The server (likely in the background) triggers the actual work (e.g., calls its internal translation logic). It updates the task’s state in the store to <code class="language-plaintext highlighter-rouge">working</code>.</li>
+  <li><strong>Server Completes:</strong> Once the translation is done, the server updates the task’s state to <code class="language-plaintext highlighter-rouge">completed</code> and adds the result (“Bonjour”) as an <code class="language-plaintext highlighter-rouge">Artifact</code> in the task record within the store.</li>
+</ol>
+
+<p>The client can later use the Task ID (<code class="language-plaintext highlighter-rouge">T1</code>) to fetch the updated Task object (using a different command like <code class="language-plaintext highlighter-rouge">tasks/get</code>) and retrieve the final translation from the <code class="language-plaintext highlighter-rouge">artifacts</code>.</p>
+
+<h3 id="key-data-structures">Key Data Structures</h3>
+
+<p>The definition of these structures can be found in the protocol specification and helper libraries:</p>
+
+<ul>
+  <li><strong>Task:</strong> (<code class="language-plaintext highlighter-rouge">samples/python/common/types.py:Task</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:Task</code>) Holds the ID, status, artifacts, history, etc.</li>
+  <li><strong>Message:</strong> (<code class="language-plaintext highlighter-rouge">samples/python/common/types.py:Message</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:Message</code>) Represents a communication turn (user or agent) containing Parts.</li>
+  <li><strong>Part:</strong> (<code class="language-plaintext highlighter-rouge">samples/python/common/types.py:Part</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:Part</code>) The actual content (text, file, or structured data).</li>
+  <li><strong>Artifact:</strong> (<code class="language-plaintext highlighter-rouge">samples/python/common/types.py:Artifact</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:Artifact</code>) Output generated by the agent, also composed of Parts.</li>
+  <li><strong>TaskStatus:</strong> (<code class="language-plaintext highlighter-rouge">samples/python/common/types.py:TaskStatus</code>, <code class="language-plaintext highlighter-rouge">samples/js/src/schema.ts:TaskStatus</code>) Contains the <code class="language-plaintext highlighter-rouge">TaskState</code> and timestamp.</li>
+</ul>
+
+<div class="language-typescript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// File: samples/js/src/schema.ts (Simplified Task Structure)</span>
+
+<span class="k">export</span> <span class="kr">interface</span> <span class="nx">Task</span> <span class="p">{</span>
+  <span class="c1">// Unique identifier for the task.</span>
+  <span class="nl">id</span><span class="p">:</span> <span class="kr">string</span><span class="p">;</span>
+  <span class="c1">// The current status of the task.</span>
+  <span class="nl">status</span><span class="p">:</span> <span class="nx">TaskStatus</span><span class="p">;</span>
+  <span class="c1">// Optional list of artifacts (outputs).</span>
+  <span class="nl">artifacts</span><span class="p">?:</span> <span class="nx">Artifact</span><span class="p">[]</span> <span class="o">|</span> <span class="kc">null</span><span class="p">;</span>
+  <span class="c1">// (Optional) History of messages for this task</span>
+  <span class="c1">// history?: Message[] | null;</span>
+  <span class="c1">// ... other fields like sessionId, metadata</span>
+<span class="p">}</span>
+
+<span class="k">export</span> <span class="kr">interface</span> <span class="nx">TaskStatus</span> <span class="p">{</span>
+  <span class="c1">// The current state (e.g., "submitted", "working", "completed").</span>
+  <span class="nl">state</span><span class="p">:</span> <span class="nx">TaskState</span><span class="p">;</span>
+  <span class="c1">// Optional message associated with this status.</span>
+  <span class="nl">message</span><span class="p">?:</span> <span class="nx">Message</span> <span class="o">|</span> <span class="kc">null</span><span class="p">;</span>
+  <span class="c1">// Timestamp of this status update.</span>
+  <span class="nl">timestamp</span><span class="p">?:</span> <span class="kr">string</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// Example Artifact containing translated text</span>
+<span class="c1">// artifact = { parts: [ { type: "text", text: "Bonjour le monde" } ] }</span>
+</code></pre></div></div>
+
+<p>This structure acts as the digital “work order” that travels between the client and the agent, carrying the request, tracking progress, and holding the final result.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <strong>Task</strong> is the fundamental unit of work in the A2A protocol. It’s how one agent asks another to do something. Think of it as a formal job request or work order that:</p>
+
+<ul>
+  <li>Contains the initial instructions (as a <code class="language-plaintext highlighter-rouge">Message</code>).</li>
+  <li>Has a unique ID for tracking.</li>
+  <li>Goes through different states (<code class="language-plaintext highlighter-rouge">submitted</code>, <code class="language-plaintext highlighter-rouge">working</code>, <code class="language-plaintext highlighter-rouge">completed</code>, etc.) to show progress.</li>
+  <li>Holds the final results (<code class="language-plaintext highlighter-rouge">Artifacts</code>).</li>
+</ul>
+
+<p>By sending a <code class="language-plaintext highlighter-rouge">tasks/send</code> request, a client initiates a Task, and by checking the Task’s status and artifacts later, the client gets the results.</p>
+
+<p>Now that we understand the basic concepts of finding an agent (<a href="01_agent_card.md">Agent Card</a>) and giving it work (<a href="02_task.md">Task</a>), let’s look closer at the communication rules and the specific data types used in the A2A protocol.</p>
+
+<p><strong>Next:</strong> <a href="03_a2a_protocol___core_types.md">Chapter 3: A2A Protocol &amp; Core Types</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

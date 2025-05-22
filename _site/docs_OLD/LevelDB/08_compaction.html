@@ -1,0 +1,342 @@
+<h1 id="chapter-8-compaction---keeping-the-library-tidy">Chapter 8: Compaction - Keeping the Library Tidy</h1>
+
+<p>In <a href="07_iterator.md">Chapter 7: Iterator</a>, we saw how LevelDB provides iterators to give us a unified, sorted view of our data, cleverly merging information from the in-memory <a href="02_memtable.md">MemTable</a> and the various <a href="01_table___sstable___tablecache.md">SSTable</a> files on disk.</p>
+
+<p>This works great, but think about what happens over time. Every time a MemTable fills up, it gets flushed to a <em>new</em> SSTable file in Level-0. If you have lots of writes, you’ll quickly accumulate many small files in Level-0. Also, when you update or delete a key, LevelDB doesn’t modify old SSTables; it just writes a <em>new</em> entry (a new value or a deletion marker) in a newer MemTable or SSTable. This means older files contain outdated or deleted data that’s just taking up space.</p>
+
+<h2 id="whats-the-problem-a-messy-inefficient-library">What’s the Problem? A Messy, Inefficient Library</h2>
+
+<p>Imagine our library again. New notes and pamphlets (MemTable flushes) keep arriving and get dumped in a temporary pile (Level-0). Meanwhile, older books on the main shelves (higher levels) contain crossed-out paragraphs (deleted data) or outdated information (overwritten data).</p>
+
+<p>This leads to several problems:</p>
+
+<ol>
+  <li><strong>Slow Reads:</strong> To find a specific piece of information, the librarian might have to check <em>many</em> different pamphlets in the temporary pile (Level-0) before even getting to the main shelves. Reading from many files is slow.</li>
+  <li><strong>Wasted Space:</strong> The library shelves are cluttered with books containing crossed-out sections or old editions that are no longer needed. This wastes valuable shelf space.</li>
+  <li><strong>Growing Number of Files:</strong> The temporary pile (Level-0) just keeps growing, making it harder and harder to manage.</li>
+</ol>
+
+<p>We need a process to periodically tidy up this library, organize the temporary pile into the main shelves, and remove the outdated information.</p>
+
+<h2 id="compaction-the-background-tidy-up-crew">Compaction: The Background Tidy-Up Crew</h2>
+
+<p><strong>Compaction</strong> is LevelDB’s background process that solves these problems. It’s like the library staff who work quietly behind the scenes to keep the library organized and efficient.</p>
+
+<p>Here’s what compaction does:</p>
+
+<ol>
+  <li><strong>Selects Files:</strong> It picks one or more SSTable files from a specific level (let’s say Level-N). Often, this starts with files in Level-0.</li>
+  <li><strong>Finds Overlapping Files:</strong> It identifies the files in the <em>next</em> level (Level-N+1) whose key ranges overlap with the selected files from Level-N.</li>
+  <li><strong>Merges and Filters:</strong> It reads the key-value pairs from <em>all</em> these selected files (from both Level-N and Level-N+1) using iterators, much like the merging process we saw in <a href="07_iterator.md">Chapter 7: Iterator</a>. As it merges, it performs crucial filtering:
+    <ul>
+      <li>It keeps only the <em>latest</em> version of each key (based on sequence numbers).</li>
+      <li>It completely discards keys that have been deleted.</li>
+      <li>It discards older versions of keys that have been updated.</li>
+    </ul>
+  </li>
+  <li><strong>Writes New Files:</strong> It writes the resulting stream of filtered, sorted key-value pairs into <em>new</em> SSTable files at Level-N+1. These new files are typically larger and contain only live data.</li>
+  <li><strong>Updates Catalog:</strong> It updates the database’s catalog (<a href="06_version___versionset.md">Version &amp; VersionSet</a>) to reflect the changes: the old input files (from Level-N and Level-N+1) are marked for deletion, and the new output files (in Level-N+1) are added.</li>
+  <li><strong>Deletes Old Files:</strong> Finally, the old, now-obsolete input SSTable files are deleted from the disk.</li>
+</ol>
+
+<p><strong>Analogy:</strong> The library staff takes a batch of pamphlets from the temporary pile (Level-0) and finds the corresponding books on the main shelves (Level-1). They go through both, creating a new, clean edition of the book (new Level-1 SSTable) that incorporates the new information from the pamphlets, removes any crossed-out entries, and keeps only the latest version of each topic. Then, they discard the original pamphlets and the old version of the book.</p>
+
+<p>This process happens continuously in the background, keeping the database structure efficient.</p>
+
+<h2 id="triggering-compaction-when-to-tidy-up">Triggering Compaction: When to Tidy Up?</h2>
+
+<p>How does LevelDB decide when to run a compaction? The <a href="04_dbimpl.md">DBImpl</a> checks if compaction is needed after writes or reads, or when background work finishes. It uses the <a href="06_version___versionset.md">VersionSet</a> to determine this, primarily based on two conditions:</p>
+
+<ol>
+  <li><strong>Size Compaction:</strong> Each level (except Level-0) has a target size limit. If the total size of files in a level exceeds its limit, the <code class="language-plaintext highlighter-rouge">VersionSet</code> calculates a “compaction score”. If the score is &gt;= 1, a size compaction is needed. This is the most common trigger. Level-0 is special: it triggers compaction based on the <em>number</em> of files, not their total size, because too many files there significantly slows down reads.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">config::kL0_CompactionTrigger</code>: Default is 4 files.</li>
+      <li>Higher levels (1+): Trigger based on total bytes (<code class="language-plaintext highlighter-rouge">MaxBytesForLevel</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Seek Compaction:</strong> To avoid performance issues caused by reading very wide (many keys) but shallow (few overwrites/deletions) files repeatedly, LevelDB tracks how many times a file is “seeked” during reads. If a file receives too many seeks (<code class="language-plaintext highlighter-rouge">allowed_seeks</code> counter drops to zero), it might be chosen for compaction even if the level size limit isn’t reached. This helps rewrite files that are frequently accessed, potentially merging them or breaking them up.</li>
+</ol>
+
+<p>When <code class="language-plaintext highlighter-rouge">DBImpl::MaybeScheduleCompaction</code> detects that work is needed (and no other background work is running), it schedules the <code class="language-plaintext highlighter-rouge">DBImpl::BGWork</code> function to run on a background thread.</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/db_impl.cc ---</span>
+
+<span class="kt">void</span> <span class="n">DBImpl</span><span class="o">::</span><span class="n">MaybeScheduleCompaction</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">mutex_</span><span class="p">.</span><span class="n">AssertHeld</span><span class="p">();</span> <span class="c1">// Must hold lock to check/change state</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="n">background_compaction_scheduled_</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Already scheduled</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">shutting_down_</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_acquire</span><span class="p">))</span> <span class="p">{</span>
+    <span class="c1">// DB is closing</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">bg_error_</span><span class="p">.</span><span class="n">ok</span><span class="p">())</span> <span class="p">{</span>
+    <span class="c1">// Background error stopped activity</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">imm_</span> <span class="o">==</span> <span class="nb">nullptr</span> <span class="o">&amp;&amp;</span> <span class="c1">// No MemTable flush needed AND</span>
+             <span class="n">manual_compaction_</span> <span class="o">==</span> <span class="nb">nullptr</span> <span class="o">&amp;&amp;</span> <span class="c1">// No manual request AND</span>
+             <span class="o">!</span><span class="n">versions_</span><span class="o">-&gt;</span><span class="n">NeedsCompaction</span><span class="p">())</span> <span class="p">{</span> <span class="c1">// &lt;&lt;-- VersionSet check!</span>
+    <span class="c1">// No work to be done: VersionSet says size/seek limits are okay.</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+    <span class="c1">// Work needs to be done! Schedule it.</span>
+    <span class="n">background_compaction_scheduled_</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span>
+    <span class="n">env_</span><span class="o">-&gt;</span><span class="n">Schedule</span><span class="p">(</span><span class="o">&amp;</span><span class="n">DBImpl</span><span class="o">::</span><span class="n">BGWork</span><span class="p">,</span> <span class="k">this</span><span class="p">);</span> <span class="c1">// Ask Env to run BGWork later</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// --- Simplified from db/version_set.h ---</span>
+
+<span class="c1">// In VersionSet::NeedsCompaction()</span>
+<span class="kt">bool</span> <span class="n">NeedsCompaction</span><span class="p">()</span> <span class="k">const</span> <span class="p">{</span>
+  <span class="n">Version</span><span class="o">*</span> <span class="n">v</span> <span class="o">=</span> <span class="n">current_</span><span class="p">;</span>
+  <span class="c1">// Check score (size trigger) OR if a file needs compaction due to seeks</span>
+  <span class="k">return</span> <span class="p">(</span><span class="n">v</span><span class="o">-&gt;</span><span class="n">compaction_score_</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">||</span> <span class="p">(</span><span class="n">v</span><span class="o">-&gt;</span><span class="n">file_to_compact_</span> <span class="o">!=</span> <span class="nb">nullptr</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="the-compaction-process-a-closer-look">The Compaction Process: A Closer Look</h2>
+
+<p>Let’s break down the steps involved when a background compaction runs (specifically a major compaction between levels N and N+1):</p>
+
+<p><strong>1. Picking the Compaction (<code class="language-plaintext highlighter-rouge">VersionSet::PickCompaction</code>)</strong></p>
+
+<p>The first step is deciding <em>what</em> to compact. <code class="language-plaintext highlighter-rouge">VersionSet::PickCompaction</code> is responsible for this:</p>
+
+<ul>
+  <li>It checks if a seek-based compaction is pending (<code class="language-plaintext highlighter-rouge">file_to_compact_ != nullptr</code>). If so, it chooses that file and its level.</li>
+  <li>Otherwise, it looks at the <code class="language-plaintext highlighter-rouge">compaction_score_</code> and <code class="language-plaintext highlighter-rouge">compaction_level_</code> pre-calculated for the current <a href="06_version___versionset.md">Version</a>. If the score is &gt;= 1, it chooses that level for a size-based compaction.</li>
+  <li>It creates a <code class="language-plaintext highlighter-rouge">Compaction</code> object to hold information about this task.</li>
+  <li>It selects an initial set of files from the chosen level (Level-N) to compact. For size compactions, it often picks the file just after the <code class="language-plaintext highlighter-rouge">compact_pointer_</code> for that level (a bookmark remembering where the last compaction ended) to ensure work spreads across the key range over time.</li>
+  <li>For Level-0, since files can overlap, it expands this initial set to include <em>all</em> Level-0 files that overlap with the initially chosen file(s).</li>
+</ul>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/version_set.cc ---</span>
+
+<span class="n">Compaction</span><span class="o">*</span> <span class="n">VersionSet</span><span class="o">::</span><span class="n">PickCompaction</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">Compaction</span><span class="o">*</span> <span class="n">c</span> <span class="o">=</span> <span class="nb">nullptr</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">level</span><span class="p">;</span>
+
+  <span class="c1">// Check for seek-triggered compaction first</span>
+  <span class="k">const</span> <span class="kt">bool</span> <span class="n">seek_compaction</span> <span class="o">=</span> <span class="p">(</span><span class="n">current_</span><span class="o">-&gt;</span><span class="n">file_to_compact_</span> <span class="o">!=</span> <span class="nb">nullptr</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">seek_compaction</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">level</span> <span class="o">=</span> <span class="n">current_</span><span class="o">-&gt;</span><span class="n">file_to_compact_level_</span><span class="p">;</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Compaction</span><span class="p">(</span><span class="n">options_</span><span class="p">,</span> <span class="n">level</span><span class="p">);</span>
+    <span class="n">c</span><span class="o">-&gt;</span><span class="n">inputs_</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">push_back</span><span class="p">(</span><span class="n">current_</span><span class="o">-&gt;</span><span class="n">file_to_compact_</span><span class="p">);</span> <span class="c1">// Add the specific file</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+    <span class="c1">// Check for size-triggered compaction</span>
+    <span class="k">const</span> <span class="kt">bool</span> <span class="n">size_compaction</span> <span class="o">=</span> <span class="p">(</span><span class="n">current_</span><span class="o">-&gt;</span><span class="n">compaction_score_</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">size_compaction</span><span class="p">)</span> <span class="p">{</span>
+      <span class="k">return</span> <span class="nb">nullptr</span><span class="p">;</span> <span class="c1">// No compaction needed</span>
+    <span class="p">}</span>
+    <span class="n">level</span> <span class="o">=</span> <span class="n">current_</span><span class="o">-&gt;</span><span class="n">compaction_level_</span><span class="p">;</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Compaction</span><span class="p">(</span><span class="n">options_</span><span class="p">,</span> <span class="n">level</span><span class="p">);</span>
+
+    <span class="c1">// Pick starting file in chosen level (often based on compact_pointer_)</span>
+    <span class="c1">// ... logic to select initial file(s) ...</span>
+    <span class="c1">// c-&gt;inputs_[0].push_back(chosen_file);</span>
+  <span class="p">}</span>
+
+  <span class="n">c</span><span class="o">-&gt;</span><span class="n">input_version_</span> <span class="o">=</span> <span class="n">current_</span><span class="p">;</span> <span class="c1">// Remember which Version we are compacting</span>
+  <span class="n">c</span><span class="o">-&gt;</span><span class="n">input_version_</span><span class="o">-&gt;</span><span class="n">Ref</span><span class="p">();</span>
+
+  <span class="c1">// Expand Level-0 inputs if necessary due to overlap</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">level</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">InternalKey</span> <span class="n">smallest</span><span class="p">,</span> <span class="n">largest</span><span class="p">;</span>
+    <span class="n">GetRange</span><span class="p">(</span><span class="n">c</span><span class="o">-&gt;</span><span class="n">inputs_</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="o">&amp;</span><span class="n">smallest</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">largest</span><span class="p">);</span> <span class="c1">// Find range of initial file(s)</span>
+    <span class="c1">// Find ALL L0 files overlapping that range</span>
+    <span class="n">current_</span><span class="o">-&gt;</span><span class="n">GetOverlappingInputs</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">smallest</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">largest</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">c</span><span class="o">-&gt;</span><span class="n">inputs_</span><span class="p">[</span><span class="mi">0</span><span class="p">]);</span>
+    <span class="n">assert</span><span class="p">(</span><span class="o">!</span><span class="n">c</span><span class="o">-&gt;</span><span class="n">inputs_</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">empty</span><span class="p">());</span>
+  <span class="p">}</span>
+
+  <span class="c1">// Now figure out the overlapping files in the next level (Level+1)</span>
+  <span class="n">SetupOtherInputs</span><span class="p">(</span><span class="n">c</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">c</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>2. Setting Up Inputs (<code class="language-plaintext highlighter-rouge">VersionSet::SetupOtherInputs</code>)</strong></p>
+
+<p>Once the initial Level-N files are chosen, <code class="language-plaintext highlighter-rouge">SetupOtherInputs</code> figures out the rest:</p>
+
+<ul>
+  <li>It determines the smallest and largest keys covered by the Level-N input files.</li>
+  <li>It finds all files in Level-(N+1) that overlap this key range. These become <code class="language-plaintext highlighter-rouge">c-&gt;inputs_[1]</code>.</li>
+  <li>It might slightly expand the Level-N inputs if doing so allows including more Level-N files without pulling in any <em>additional</em> Level-(N+1) files (this can make compactions more efficient).</li>
+  <li>It finds all files in Level-(N+2) that overlap the <em>total</em> key range of the compaction. These are the “grandparents”. This is important to prevent creating huge files in Level-(N+1) that would overlap too much data in Level-(N+2), making future compactions expensive.</li>
+</ul>
+
+<p><strong>3. Performing the Work (<code class="language-plaintext highlighter-rouge">DBImpl::DoCompactionWork</code>)</strong></p>
+
+<p>This is where the main merging happens. It runs on the background thread, and importantly, it <strong>releases the main database lock</strong> (<code class="language-plaintext highlighter-rouge">mutex_.Unlock()</code>) while doing the heavy I/O.</p>
+
+<ul>
+  <li><strong>Input Iterator:</strong> Creates a <code class="language-plaintext highlighter-rouge">MergingIterator</code> (<a href="07_iterator.md">Chapter 7: Iterator</a>) that reads from all input files (Level-N and Level-N+1) as a single sorted stream (<code class="language-plaintext highlighter-rouge">versions_-&gt;MakeInputIterator(compact)</code>).</li>
+  <li><strong>Snapshot:</strong> Determines the oldest sequence number needed by any existing snapshot (<code class="language-plaintext highlighter-rouge">compact-&gt;smallest_snapshot</code>). Entries older than this can potentially be dropped even if not deleted.</li>
+  <li><strong>Loop:</strong> Iterates through the <code class="language-plaintext highlighter-rouge">MergingIterator</code>:
+    <ul>
+      <li>Reads the next internal key/value.</li>
+      <li><strong>Parses Key:</strong> Extracts user key, sequence number, and type.</li>
+      <li><strong>Checks for Stop:</strong> Decides if the current output file should be finished and a new one started (e.g., due to size limits or too much overlap with grandparents).</li>
+      <li><strong>Drop Logic:</strong> Determines if the current entry should be dropped:
+        <ul>
+          <li>Is it a deletion marker for a key that has no older data in lower levels (<code class="language-plaintext highlighter-rouge">IsBaseLevelForKey</code>) and is older than the oldest snapshot? (Obsolete deletion marker).</li>
+          <li>Is it an entry for a key where we’ve already seen a <em>newer</em> entry during this same compaction?</li>
+          <li>Is it older than the <code class="language-plaintext highlighter-rouge">smallest_snapshot</code> AND we’ve already seen a newer entry for this key (even if that newer entry was also dropped)?</li>
+        </ul>
+      </li>
+      <li><strong>Keep Logic:</strong> If the entry is not dropped:
+        <ul>
+          <li>Opens a new output SSTable file in Level-(N+1) if one isn’t already open (<code class="language-plaintext highlighter-rouge">OpenCompactionOutputFile</code>).</li>
+          <li>Adds the key/value pair to the <code class="language-plaintext highlighter-rouge">TableBuilder</code> (<code class="language-plaintext highlighter-rouge">compact-&gt;builder-&gt;Add</code>).</li>
+          <li>Updates the smallest/largest keys for the output file metadata.</li>
+          <li>Closes the output file if it reaches the target size (<code class="language-plaintext highlighter-rouge">FinishCompactionOutputFile</code>).</li>
+        </ul>
+      </li>
+      <li>Moves to the next input entry (<code class="language-plaintext highlighter-rouge">input-&gt;Next()</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Finish:</strong> Writes the last output file.</li>
+  <li><strong>Status:</strong> Checks for errors from the input iterator or file writes.</li>
+</ul>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Highly simplified loop from db/db_impl.cc DoCompactionWork ---</span>
+
+<span class="c1">// Create iterator over Level-N and Level-N+1 input files</span>
+<span class="n">Iterator</span><span class="o">*</span> <span class="n">input</span> <span class="o">=</span> <span class="n">versions_</span><span class="o">-&gt;</span><span class="n">MakeInputIterator</span><span class="p">(</span><span class="n">compact</span><span class="o">-&gt;</span><span class="n">compaction</span><span class="p">);</span>
+<span class="n">input</span><span class="o">-&gt;</span><span class="n">SeekToFirst</span><span class="p">();</span>
+
+<span class="c1">// ... Release Mutex ...</span>
+
+<span class="k">while</span> <span class="p">(</span><span class="n">input</span><span class="o">-&gt;</span><span class="n">Valid</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">shutting_down_</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">Slice</span> <span class="n">key</span> <span class="o">=</span> <span class="n">input</span><span class="o">-&gt;</span><span class="n">key</span><span class="p">();</span>
+  <span class="n">Slice</span> <span class="n">value</span> <span class="o">=</span> <span class="n">input</span><span class="o">-&gt;</span><span class="n">value</span><span class="p">();</span>
+
+  <span class="c1">// Should we finish the current output file and start a new one?</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">compact</span><span class="o">-&gt;</span><span class="n">compaction</span><span class="o">-&gt;</span><span class="n">ShouldStopBefore</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">&amp;&amp;</span> <span class="n">compact</span><span class="o">-&gt;</span><span class="n">builder</span> <span class="o">!=</span> <span class="nb">nullptr</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="n">FinishCompactionOutputFile</span><span class="p">(</span><span class="n">compact</span><span class="p">,</span> <span class="n">input</span><span class="p">);</span>
+    <span class="c1">// ... handle status ...</span>
+  <span class="p">}</span>
+
+  <span class="c1">// Should we drop this key/value pair?</span>
+  <span class="kt">bool</span> <span class="n">drop</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">ParseInternalKey</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">ikey</span><span class="p">))</span> <span class="p">{</span>
+      <span class="c1">// Logic based on ikey.sequence, ikey.type, smallest_snapshot,</span>
+      <span class="c1">// last_sequence_for_key, IsBaseLevelForKey...</span>
+      <span class="c1">// drop = true if this entry is deleted, shadowed, or obsolete.</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+      <span class="c1">// Corrupt key? Maybe keep it? (See actual code for details)</span>
+  <span class="p">}</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">drop</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Open output file if needed</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">compact</span><span class="o">-&gt;</span><span class="n">builder</span> <span class="o">==</span> <span class="nb">nullptr</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">status</span> <span class="o">=</span> <span class="n">OpenCompactionOutputFile</span><span class="p">(</span><span class="n">compact</span><span class="p">);</span>
+      <span class="c1">// ... handle status ...</span>
+    <span class="p">}</span>
+    <span class="c1">// Add key/value to the output file being built</span>
+    <span class="n">compact</span><span class="o">-&gt;</span><span class="n">builder</span><span class="o">-&gt;</span><span class="n">Add</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">);</span>
+    <span class="c1">// ... update output file metadata (smallest/largest key) ...</span>
+
+    <span class="c1">// Close output file if it's big enough</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">compact</span><span class="o">-&gt;</span><span class="n">builder</span><span class="o">-&gt;</span><span class="n">FileSize</span><span class="p">()</span> <span class="o">&gt;=</span> <span class="n">compact</span><span class="o">-&gt;</span><span class="n">compaction</span><span class="o">-&gt;</span><span class="n">MaxOutputFileSize</span><span class="p">())</span> <span class="p">{</span>
+      <span class="n">status</span> <span class="o">=</span> <span class="n">FinishCompactionOutputFile</span><span class="p">(</span><span class="n">compact</span><span class="p">,</span> <span class="n">input</span><span class="p">);</span>
+      <span class="c1">// ... handle status ...</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+
+  <span class="c1">// Advance to the next key in the merged input stream</span>
+  <span class="n">input</span><span class="o">-&gt;</span><span class="n">Next</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="c1">// ... Finish the last output file ...</span>
+<span class="c1">// ... Check input iterator status ...</span>
+<span class="k">delete</span> <span class="n">input</span><span class="p">;</span>
+
+<span class="c1">// ... Re-acquire Mutex ...</span>
+</code></pre></div></div>
+
+<p><strong>4. Installing Results (<code class="language-plaintext highlighter-rouge">DBImpl::InstallCompactionResults</code>)</strong></p>
+
+<p>If the compaction work finished successfully:</p>
+
+<ul>
+  <li>A <code class="language-plaintext highlighter-rouge">VersionEdit</code> is created.</li>
+  <li>It records the deletion of all input files (from Level-N and Level-N+1).</li>
+  <li>It records the addition of all the newly created output files (in Level-N+1), including their file numbers, sizes, and key ranges.</li>
+  <li><code class="language-plaintext highlighter-rouge">VersionSet::LogAndApply</code> is called to:
+    <ul>
+      <li>Write the <code class="language-plaintext highlighter-rouge">VersionEdit</code> to the <code class="language-plaintext highlighter-rouge">MANIFEST</code> file.</li>
+      <li>Create a new <code class="language-plaintext highlighter-rouge">Version</code> reflecting these changes.</li>
+      <li>Make this new <code class="language-plaintext highlighter-rouge">Version</code> the <code class="language-plaintext highlighter-rouge">current</code> one.</li>
+    </ul>
+  </li>
+</ul>
+
+<p><strong>5. Cleaning Up (<code class="language-plaintext highlighter-rouge">DBImpl::RemoveObsoleteFiles</code>)</strong></p>
+
+<p>After the new <code class="language-plaintext highlighter-rouge">Version</code> is successfully installed:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">DBImpl</code> calls <code class="language-plaintext highlighter-rouge">RemoveObsoleteFiles</code>.</li>
+  <li>This function gets the list of all files needed by <em>any</em> live <code class="language-plaintext highlighter-rouge">Version</code> (including those held by snapshots or iterators).</li>
+  <li>It compares this list with the actual files in the database directory.</li>
+  <li>Any file that exists on disk but is <em>not</em> in the live set (like the input files from the just-completed compaction) is deleted from the filesystem.</li>
+</ul>
+
+<p><strong>Compaction Flow Diagram:</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant DBImplBG as Background Thread
+    participant VS as VersionSet
+    participant Version as Current Version
+    participant InputIter as Merging Iterator
+    participant Builder as TableBuilder
+    participant Manifest as MANIFEST Log
+    participant FS as File System
+
+    DBImplBG-&gt;&gt;VS: PickCompaction()
+    VS-&gt;&gt;Version: Find files based on score/seeks
+    VS--&gt;&gt;DBImplBG: Return Compaction object 'c'
+    DBImplBG-&gt;&gt;VS: MakeInputIterator(c)
+    VS-&gt;&gt;Version: Get iterators for input files (L-N, L-N+1)
+    VS--&gt;&gt;DBImplBG: Return InputIter
+    DBImplBG-&gt;&gt;InputIter: SeekToFirst()
+    Note over DBImplBG: Releases DB Mutex
+    loop While InputIter.Valid()
+        DBImplBG-&gt;&gt;InputIter: key(), value()
+        alt Keep Entry
+            DBImplBG-&gt;&gt;Builder: Open File / Add(key, value)
+            DBImplBG-&gt;&gt;Builder: Finish File if needed
+        else Drop Entry
+            Note over DBImplBG: Skip Add() call
+        end
+        DBImplBG-&gt;&gt;InputIter: Next()
+    end
+    Note over DBImplBG: Re-acquires DB Mutex
+    DBImplBG-&gt;&gt;VS: LogAndApply(edit describing changes)
+    VS-&gt;&gt;Manifest: AddRecord(edit)
+    Manifest--&gt;&gt;VS: OK
+    VS-&gt;&gt;VS: Create New Version, make it current
+    VS--&gt;&gt;DBImplBG: OK
+    DBImplBG-&gt;&gt;DBImplBG: RemoveObsoleteFiles()
+    DBImplBG-&gt;&gt;FS: Delete old input SSTables
+</code></pre>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Compaction is the essential background process that keeps LevelDB performant and prevents space usage from growing indefinitely due to old data. It intelligently merges files between levels, filtering out deleted and overwritten entries while preserving a consistent view for readers.</p>
+
+<ul>
+  <li>It’s triggered by level size or file access patterns.</li>
+  <li>It uses iterators to merge input files efficiently.</li>
+  <li>It drops obsolete data based on sequence numbers and deletion markers.</li>
+  <li>It writes new, clean SSTable files to the next level.</li>
+  <li>It atomically updates the database state using <code class="language-plaintext highlighter-rouge">VersionEdit</code>s, the <code class="language-plaintext highlighter-rouge">MANIFEST</code>, and the <code class="language-plaintext highlighter-rouge">VersionSet</code>.</li>
+</ul>
+
+<p>Understanding compaction helps explain how LevelDB achieves good performance despite its append-only (immutable SSTable) design.</p>
+
+<p>But how does LevelDB manage those sequence numbers and deletion markers internally? How does it combine a user’s key with this metadata?</p>
+
+<p>Next up: <a href="09_internalkey___dbformat.md">Chapter 9: InternalKey &amp; DBFormat</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

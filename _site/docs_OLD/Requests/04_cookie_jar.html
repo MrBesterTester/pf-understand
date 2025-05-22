@@ -1,0 +1,373 @@
+<h1 id="chapter-4-the-cookie-jar---remembering-website-visits">Chapter 4: The Cookie Jar - Remembering Website Visits</h1>
+
+<p>In <a href="03_session.md">Chapter 3: Remembering Things - The Session Object</a>, we saw how <code class="language-plaintext highlighter-rouge">Session</code> objects are super useful for making multiple requests to the same website. A big reason they work so well is that they automatically remember <strong>cookies</strong> sent by the server, just like your web browser does.</p>
+
+<p>But <em>how</em> does a <code class="language-plaintext highlighter-rouge">Session</code> remember these cookies? Where does it keep them? Welcome to the <strong>Cookie Jar</strong>!</p>
+
+<h2 id="whats-the-problem-staying-logged-in">What’s the Problem? Staying Logged In</h2>
+
+<p>Imagine you log in to a website. The website usually sends back a special piece of information called a <strong>cookie</strong>. This cookie is like a temporary ID card. When you visit other pages on that <em>same</em> website, your browser automatically shows this ID card (sends the cookie back) so the website knows you’re still logged in.</p>
+
+<p>If you used the simple <code class="language-plaintext highlighter-rouge">requests.get()</code> function from <a href="01_functional_api.md">Chapter 1</a> for each step, it would forget the ID card immediately after logging in. Your next request would be treated as if you were a stranger.</p>
+
+<p><code class="language-plaintext highlighter-rouge">Session</code> objects solve this by using a <strong>Cookie Jar</strong> to hold onto those ID cards (cookies) for you.</p>
+
+<h2 id="what-are-cookies-briefly">What are Cookies (Briefly)?</h2>
+
+<p>Think of cookies as little notes or name tags that websites give to your browser (or your <code class="language-plaintext highlighter-rouge">requests</code> script).</p>
+
+<ul>
+  <li><strong>Website:</strong> “Hi, you just logged in. Here’s a name tag that says ‘User123’.” (Sends a <code class="language-plaintext highlighter-rouge">Set-Cookie</code> header)</li>
+  <li><strong>Your Browser / Session:</strong> “Okay, I’ll keep this ‘User123’ tag.” (Stores the cookie)</li>
+  <li><strong>You:</strong> (Click on another page on the same website)</li>
+  <li><strong>Your Browser / Session:</strong> “Hi website, I’d like this page. By the way, here’s my name tag: ‘User123’.” (Sends a <code class="language-plaintext highlighter-rouge">Cookie</code> header)</li>
+  <li><strong>Website:</strong> “Ah, User123, I remember you. Here’s the page you asked for.”</li>
+</ul>
+
+<p>Cookies are used to remember login status, user preferences, items in a shopping cart, etc., between different page visits.</p>
+
+<h2 id="the-cookie-jar-analogy-">The Cookie Jar Analogy 🍪</h2>
+
+<p><code class="language-plaintext highlighter-rouge">Requests</code> uses an object called a <code class="language-plaintext highlighter-rouge">RequestsCookieJar</code> to store and manage cookies. It’s very much like the cookie jar you might have in your kitchen:</p>
+
+<ol>
+  <li><strong>Collects Cookies:</strong> When a website sends you a cookie (like after you log in), the <code class="language-plaintext highlighter-rouge">Session</code> automatically puts it into its <code class="language-plaintext highlighter-rouge">Cookie Jar</code>.</li>
+  <li><strong>Stores Them Safely:</strong> The jar keeps all the cookies collected from different websites (domains).</li>
+  <li><strong>Sends the Right Ones Back:</strong> When you make <em>another</em> request to a website using the <em>same</em> <code class="language-plaintext highlighter-rouge">Session</code>, the <code class="language-plaintext highlighter-rouge">Session</code> looks into the <code class="language-plaintext highlighter-rouge">Cookie Jar</code>, finds any cookies that belong to that website’s domain, and automatically sends them back.</li>
+</ol>
+
+<p>This happens seamlessly when you use a <code class="language-plaintext highlighter-rouge">Session</code> object.</p>
+
+<h2 id="meet-requestscookiejar">Meet <code class="language-plaintext highlighter-rouge">RequestsCookieJar</code></h2>
+
+<p>The specific object <code class="language-plaintext highlighter-rouge">requests</code> uses is <code class="language-plaintext highlighter-rouge">requests.cookies.RequestsCookieJar</code>. It’s designed to work just like Python’s standard <code class="language-plaintext highlighter-rouge">http.cookiejar.CookieJar</code> but adds some convenient features, like acting like a dictionary.</p>
+
+<p>Every <code class="language-plaintext highlighter-rouge">Session</code> object has its own <code class="language-plaintext highlighter-rouge">Cookie Jar</code> accessible via the <code class="language-plaintext highlighter-rouge">s.cookies</code> attribute.</p>
+
+<p>Let’s see it in action, revisiting the example from Chapter 3:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="c1"># Create a Session object (which has its own empty Cookie Jar)
+</span><span class="n">s</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">Session</span><span class="p">()</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Initial session cookies: </span><span class="si">{</span><span class="n">s</span><span class="p">.</span><span class="n">cookies</span><span class="p">.</span><span class="n">get_dict</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Visit a page that sets a cookie
+</span><span class="n">cookie_setter_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/cookies/set/fruit/apple'</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Visiting </span><span class="si">{</span><span class="n">cookie_setter_url</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+<span class="n">response1</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">cookie_setter_url</span><span class="p">)</span>
+
+<span class="c1"># Check the Session's Cookie Jar - it should have the cookie now!
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Session cookies after setting: </span><span class="si">{</span><span class="n">s</span><span class="p">.</span><span class="n">cookies</span><span class="p">.</span><span class="n">get_dict</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Visit another page on the same domain (httpbin.org)
+</span><span class="n">cookie_viewer_url</span> <span class="o">=</span> <span class="s">'https://httpbin.org/cookies'</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Visiting </span><span class="si">{</span><span class="n">cookie_viewer_url</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+<span class="n">response2</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">cookie_viewer_url</span><span class="p">)</span>
+
+<span class="c1"># This page shows the cookies it received. Let's see if our 'fruit' cookie was sent.
+</span><span class="k">print</span><span class="p">(</span><span class="s">"Cookies received by the server:"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">response2</span><span class="p">.</span><span class="n">text</span><span class="p">)</span> <span class="c1"># httpbin.org/cookies returns JSON showing received cookies
+</span></code></pre></div></div>
+
+<p><strong>Output:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Initial session cookies: {}
+
+Visiting https://httpbin.org/cookies/set/fruit/apple...
+Session cookies after setting: {'fruit': 'apple'}
+
+Visiting https://httpbin.org/cookies...
+Cookies received by the server:
+{
+  "cookies": {
+    "fruit": "apple"
+  }
+}
+
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>We started with an empty <code class="language-plaintext highlighter-rouge">Session</code> and an empty cookie jar (<code class="language-plaintext highlighter-rouge">{}</code>).</li>
+  <li>We visited <code class="language-plaintext highlighter-rouge">/cookies/set/fruit/apple</code>. The server sent back a <code class="language-plaintext highlighter-rouge">Set-Cookie: fruit=apple; Path=/</code> header.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Session</code> object <code class="language-plaintext highlighter-rouge">s</code> automatically saw this header and stored the <code class="language-plaintext highlighter-rouge">fruit=apple</code> cookie in its jar (<code class="language-plaintext highlighter-rouge">s.cookies</code>). We confirmed this by printing <code class="language-plaintext highlighter-rouge">s.cookies.get_dict()</code>.</li>
+  <li>We then visited <code class="language-plaintext highlighter-rouge">/cookies</code> using the <em>same session</em> <code class="language-plaintext highlighter-rouge">s</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Session</code> automatically looked in <code class="language-plaintext highlighter-rouge">s.cookies</code>, found the <code class="language-plaintext highlighter-rouge">fruit</code> cookie (since it’s for the <code class="language-plaintext highlighter-rouge">httpbin.org</code> domain), and added a <code class="language-plaintext highlighter-rouge">Cookie: fruit=apple</code> header to the request.</li>
+  <li>The server at <code class="language-plaintext highlighter-rouge">/cookies</code> received this header and echoed it back, confirming our cookie was sent!</li>
+</ol>
+
+<p>The <code class="language-plaintext highlighter-rouge">Session</code> and its <code class="language-plaintext highlighter-rouge">Cookie Jar</code> handled the persistence automatically.</p>
+
+<h2 id="cookies-in-the-response">Cookies in the Response</h2>
+
+<p>While the <code class="language-plaintext highlighter-rouge">Session</code> cookie jar (<code class="language-plaintext highlighter-rouge">s.cookies</code>) holds <em>all</em> cookies collected during the session’s lifetime, the <a href="02_request___response_models.md">Request &amp; Response Models</a> also have a <code class="language-plaintext highlighter-rouge">cookies</code> attribute.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">response.cookies</code> attribute (also a <code class="language-plaintext highlighter-rouge">RequestsCookieJar</code>) contains <em>only</em> the cookies that were set or updated by <em>that specific response</em>. It doesn’t know about cookies from previous responses in the session.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">Session</span><span class="p">()</span>
+
+<span class="n">url_set_a</span> <span class="o">=</span> <span class="s">'https://httpbin.org/cookies/set/cookieA/valueA'</span>
+<span class="n">url_set_b</span> <span class="o">=</span> <span class="s">'https://httpbin.org/cookies/set/cookieB/valueB'</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Visiting </span><span class="si">{</span><span class="n">url_set_a</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="n">response_a</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">url_set_a</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Cookies SET by response A: </span><span class="si">{</span><span class="n">response_a</span><span class="p">.</span><span class="n">cookies</span><span class="p">.</span><span class="n">get_dict</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"ALL session cookies after A: </span><span class="si">{</span><span class="n">s</span><span class="p">.</span><span class="n">cookies</span><span class="p">.</span><span class="n">get_dict</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Visiting </span><span class="si">{</span><span class="n">url_set_b</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="n">response_b</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">url_set_b</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Cookies SET by response B: </span><span class="si">{</span><span class="n">response_b</span><span class="p">.</span><span class="n">cookies</span><span class="p">.</span><span class="n">get_dict</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"ALL session cookies after B: </span><span class="si">{</span><span class="n">s</span><span class="p">.</span><span class="n">cookies</span><span class="p">.</span><span class="n">get_dict</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Output:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Visiting https://httpbin.org/cookies/set/cookieA/valueA
+Cookies SET by response A: {'cookieA': 'valueA'}
+ALL session cookies after A: {'cookieA': 'valueA'}
+
+Visiting https://httpbin.org/cookies/set/cookieB/valueB
+Cookies SET by response B: {'cookieB': 'valueB'}
+ALL session cookies after B: {'cookieA': 'valueA', 'cookieB': 'valueB'}
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">response_a.cookies</code> only contains <code class="language-plaintext highlighter-rouge">cookieA</code>, because that’s the cookie set by <em>that specific response</em>.</li>
+  <li><code class="language-plaintext highlighter-rouge">s.cookies</code> contains <code class="language-plaintext highlighter-rouge">cookieA</code> after the first request.</li>
+  <li><code class="language-plaintext highlighter-rouge">response_b.cookies</code> only contains <code class="language-plaintext highlighter-rouge">cookieB</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">s.cookies</code> contains <em>both</em> <code class="language-plaintext highlighter-rouge">cookieA</code> and <code class="language-plaintext highlighter-rouge">cookieB</code> after the second request, because the <code class="language-plaintext highlighter-rouge">Session</code> accumulates cookies.</li>
+</ul>
+
+<h2 id="using-the-cookie-jar-like-a-dictionary">Using the Cookie Jar Like a Dictionary</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">RequestsCookieJar</code> is extra friendly because you can treat it much like a Python dictionary to access or modify cookies directly.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="n">jar</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">cookies</span><span class="p">.</span><span class="n">RequestsCookieJar</span><span class="p">()</span>
+
+<span class="c1"># Set cookies using dictionary-like assignment or set()
+</span><span class="n">jar</span><span class="p">.</span><span class="nb">set</span><span class="p">(</span><span class="s">'username'</span><span class="p">,</span> <span class="s">'Nate'</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="s">'httpbin.org'</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s">'/'</span><span class="p">)</span>
+<span class="n">jar</span><span class="p">[</span><span class="s">'session_id'</span><span class="p">]</span> <span class="o">=</span> <span class="s">'abcdef123'</span> <span class="c1"># Sets for default domain/path ('')
+</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Jar contents: </span><span class="si">{</span><span class="n">jar</span><span class="p">.</span><span class="n">get_dict</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Get cookies using dictionary-like access or get()
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Username: </span><span class="si">{</span><span class="n">jar</span><span class="p">[</span><span class="s">'username'</span><span class="p">]</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Session ID: </span><span class="si">{</span><span class="n">jar</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'session_id'</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"API Key (default None): </span><span class="si">{</span><span class="n">jar</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'api_key'</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">'NoKey'</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Iterate over cookies
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Iterating:"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">jar</span><span class="p">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">" - </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Delete a cookie
+</span><span class="k">del</span> <span class="n">jar</span><span class="p">[</span><span class="s">'session_id'</span><span class="p">]</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Jar after deleting session_id: </span><span class="si">{</span><span class="n">jar</span><span class="p">.</span><span class="n">get_dict</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Output:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Jar contents: {'session_id': 'abcdef123', 'username': 'Nate'}
+Username: Nate
+Session ID: abcdef123
+API Key (default None): NoKey
+
+Iterating:
+ - session_id: abcdef123
+ - username: Nate
+
+Jar after deleting session_id: {'username': 'Nate'}
+</code></pre></div></div>
+
+<p>This makes it easy to manually inspect, add, or modify cookies if needed, although the <code class="language-plaintext highlighter-rouge">Session</code> usually handles the common cases automatically.</p>
+
+<p><strong>Important Note:</strong> Cookies often have specific <code class="language-plaintext highlighter-rouge">domain</code> and <code class="language-plaintext highlighter-rouge">path</code> attributes. If you have multiple cookies with the <em>same name</em> but for different domains or paths (e.g., <code class="language-plaintext highlighter-rouge">user=A</code> for <code class="language-plaintext highlighter-rouge">site1.com</code> and <code class="language-plaintext highlighter-rouge">user=B</code> for <code class="language-plaintext highlighter-rouge">site2.com</code>), using the simple dictionary access <code class="language-plaintext highlighter-rouge">jar['user']</code> might be ambiguous or raise an error. In such cases, use the <code class="language-plaintext highlighter-rouge">get()</code> or <code class="language-plaintext highlighter-rouge">set()</code> methods with the <code class="language-plaintext highlighter-rouge">domain</code> and <code class="language-plaintext highlighter-rouge">path</code> arguments for more precision:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">jar</span><span class="p">.</span><span class="nb">set</span><span class="p">(</span><span class="s">'pref'</span><span class="p">,</span> <span class="s">'dark'</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="s">'example.com'</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s">'/'</span><span class="p">)</span>
+<span class="n">jar</span><span class="p">.</span><span class="nb">set</span><span class="p">(</span><span class="s">'pref'</span><span class="p">,</span> <span class="s">'compact'</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="s">'test.com'</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s">'/'</span><span class="p">)</span>
+
+<span class="c1"># Get the specific cookie for example.com
+</span><span class="n">pref_example</span> <span class="o">=</span> <span class="n">jar</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'pref'</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="s">'example.com'</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s">'/'</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Pref for example.com: </span><span class="si">{</span><span class="n">pref_example</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># Simple access might be ambiguous or pick one arbitrarily
+# print(jar['pref']) # Could raise CookieConflictError or return one
+</span></code></pre></div></div>
+
+<h2 id="how-it-works-internally">How It Works Internally</h2>
+
+<p>How does the <code class="language-plaintext highlighter-rouge">Session</code> manage this cookie magic?</p>
+
+<ol>
+  <li><strong>Sending Request:</strong> When you call <code class="language-plaintext highlighter-rouge">s.get(...)</code> or <code class="language-plaintext highlighter-rouge">s.post(...)</code>, the <code class="language-plaintext highlighter-rouge">Session.prepare_request</code> method is called.
+    <ul>
+      <li>It creates a <code class="language-plaintext highlighter-rouge">PreparedRequest</code> object.</li>
+      <li>It merges cookies from your request (<code class="language-plaintext highlighter-rouge">cookies=...</code>), the session (<code class="language-plaintext highlighter-rouge">self.cookies</code>), and potentially environment settings.</li>
+      <li>It calls <code class="language-plaintext highlighter-rouge">get_cookie_header(merged_cookies, prepared_request)</code> (from <code class="language-plaintext highlighter-rouge">requests.cookies</code>). This function checks the cookie jar for cookies that match the request’s domain and path.</li>
+      <li>It generates the <code class="language-plaintext highlighter-rouge">Cookie</code> header string (e.g., <code class="language-plaintext highlighter-rouge">Cookie: fruit=apple; username=Nate</code>) and adds it to the <code class="language-plaintext highlighter-rouge">PreparedRequest.headers</code>.</li>
+      <li>The request (with the <code class="language-plaintext highlighter-rouge">Cookie</code> header) is then sent via a <a href="07_transport_adapters.md">Transport Adapter</a>.</li>
+    </ul>
+  </li>
+  <li><strong>Receiving Response:</strong> When the <a href="07_transport_adapters.md">Transport Adapter</a> receives the raw HTTP response from the server:
+    <ul>
+      <li>It builds the <code class="language-plaintext highlighter-rouge">Response</code> object.</li>
+      <li>The <code class="language-plaintext highlighter-rouge">Session.send</code> method (or redirection logic) gets this <code class="language-plaintext highlighter-rouge">Response</code>.</li>
+      <li>It calls <code class="language-plaintext highlighter-rouge">extract_cookies_to_jar(self.cookies, request, response.raw)</code> (from <code class="language-plaintext highlighter-rouge">requests.cookies</code>). This function looks for <code class="language-plaintext highlighter-rouge">Set-Cookie</code> headers in the raw response.</li>
+      <li>It parses any <code class="language-plaintext highlighter-rouge">Set-Cookie</code> headers and adds/updates the corresponding cookies in the <code class="language-plaintext highlighter-rouge">Session</code>’s cookie jar (<code class="language-plaintext highlighter-rouge">self.cookies</code>).</li>
+      <li>The final <code class="language-plaintext highlighter-rouge">Response</code> object is returned to you.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Here’s a simplified diagram focusing on the cookie flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User as Your Code
+    participant Sess as Session Object
+    participant Jar as Cookie Jar (s.cookies)
+    participant Adapter as Transport Adapter
+    participant Server as Web Server
+
+    User-&gt;&gt;Sess: s.get(url)
+    Sess-&gt;&gt;Jar: get_cookie_header(url)
+    Jar--&gt;&gt;Sess: Return matching cookie header string (e.g., "fruit=apple")
+    Sess-&gt;&gt;Adapter: send(request with 'Cookie' header)
+    Adapter-&gt;&gt;Server: Send HTTP Request (with Cookie: fruit=apple)
+    Server--&gt;&gt;Adapter: Send HTTP Response (e.g., with Set-Cookie: new=cookie)
+    Adapter-&gt;&gt;Sess: Return raw response
+    Sess-&gt;&gt;Jar: extract_cookies_to_jar(raw response)
+    Jar-&gt;&gt;Jar: Add/Update 'new=cookie'
+    Sess-&gt;&gt;User: Return Response object
+</code></pre>
+
+<p>You can see parts of this logic in <code class="language-plaintext highlighter-rouge">requests/sessions.py</code> and <code class="language-plaintext highlighter-rouge">requests/cookies.py</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># File: requests/sessions.py (Simplified View)
+</span>
+<span class="kn">from</span> <span class="nn">.cookies</span> <span class="kn">import</span> <span class="n">extract_cookies_to_jar</span><span class="p">,</span> <span class="n">merge_cookies</span><span class="p">,</span> <span class="n">RequestsCookieJar</span><span class="p">,</span> <span class="n">cookiejar_from_dict</span>
+<span class="kn">from</span> <span class="nn">.models</span> <span class="kn">import</span> <span class="n">PreparedRequest</span>
+<span class="kn">from</span> <span class="nn">.utils</span> <span class="kn">import</span> <span class="n">to_key_val_list</span>
+<span class="kn">from</span> <span class="nn">.structures</span> <span class="kn">import</span> <span class="n">CaseInsensitiveDict</span>
+
+<span class="k">class</span> <span class="nc">Session</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># ... other attributes ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">cookies</span> <span class="o">=</span> <span class="n">cookiejar_from_dict</span><span class="p">({})</span> <span class="c1"># The Session's main Cookie Jar
+</span>
+    <span class="k">def</span> <span class="nf">prepare_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="c1"># ... merge headers, params, auth ...
+</span>
+        <span class="c1"># Merge session cookies with request-specific cookies
+</span>        <span class="n">merged_cookies</span> <span class="o">=</span> <span class="n">merge_cookies</span><span class="p">(</span>
+            <span class="n">merge_cookies</span><span class="p">(</span><span class="n">RequestsCookieJar</span><span class="p">(),</span> <span class="bp">self</span><span class="p">.</span><span class="n">cookies</span><span class="p">),</span>
+            <span class="n">cookiejar_from_dict</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="n">cookies</span> <span class="ow">or</span> <span class="p">{})</span>
+        <span class="p">)</span>
+
+        <span class="n">p</span> <span class="o">=</span> <span class="n">PreparedRequest</span><span class="p">()</span>
+        <span class="n">p</span><span class="p">.</span><span class="n">prepare</span><span class="p">(</span>
+            <span class="c1"># ... other args ...
+</span>            <span class="n">cookies</span><span class="o">=</span><span class="n">merged_cookies</span><span class="p">,</span> <span class="c1"># Pass merged jar to PreparedRequest
+</span>        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">p</span>
+
+    <span class="k">def</span> <span class="nf">send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># ... prepare sending ...
+</span>        <span class="n">adapter</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">get_adapter</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">request</span><span class="p">.</span><span class="n">url</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">adapter</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="c1"># Adapter gets raw response
+</span>
+        <span class="c1"># ... hooks ...
+</span>
+        <span class="c1"># EXTRACT cookies from the response and put them in the session jar!
+</span>        <span class="n">extract_cookies_to_jar</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">cookies</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">.</span><span class="n">raw</span><span class="p">)</span>
+
+        <span class="c1"># ... redirect handling (also extracts cookies) ...
+</span>
+        <span class="k">return</span> <span class="n">response</span>
+
+<span class="c1"># --- File: requests/models.py (Simplified View) ---
+</span><span class="kn">from</span> <span class="nn">.cookies</span> <span class="kn">import</span> <span class="n">get_cookie_header</span><span class="p">,</span> <span class="n">_copy_cookie_jar</span><span class="p">,</span> <span class="n">cookiejar_from_dict</span>
+
+<span class="k">class</span> <span class="nc">PreparedRequest</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">prepare_cookies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cookies</span><span class="p">):</span>
+        <span class="c1"># Store the jar potentially passed from Session.prepare_request
+</span>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cookies</span><span class="p">,</span> <span class="n">cookielib</span><span class="p">.</span><span class="n">CookieJar</span><span class="p">):</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">_cookies</span> <span class="o">=</span> <span class="n">cookies</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">_cookies</span> <span class="o">=</span> <span class="n">cookiejar_from_dict</span><span class="p">(</span><span class="n">cookies</span><span class="p">)</span>
+
+        <span class="c1"># Generate the Cookie header string
+</span>        <span class="n">cookie_header</span> <span class="o">=</span> <span class="n">get_cookie_header</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">_cookies</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cookie_header</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">headers</span><span class="p">[</span><span class="s">'Cookie'</span><span class="p">]</span> <span class="o">=</span> <span class="n">cookie_header</span>
+
+<span class="k">class</span> <span class="nc">Response</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># ... other attributes ...
+</span>        <span class="c1"># This jar holds cookies SET by *this* response only
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">cookies</span> <span class="o">=</span> <span class="n">cookiejar_from_dict</span><span class="p">({})</span>
+
+<span class="c1"># --- File: requests/cookies.py (Simplified View) ---
+</span><span class="kn">import</span> <span class="nn">cookielib</span>
+
+<span class="k">class</span> <span class="nc">MockRequest</span><span class="p">:</span> <span class="c1"># Helper to adapt requests.Request for cookielib
+</span>    <span class="c1"># ... implementation ...
+</span>
+<span class="k">class</span> <span class="nc">MockResponse</span><span class="p">:</span> <span class="c1"># Helper to adapt response headers for cookielib
+</span>    <span class="c1"># ... implementation ...
+</span>
+<span class="k">def</span> <span class="nf">extract_cookies_to_jar</span><span class="p">(</span><span class="n">jar</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">):</span>
+    <span class="s">"""Extract Set-Cookie headers from response into jar."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="s">'_original_response'</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">response</span><span class="p">.</span><span class="n">_original_response</span><span class="p">:</span>
+        <span class="k">return</span> <span class="c1"># Need the underlying httplib response
+</span>
+    <span class="n">req</span> <span class="o">=</span> <span class="n">MockRequest</span><span class="p">(</span><span class="n">request</span><span class="p">)</span> <span class="c1"># Adapt request for cookielib
+</span>    <span class="n">res</span> <span class="o">=</span> <span class="n">MockResponse</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">_original_response</span><span class="p">.</span><span class="n">msg</span><span class="p">)</span> <span class="c1"># Adapt headers for cookielib
+</span>    <span class="n">jar</span><span class="p">.</span><span class="n">extract_cookies</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">req</span><span class="p">)</span> <span class="c1"># Use cookielib's extraction logic
+</span>
+<span class="k">def</span> <span class="nf">get_cookie_header</span><span class="p">(</span><span class="n">jar</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+    <span class="s">"""Generate the Cookie header string for the request."""</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">MockRequest</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+    <span class="n">jar</span><span class="p">.</span><span class="n">add_cookie_header</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="c1"># Use cookielib to add the header to the mock request
+</span>    <span class="k">return</span> <span class="n">r</span><span class="p">.</span><span class="n">get_new_headers</span><span class="p">().</span><span class="n">get</span><span class="p">(</span><span class="s">'Cookie'</span><span class="p">)</span> <span class="c1"># Retrieve the generated header
+</span>
+<span class="k">class</span> <span class="nc">RequestsCookieJar</span><span class="p">(</span><span class="n">cookielib</span><span class="p">.</span><span class="n">CookieJar</span><span class="p">,</span> <span class="n">MutableMapping</span><span class="p">):</span>
+    <span class="c1"># Dictionary-like methods (get, set, __getitem__, etc.)
+</span>    <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+       <span class="c1"># ... find cookie, handle conflicts ...
+</span>       <span class="k">pass</span>
+    <span class="k">def</span> <span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+       <span class="c1"># ... create or update cookie ...
+</span>       <span class="k">pass</span>
+    <span class="c1"># ... other dict methods ...
+</span></code></pre></div></div>
+
+<p>The key is that <code class="language-plaintext highlighter-rouge">Session.send</code> calls <code class="language-plaintext highlighter-rouge">extract_cookies_to_jar</code> after receiving a response, and <code class="language-plaintext highlighter-rouge">PreparedRequest.prepare_cookies</code> (called via <code class="language-plaintext highlighter-rouge">Session.prepare_request</code>) calls <code class="language-plaintext highlighter-rouge">get_cookie_header</code> before sending the next one.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the <strong>Cookie Jar</strong> (<code class="language-plaintext highlighter-rouge">RequestsCookieJar</code>), the mechanism <code class="language-plaintext highlighter-rouge">requests</code> (especially <code class="language-plaintext highlighter-rouge">Session</code> objects) uses to store and manage cookies. You saw:</p>
+
+<ul>
+  <li>How <code class="language-plaintext highlighter-rouge">Session</code> objects automatically use their cookie jar (<code class="language-plaintext highlighter-rouge">s.cookies</code>) to persist cookies across requests.</li>
+  <li>How <code class="language-plaintext highlighter-rouge">response.cookies</code> contains cookies set by a specific response.</li>
+  <li>How to interact with a <code class="language-plaintext highlighter-rouge">RequestsCookieJar</code> using its dictionary-like interface.</li>
+  <li>A glimpse into how <code class="language-plaintext highlighter-rouge">requests</code> extracts cookies from <code class="language-plaintext highlighter-rouge">Set-Cookie</code> headers and adds them back via the <code class="language-plaintext highlighter-rouge">Cookie</code> header.</li>
+</ul>
+
+<p>Understanding the cookie jar helps explain how sessions maintain state and interact with websites that require logins or remember preferences.</p>
+
+<p>Speaking of logging in, while cookies are often involved, sometimes websites require more explicit forms of identification, like usernames and passwords sent directly with the request. How does <code class="language-plaintext highlighter-rouge">requests</code> handle those?</p>
+
+<p><strong>Next:</strong> <a href="05_authentication_handlers.md">Chapter 5: Authentication Handlers</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

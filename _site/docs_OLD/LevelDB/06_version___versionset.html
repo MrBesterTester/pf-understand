@@ -1,0 +1,271 @@
+<h1 id="chapter-6-version--versionset---the-database-catalog">Chapter 6: Version &amp; VersionSet - The Database Catalog</h1>
+
+<p>In the previous chapter, <a href="05_writebatch.md">Chapter 5: WriteBatch</a>, we learned how LevelDB groups multiple <code class="language-plaintext highlighter-rouge">Put</code> and <code class="language-plaintext highlighter-rouge">Delete</code> operations together to apply them atomically and efficiently. We saw that writes go first to the <a href="03_write_ahead_log__wal____logwriter_logreader.md">Write-Ahead Log (WAL)</a> for durability, and then to the in-memory <a href="02_memtable.md">MemTable</a>.</p>
+
+<p>Eventually, the MemTable gets full and is flushed to an <a href="01_table___sstable___tablecache.md">SSTable</a> file on disk. Over time, LevelDB also runs compactions, which read data from existing SSTables and write new ones, deleting the old ones afterwards. This means the set of SSTable files that represent the database’s current state is constantly changing!</p>
+
+<h2 id="whats-the-problem-tracking-a-changing-set-of-files">What’s the Problem? Tracking a Changing Set of Files</h2>
+
+<p>Imagine our library again. Books (SSTables) are constantly being added (from MemTable flushes), removed (after compaction), and sometimes even moved between sections (levels during compaction). How does the librarian know <em>which</em> books are currently part of the official collection and where they are located? If a reader asks for information, the librarian can’t just guess which books to look in – they need an accurate, up-to-date catalog.</p>
+
+<p>Similarly, LevelDB needs a system to track:</p>
+
+<ol>
+  <li>Which SSTable files exist and are currently “live” (contain valid data)?</li>
+  <li>Which “level” each live SSTable file belongs to? (Levels are important for compaction, see <a href="08_compaction.md">Chapter 8: Compaction</a>).</li>
+  <li>What’s the overall state of the database, like the next available file number or the sequence number of the last operation?</li>
+  <li>How can reads see a consistent snapshot of the database, even while background tasks are adding and removing files?</li>
+</ol>
+
+<h2 id="the-solution-versions-versionedits-and-the-versionset">The Solution: Versions, VersionEdits, and the VersionSet</h2>
+
+<p>LevelDB uses a trio of concepts to manage this state:</p>
+
+<ol>
+  <li>
+    <p><strong>Version:</strong> Think of a <code class="language-plaintext highlighter-rouge">Version</code> object as <strong>one specific edition of the library’s catalog</strong>. It represents a complete, consistent snapshot of the database state at a single point in time. Specifically, it contains lists of all the live SSTable files for <em>each</em> level. Once created, a <code class="language-plaintext highlighter-rouge">Version</code> object is <strong>immutable</strong> – it never changes, just like a printed catalog edition. Reads (<code class="language-plaintext highlighter-rouge">Get</code> operations or <a href="07_iterator.md">Iterators</a>) use a specific <code class="language-plaintext highlighter-rouge">Version</code> to know which files to consult.</p>
+  </li>
+  <li><strong>VersionEdit:</strong> This is like a <strong>list of corrections and updates</strong> to get from one catalog edition to the next. It describes the <em>changes</em> between two versions. A <code class="language-plaintext highlighter-rouge">VersionEdit</code> might say:
+    <ul>
+      <li>“Add file number 15 to Level-0.” (Because a MemTable was flushed).</li>
+      <li>“Remove files 8 and 9 from Level-1.” (Because they were compacted).</li>
+      <li>“Add file number 25 to Level-2.” (The result of the compaction).</li>
+      <li>“Update the next available file number to 26.”</li>
+      <li>“Update the last sequence number.”
+These edits are small descriptions of changes. They are stored persistently in a special file called the <code class="language-plaintext highlighter-rouge">MANIFEST</code>.</li>
+    </ul>
+  </li>
+  <li><strong>VersionSet:</strong> This is the <strong>chief librarian</strong> or the <strong>cataloguing department</strong>. It’s the central manager for all database state related to the set of live files. The <code class="language-plaintext highlighter-rouge">VersionSet</code> performs several critical tasks:
+    <ul>
+      <li>Keeps track of the single <code class="language-plaintext highlighter-rouge">current</code> Version (the latest catalog edition).</li>
+      <li>Reads the <code class="language-plaintext highlighter-rouge">MANIFEST</code> file during startup to reconstruct the database state.</li>
+      <li>Applies <code class="language-plaintext highlighter-rouge">VersionEdit</code>s to the <code class="language-plaintext highlighter-rouge">current</code> Version to create <em>new</em> <code class="language-plaintext highlighter-rouge">Version</code>s.</li>
+      <li>Manages essential metadata like the <code class="language-plaintext highlighter-rouge">next_file_number_</code>, <code class="language-plaintext highlighter-rouge">log_number_</code>, and <code class="language-plaintext highlighter-rouge">last_sequence_</code>.</li>
+      <li>Decides which compactions are needed (<a href="08_compaction.md">Chapter 8: Compaction</a>).</li>
+      <li>Manages the lifecycle of <code class="language-plaintext highlighter-rouge">Version</code> objects (using reference counting) so that old versions needed by iterators or snapshots aren’t deleted prematurely.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><strong>In short:</strong> <code class="language-plaintext highlighter-rouge">VersionSet</code> uses <code class="language-plaintext highlighter-rouge">VersionEdit</code>s (from the <code class="language-plaintext highlighter-rouge">MANIFEST</code>) to create a sequence of immutable <code class="language-plaintext highlighter-rouge">Version</code>s, each representing the database state at a point in time. The <code class="language-plaintext highlighter-rouge">current</code> <code class="language-plaintext highlighter-rouge">Version</code> tells LevelDB which files to read from.</p>
+
+<h2 id="how-reads-use-versions">How Reads Use Versions</h2>
+
+<p>When you perform a <code class="language-plaintext highlighter-rouge">Get(key)</code> operation, the <a href="04_dbimpl.md">DBImpl</a> needs to know which SSTables to check (after checking the MemTables). It does this by consulting the <code class="language-plaintext highlighter-rouge">current</code> <code class="language-plaintext highlighter-rouge">Version</code> held by the <code class="language-plaintext highlighter-rouge">VersionSet</code>.</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/db_impl.cc Get() ---</span>
+
+<span class="n">Status</span> <span class="n">DBImpl</span><span class="o">::</span><span class="n">Get</span><span class="p">(</span><span class="k">const</span> <span class="n">ReadOptions</span><span class="o">&amp;</span> <span class="n">options</span><span class="p">,</span> <span class="k">const</span> <span class="n">Slice</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
+                   <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">*</span> <span class="n">value</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// ... check MemTable, Immutable MemTable first ...</span>
+
+  <span class="c1">// If not found in memory, check SSTables:</span>
+  <span class="k">else</span> <span class="p">{</span>
+    <span class="n">MutexLock</span> <span class="n">l</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mutex_</span><span class="p">);</span> <span class="c1">// Need lock to get current Version pointer safely</span>
+    <span class="n">Version</span><span class="o">*</span> <span class="n">current</span> <span class="o">=</span> <span class="n">versions_</span><span class="o">-&gt;</span><span class="n">current</span><span class="p">();</span> <span class="c1">// Ask VersionSet for current Version</span>
+    <span class="n">current</span><span class="o">-&gt;</span><span class="n">Ref</span><span class="p">();</span>       <span class="c1">// Increment ref count (important!)</span>
+    <span class="n">mutex_</span><span class="p">.</span><span class="n">Unlock</span><span class="p">();</span>      <span class="c1">// Unlock for potentially slow disk I/O</span>
+
+    <span class="n">LookupKey</span> <span class="n">lkey</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">snapshot_sequence_number</span><span class="p">);</span> <span class="c1">// Key to search for</span>
+    <span class="n">Version</span><span class="o">::</span><span class="n">GetStats</span> <span class="n">stats</span><span class="p">;</span>
+    <span class="c1">// Ask the Version object to perform the lookup in its files</span>
+    <span class="n">Status</span> <span class="n">s</span> <span class="o">=</span> <span class="n">current</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">lkey</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">stats</span><span class="p">);</span>
+
+    <span class="n">mutex_</span><span class="p">.</span><span class="n">Lock</span><span class="p">();</span>        <span class="c1">// Re-acquire lock for cleanup</span>
+    <span class="n">current</span><span class="o">-&gt;</span><span class="n">Unref</span><span class="p">();</span>     <span class="c1">// Decrement ref count</span>
+    <span class="c1">// ... maybe trigger compaction based on stats ...</span>
+    <span class="n">mutex_</span><span class="p">.</span><span class="n">Unlock</span><span class="p">();</span>
+    <span class="k">return</span> <span class="n">s</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="c1">// ...</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The key step is <code class="language-plaintext highlighter-rouge">versions_-&gt;current()-&gt;Get(...)</code>. The <code class="language-plaintext highlighter-rouge">DBImpl</code> asks the <code class="language-plaintext highlighter-rouge">VersionSet</code> (<code class="language-plaintext highlighter-rouge">versions_</code>) for the pointer to the <code class="language-plaintext highlighter-rouge">current</code> <code class="language-plaintext highlighter-rouge">Version</code>. It then calls the <code class="language-plaintext highlighter-rouge">Get</code> method <em>on that <code class="language-plaintext highlighter-rouge">Version</code> object</em>.</p>
+
+<p>How does <code class="language-plaintext highlighter-rouge">Version::Get</code> work?</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/version_set.cc ---</span>
+
+<span class="n">Status</span> <span class="n">Version</span><span class="o">::</span><span class="n">Get</span><span class="p">(</span><span class="k">const</span> <span class="n">ReadOptions</span><span class="o">&amp;</span> <span class="n">options</span><span class="p">,</span> <span class="k">const</span> <span class="n">LookupKey</span><span class="o">&amp;</span> <span class="n">k</span><span class="p">,</span>
+                    <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">*</span> <span class="n">value</span><span class="p">,</span> <span class="n">GetStats</span><span class="o">*</span> <span class="n">stats</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">Slice</span> <span class="n">ikey</span> <span class="o">=</span> <span class="n">k</span><span class="p">.</span><span class="n">internal_key</span><span class="p">();</span>
+  <span class="n">Slice</span> <span class="n">user_key</span> <span class="o">=</span> <span class="n">k</span><span class="p">.</span><span class="n">user_key</span><span class="p">();</span>
+
+  <span class="c1">// We search level-by-level</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">level</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">level</span> <span class="o">&lt;</span> <span class="n">config</span><span class="o">::</span><span class="n">kNumLevels</span><span class="p">;</span> <span class="n">level</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">FileMetaData</span><span class="o">*&gt;&amp;</span> <span class="n">files</span> <span class="o">=</span> <span class="n">files_</span><span class="p">[</span><span class="n">level</span><span class="p">];</span> <span class="c1">// Get list for this level</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">files</span><span class="p">.</span><span class="n">empty</span><span class="p">())</span> <span class="k">continue</span><span class="p">;</span> <span class="c1">// Skip empty levels</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">level</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+      <span class="c1">// Level-0 files might overlap, search newest-first</span>
+      <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">FileMetaData</span><span class="o">*&gt;</span> <span class="n">tmp</span><span class="p">;</span>
+      <span class="c1">// Find potentially overlapping files in level 0</span>
+      <span class="c1">// ... logic to find relevant files ...</span>
+      <span class="c1">// Sort them newest-first</span>
+      <span class="n">std</span><span class="o">::</span><span class="n">sort</span><span class="p">(</span><span class="n">tmp</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">tmp</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span> <span class="n">NewestFirst</span><span class="p">);</span>
+      <span class="c1">// Search each relevant file</span>
+      <span class="k">for</span> <span class="p">(</span><span class="kt">uint32_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">tmp</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">FileMetaData</span><span class="o">*</span> <span class="n">f</span> <span class="o">=</span> <span class="n">tmp</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="c1">// Use TableCache to search the actual SSTable file</span>
+        <span class="n">Status</span> <span class="n">s</span> <span class="o">=</span> <span class="n">vset_</span><span class="o">-&gt;</span><span class="n">table_cache_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">f</span><span class="o">-&gt;</span><span class="n">number</span><span class="p">,</span> <span class="n">f</span><span class="o">-&gt;</span><span class="n">file_size</span><span class="p">,</span>
+                                           <span class="n">ikey</span><span class="p">,</span> <span class="cm">/* saver state */</span><span class="p">,</span> <span class="n">SaveValue</span><span class="p">);</span>
+        <span class="c1">// ... check if found/deleted/error and update stats ...</span>
+        <span class="k">if</span> <span class="p">(</span><span class="cm">/* found or deleted */</span><span class="p">)</span> <span class="k">return</span> <span class="n">s</span><span class="p">;</span>
+      <span class="p">}</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+      <span class="c1">// Levels &gt; 0 files are sorted and non-overlapping</span>
+      <span class="c1">// Binary search to find the single file that might contain the key</span>
+      <span class="kt">uint32_t</span> <span class="n">index</span> <span class="o">=</span> <span class="n">FindFile</span><span class="p">(</span><span class="n">vset_</span><span class="o">-&gt;</span><span class="n">icmp_</span><span class="p">,</span> <span class="n">files</span><span class="p">,</span> <span class="n">ikey</span><span class="p">);</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">index</span> <span class="o">&lt;</span> <span class="n">files</span><span class="p">.</span><span class="n">size</span><span class="p">())</span> <span class="p">{</span>
+        <span class="n">FileMetaData</span><span class="o">*</span> <span class="n">f</span> <span class="o">=</span> <span class="n">files</span><span class="p">[</span><span class="n">index</span><span class="p">];</span>
+        <span class="c1">// Check if user_key is within the file's range</span>
+        <span class="k">if</span> <span class="p">(</span><span class="cm">/* user_key is within f-&gt;smallest/f-&gt;largest range */</span><span class="p">)</span> <span class="p">{</span>
+          <span class="c1">// Use TableCache to search the actual SSTable file</span>
+          <span class="n">Status</span> <span class="n">s</span> <span class="o">=</span> <span class="n">vset_</span><span class="o">-&gt;</span><span class="n">table_cache_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">f</span><span class="o">-&gt;</span><span class="n">number</span><span class="p">,</span> <span class="n">f</span><span class="o">-&gt;</span><span class="n">file_size</span><span class="p">,</span>
+                                             <span class="n">ikey</span><span class="p">,</span> <span class="cm">/* saver state */</span><span class="p">,</span> <span class="n">SaveValue</span><span class="p">);</span>
+          <span class="c1">// ... check if found/deleted/error and update stats ...</span>
+          <span class="k">if</span> <span class="p">(</span><span class="cm">/* found or deleted */</span><span class="p">)</span> <span class="k">return</span> <span class="n">s</span><span class="p">;</span>
+        <span class="p">}</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span> <span class="c1">// End loop over levels</span>
+
+  <span class="k">return</span> <span class="n">Status</span><span class="o">::</span><span class="n">NotFound</span><span class="p">(</span><span class="n">Slice</span><span class="p">());</span> <span class="c1">// Key not found in any SSTable</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>The <code class="language-plaintext highlighter-rouge">Version</code> object has arrays (<code class="language-plaintext highlighter-rouge">files_[level]</code>) storing <code class="language-plaintext highlighter-rouge">FileMetaData</code> pointers for each level. <code class="language-plaintext highlighter-rouge">FileMetaData</code> contains the file number, size, and smallest/largest keys for an SSTable.</li>
+  <li>It iterates through the levels.</li>
+  <li><strong>Level 0:</strong> Files might overlap, so it finds all potentially relevant files, sorts them newest-first (by file number), and checks each one using the <a href="01_table___sstable___tablecache.md">Table / SSTable &amp; TableCache</a>.</li>
+  <li><strong>Levels &gt; 0:</strong> Files are sorted and non-overlapping. It performs a binary search (<code class="language-plaintext highlighter-rouge">FindFile</code>) to quickly locate the <em>single</em> file that <em>might</em> contain the key. It checks that file’s key range and then searches it using the <code class="language-plaintext highlighter-rouge">TableCache</code>.</li>
+  <li>The search stops as soon as the key is found (either a value or a deletion marker) in any file. If it searches all relevant files in all levels without finding the key, it returns <code class="language-plaintext highlighter-rouge">NotFound</code>.</li>
+</ol>
+
+<p>The <code class="language-plaintext highlighter-rouge">Version</code> object acts as the map, guiding the search to the correct SSTable files.</p>
+
+<h2 id="how-state-changes-applying-versionedits">How State Changes: Applying VersionEdits</h2>
+
+<p>The database state doesn’t stand still. MemTables are flushed, compactions happen. How does the <code class="language-plaintext highlighter-rouge">VersionSet</code> update the state? By applying <code class="language-plaintext highlighter-rouge">VersionEdit</code>s.</p>
+
+<p>When a background task (like flushing the immutable MemTable or running a compaction) finishes, it creates a <code class="language-plaintext highlighter-rouge">VersionEdit</code> describing the changes it made (e.g., “add file X, remove file Y”). It then asks the <code class="language-plaintext highlighter-rouge">VersionSet</code> to apply this edit.</p>
+
+<p>The core logic is in <code class="language-plaintext highlighter-rouge">VersionSet::LogAndApply</code>:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// --- Simplified from db/version_set.cc ---</span>
+
+<span class="n">Status</span> <span class="n">VersionSet</span><span class="o">::</span><span class="n">LogAndApply</span><span class="p">(</span><span class="n">VersionEdit</span><span class="o">*</span> <span class="n">edit</span><span class="p">,</span> <span class="n">port</span><span class="o">::</span><span class="n">Mutex</span><span class="o">*</span> <span class="n">mu</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// 1. Fill in metadata in the edit (log number, sequence number etc.)</span>
+  <span class="c1">// ... set edit-&gt;log_number_, edit-&gt;last_sequence_, etc. ...</span>
+
+  <span class="c1">// 2. Create a new Version based on the current one + the edit</span>
+  <span class="n">Version</span><span class="o">*</span> <span class="n">v</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Version</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+  <span class="p">{</span>
+    <span class="n">Builder</span> <span class="n">builder</span><span class="p">(</span><span class="k">this</span><span class="p">,</span> <span class="n">current_</span><span class="p">);</span> <span class="c1">// Builder starts with 'current_' state</span>
+    <span class="n">builder</span><span class="p">.</span><span class="n">Apply</span><span class="p">(</span><span class="n">edit</span><span class="p">);</span>             <span class="c1">// Apply the changes described by 'edit'</span>
+    <span class="n">builder</span><span class="p">.</span><span class="n">SaveTo</span><span class="p">(</span><span class="n">v</span><span class="p">);</span>               <span class="c1">// Save the resulting state into 'v'</span>
+  <span class="p">}</span>
+  <span class="n">Finalize</span><span class="p">(</span><span class="n">v</span><span class="p">);</span> <span class="c1">// Calculate compaction score/level for the new version</span>
+
+  <span class="c1">// 3. Write the edit to the MANIFEST file (for persistence)</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">record</span><span class="p">;</span>
+  <span class="n">edit</span><span class="o">-&gt;</span><span class="n">EncodeTo</span><span class="p">(</span><span class="o">&amp;</span><span class="n">record</span><span class="p">);</span> <span class="c1">// Serialize the VersionEdit</span>
+
+  <span class="c1">// Unlock mutex while writing to disk (can be slow)</span>
+  <span class="n">mu</span><span class="o">-&gt;</span><span class="n">Unlock</span><span class="p">();</span>
+  <span class="n">Status</span> <span class="n">s</span> <span class="o">=</span> <span class="n">descriptor_log_</span><span class="o">-&gt;</span><span class="n">AddRecord</span><span class="p">(</span><span class="n">record</span><span class="p">);</span> <span class="c1">// Append edit to MANIFEST log</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">s</span><span class="p">.</span><span class="n">ok</span><span class="p">())</span> <span class="p">{</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">descriptor_file_</span><span class="o">-&gt;</span><span class="n">Sync</span><span class="p">();</span> <span class="c1">// Ensure MANIFEST write is durable</span>
+  <span class="p">}</span>
+  <span class="c1">// ... handle MANIFEST write errors ...</span>
+  <span class="n">mu</span><span class="o">-&gt;</span><span class="n">Lock</span><span class="p">();</span> <span class="c1">// Re-lock mutex</span>
+
+  <span class="c1">// 4. Install the new version as the 'current' one</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">s</span><span class="p">.</span><span class="n">ok</span><span class="p">())</span> <span class="p">{</span>
+    <span class="n">AppendVersion</span><span class="p">(</span><span class="n">v</span><span class="p">);</span> <span class="c1">// Make 'v' the new current_ version</span>
+    <span class="c1">// Update VersionSet's metadata based on the edit</span>
+    <span class="n">log_number_</span> <span class="o">=</span> <span class="n">edit</span><span class="o">-&gt;</span><span class="n">log_number_</span><span class="p">;</span>
+    <span class="n">prev_log_number_</span> <span class="o">=</span> <span class="n">edit</span><span class="o">-&gt;</span><span class="n">prev_log_number_</span><span class="p">;</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+    <span class="k">delete</span> <span class="n">v</span><span class="p">;</span> <span class="c1">// Discard the new version if MANIFEST write failed</span>
+  <span class="p">}</span>
+
+  <span class="k">return</span> <span class="n">s</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Prepare Edit:</strong> Fills in missing metadata fields in the <code class="language-plaintext highlighter-rouge">VersionEdit</code> (like the current log number and last sequence number).</li>
+  <li><strong>Build New Version:</strong> Creates a temporary <code class="language-plaintext highlighter-rouge">Builder</code> object, initialized with the state of the <code class="language-plaintext highlighter-rouge">current_</code> version. It applies the changes from the <code class="language-plaintext highlighter-rouge">edit</code> to this builder and then saves the resulting state into a completely <em>new</em> <code class="language-plaintext highlighter-rouge">Version</code> object (<code class="language-plaintext highlighter-rouge">v</code>).</li>
+  <li><strong>Log to MANIFEST:</strong> Serializes the <code class="language-plaintext highlighter-rouge">VersionEdit</code> into a string (<code class="language-plaintext highlighter-rouge">record</code>) and appends it to the <code class="language-plaintext highlighter-rouge">MANIFEST</code> log file (<code class="language-plaintext highlighter-rouge">descriptor_log_</code>). This step makes the state change persistent. If the database crashes and restarts, it can replay the <code class="language-plaintext highlighter-rouge">MANIFEST</code> file to recover the state.</li>
+  <li><strong>Install New Version:</strong> If the <code class="language-plaintext highlighter-rouge">MANIFEST</code> write succeeds, it calls <code class="language-plaintext highlighter-rouge">AppendVersion(v)</code>. This crucial step updates the <code class="language-plaintext highlighter-rouge">current_</code> pointer in the <code class="language-plaintext highlighter-rouge">VersionSet</code> to point to the newly created <code class="language-plaintext highlighter-rouge">Version</code> <code class="language-plaintext highlighter-rouge">v</code>. Future read operations will now use this new version. It also updates the <code class="language-plaintext highlighter-rouge">VersionSet</code>’s own metadata (like <code class="language-plaintext highlighter-rouge">log_number_</code>).</li>
+</ol>
+
+<p>This process ensures that the database state transitions atomically: a new <code class="language-plaintext highlighter-rouge">Version</code> only becomes <code class="language-plaintext highlighter-rouge">current</code> <em>after</em> the changes it represents have been safely recorded in the <code class="language-plaintext highlighter-rouge">MANIFEST</code>.</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant BG as Background Task (Flush/Compact)
+    participant VE as VersionEdit
+    participant VS as VersionSet
+    participant VSCur as Current Version
+    participant VSBld as VersionSet::Builder
+    participant V as New Version
+    participant Manifest as MANIFEST Log File
+
+    BG -&gt;&gt; VE: Create edit (add file X, remove Y)
+    BG -&gt;&gt; VS: LogAndApply(edit)
+    VS -&gt;&gt; VSCur: Get current state
+    VS -&gt;&gt; VSBld: Create Builder(based on VSCur)
+    VSBld -&gt;&gt; VE: Apply(edit)
+    VSBld -&gt;&gt; V: Save resulting state to New Version
+    VS -&gt;&gt; V: Finalize()
+    VE -&gt;&gt; VE: EncodeTo(record)
+    VS -&gt;&gt; Manifest: AddRecord(record)
+    Manifest --&gt;&gt; VS: Write Status OK
+    VS -&gt;&gt; V: AppendVersion(V)  // Make V the new 'current'
+    VS -&gt;&gt; VS: Update log_number etc.
+    VS --&gt;&gt; BG: Return OK
+</code></pre>
+
+<h2 id="version-lifecycle-and-snapshots">Version Lifecycle and Snapshots</h2>
+
+<p>Why keep old <code class="language-plaintext highlighter-rouge">Version</code> objects around if we have a <code class="language-plaintext highlighter-rouge">current</code> one? Because ongoing read operations or snapshots might still need them!</p>
+
+<ul>
+  <li><strong>Reference Counting:</strong> Each <code class="language-plaintext highlighter-rouge">Version</code> has a reference count (<code class="language-plaintext highlighter-rouge">refs_</code>). When <code class="language-plaintext highlighter-rouge">DBImpl::Get</code> uses a version, it calls <code class="language-plaintext highlighter-rouge">Ref()</code> (increment count) before starting the lookup and <code class="language-plaintext highlighter-rouge">Unref()</code> (decrement count) when finished.</li>
+  <li><strong>Snapshots:</strong> When you request a snapshot (<code class="language-plaintext highlighter-rouge">db-&gt;GetSnapshot()</code>), LevelDB essentially gives you a pointer to the <code class="language-plaintext highlighter-rouge">current</code> <code class="language-plaintext highlighter-rouge">Version</code> at that moment and increments its reference count. As long as you hold onto that snapshot, the corresponding <code class="language-plaintext highlighter-rouge">Version</code> object (and the SSTable files it refers to) won’t be deleted, even if the <code class="language-plaintext highlighter-rouge">current</code> version advances due to subsequent writes and compactions. This provides a consistent point-in-time view of the data.</li>
+  <li><strong>Cleanup:</strong> When a <code class="language-plaintext highlighter-rouge">Version</code>’s reference count drops to zero (meaning no reads or snapshots are using it anymore), it can be safely deleted. The <code class="language-plaintext highlighter-rouge">VersionSet</code> also keeps track of which underlying SSTable files are no longer referenced by <em>any</em> active <code class="language-plaintext highlighter-rouge">Version</code> and can trigger their deletion from disk (<a href="04_dbimpl.md">DBImpl::RemoveObsoleteFiles</a>).</li>
+</ul>
+
+<h2 id="the-manifest-file">The MANIFEST File</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">MANIFEST</code> file is crucial for durability. It’s a log file (like the <a href="03_write_ahead_log__wal____logwriter_logreader.md">WAL</a>, but for metadata changes) that stores the sequence of <code class="language-plaintext highlighter-rouge">VersionEdit</code> records.</p>
+
+<p>When LevelDB starts (<code class="language-plaintext highlighter-rouge">DB::Open</code>), the <code class="language-plaintext highlighter-rouge">VersionSet::Recover</code> method reads the <code class="language-plaintext highlighter-rouge">MANIFEST</code> file from beginning to end. It starts with an empty initial state and applies each <code class="language-plaintext highlighter-rouge">VersionEdit</code> it reads, step-by-step, rebuilding the database’s file state in memory. This ensures that LevelDB knows exactly which SSTable files were live when it last shut down (or crashed).</p>
+
+<p>Occasionally, the <code class="language-plaintext highlighter-rouge">MANIFEST</code> file can grow large. LevelDB might then write a <em>snapshot</em> of the entire current state (all files in all levels) as a single large record into a <em>new</em> <code class="language-plaintext highlighter-rouge">MANIFEST</code> file and then switch subsequent edits to that new file. This prevents the recovery process from becoming too slow.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p><code class="language-plaintext highlighter-rouge">Version</code>, <code class="language-plaintext highlighter-rouge">VersionEdit</code>, and <code class="language-plaintext highlighter-rouge">VersionSet</code> form the core cataloguing system of LevelDB.</p>
+
+<ul>
+  <li><strong>Version:</strong> An immutable snapshot of which SSTable files exist at each level. Used by reads to find data.</li>
+  <li><strong>VersionEdit:</strong> A description of changes (files added/deleted, metadata updated) between versions. Persisted in the <code class="language-plaintext highlighter-rouge">MANIFEST</code> log.</li>
+  <li><strong>VersionSet:</strong> Manages the <code class="language-plaintext highlighter-rouge">current</code> Version, applies edits to create new versions, handles recovery from the <code class="language-plaintext highlighter-rouge">MANIFEST</code>, and manages metadata like file numbers and sequence numbers.</li>
+</ul>
+
+<p>Together, they allow LevelDB to manage a constantly changing set of files on disk while providing consistent views for read operations and ensuring the database state can be recovered after a restart.</p>
+
+<p>Now that we understand how LevelDB finds data (checking MemTables, then using the current <code class="language-plaintext highlighter-rouge">Version</code> to check SSTables via the <code class="language-plaintext highlighter-rouge">TableCache</code>), how does it provide a way to <em>scan</em> through data, not just get single keys?</p>
+
+<p>Next up: <a href="07_iterator.md">Chapter 7: Iterator</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

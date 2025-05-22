@@ -1,0 +1,348 @@
+<h1 id="chapter-5-action-controller--registry---the-agents-hands-and-toolbox">Chapter 5: Action Controller &amp; Registry - The Agent’s Hands and Toolbox</h1>
+
+<p>In the <a href="04_dom_representation.md">previous chapter</a>, we saw how the <code class="language-plaintext highlighter-rouge">DomService</code> creates a simplified map (<code class="language-plaintext highlighter-rouge">DOMState</code>) of the webpage, allowing the Agent and its LLM planner to identify interactive elements like buttons and input fields using unique numbers (<code class="language-plaintext highlighter-rouge">highlight_index</code>). The LLM uses this map to decide <em>what</em> specific action to take next, like “click element [5]” or “type ‘hello world’ into element [12]”.</p>
+
+<p>But how does the program actually <em>do</em> that? How does the abstract idea “click element [5]” turn into a real click inside the browser window managed by the <a href="03_browsercontext.md">BrowserContext</a>?</p>
+
+<p>This is where the <strong>Action Controller</strong> and <strong>Action Registry</strong> come into play. They are the “hands” and “toolbox” that execute the Agent’s decisions.</p>
+
+<h2 id="what-problem-do-they-solve">What Problem Do They Solve?</h2>
+
+<p>Imagine you have a detailed instruction manual (the LLM’s plan) for building a model car. The manual tells you exactly which piece to pick up (<code class="language-plaintext highlighter-rouge">index=5</code>) and what to do with it (“click” or “attach”). However, you still need:</p>
+
+<ol>
+  <li><strong>A Toolbox:</strong> A collection of all the tools you might need (screwdriver, glue, pliers). You need to know what tools are available.</li>
+  <li><strong>A Mechanic:</strong> Someone (or you!) who can read the instruction (“Use the screwdriver on screw #5”), select the correct tool from the toolbox, and skillfully use it on the specified part.</li>
+</ol>
+
+<p>Without the toolbox and the mechanic, the instruction manual is useless.</p>
+
+<p>Similarly, the <code class="language-plaintext highlighter-rouge">Browser Use</code> Agent needs:</p>
+<ol>
+  <li><strong>Action Registry (The Toolbox):</strong> A defined list of all possible actions the Agent can perform (e.g., <code class="language-plaintext highlighter-rouge">click_element</code>, <code class="language-plaintext highlighter-rouge">input_text</code>, <code class="language-plaintext highlighter-rouge">scroll_down</code>, <code class="language-plaintext highlighter-rouge">go_to_url</code>, <code class="language-plaintext highlighter-rouge">done</code>). This registry also holds details about each action, like what parameters it needs (e.g., <code class="language-plaintext highlighter-rouge">click_element</code> needs an <code class="language-plaintext highlighter-rouge">index</code>).</li>
+  <li><strong>Action Controller (The Mechanic):</strong> A component that takes the specific action requested by the LLM (e.g., “execute <code class="language-plaintext highlighter-rouge">click_element</code> with <code class="language-plaintext highlighter-rouge">index=5</code>”), finds the corresponding function (the “tool”) in the Registry, ensures the request is valid, and then executes that function using the <a href="03_browsercontext.md">BrowserContext</a> (the “car”).</li>
+</ol>
+
+<p>The Controller and Registry solve the problem of translating the LLM’s high-level plan into concrete, executable browser operations in a structured and reliable way.</p>
+
+<h2 id="meet-the-toolbox-and-the-mechanic">Meet the Toolbox and the Mechanic</h2>
+
+<p>Let’s break down these two closely related concepts:</p>
+
+<h3 id="1-action-registry-the-toolbox-controllerregistryservicepy">1. Action Registry: The Toolbox (<code class="language-plaintext highlighter-rouge">controller/registry/service.py</code>)</h3>
+
+<p>Think of the <code class="language-plaintext highlighter-rouge">Registry</code> as a carefully organized toolbox. Each drawer is labeled with the name of a tool (an action like <code class="language-plaintext highlighter-rouge">click_element</code>), and inside, you find the tool itself (the actual code function) along with its instructions (description and required parameters).</p>
+
+<ul>
+  <li><strong>Catalog of Actions:</strong> It holds a dictionary where keys are action names (strings like <code class="language-plaintext highlighter-rouge">"click_element"</code>) and values are <code class="language-plaintext highlighter-rouge">RegisteredAction</code> objects containing:
+    <ul>
+      <li>The action’s <code class="language-plaintext highlighter-rouge">name</code>.</li>
+      <li>A <code class="language-plaintext highlighter-rouge">description</code> (for humans and the LLM).</li>
+      <li>The actual Python <code class="language-plaintext highlighter-rouge">function</code> to call.</li>
+      <li>A <code class="language-plaintext highlighter-rouge">param_model</code> (a Pydantic model defining required parameters like <code class="language-plaintext highlighter-rouge">index</code> or <code class="language-plaintext highlighter-rouge">text</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Informs the LLM:</strong> The <code class="language-plaintext highlighter-rouge">Registry</code> can generate a description of all available actions and their parameters. This description is given to the LLM (as part of the <a href="02_system_prompt.md">System Prompt</a>) so it knows exactly what “tools” it’s allowed to ask the Agent to use.</li>
+</ul>
+
+<h3 id="2-action-controller-the-mechanic-controllerservicepy">2. Action Controller: The Mechanic (<code class="language-plaintext highlighter-rouge">controller/service.py</code>)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">Controller</code> is the skilled mechanic who uses the tools from the Registry.</p>
+
+<ul>
+  <li><strong>Receives Instructions:</strong> It gets the action request from the Agent. This request typically comes in the form of an <code class="language-plaintext highlighter-rouge">ActionModel</code> object, which represents the LLM’s JSON output (e.g., <code class="language-plaintext highlighter-rouge">{"click_element": {"index": 5}}</code>).</li>
+  <li><strong>Selects the Tool:</strong> It looks at the <code class="language-plaintext highlighter-rouge">ActionModel</code>, identifies the action name (<code class="language-plaintext highlighter-rouge">"click_element"</code>), and retrieves the corresponding <code class="language-plaintext highlighter-rouge">RegisteredAction</code> from the <code class="language-plaintext highlighter-rouge">Registry</code>.</li>
+  <li><strong>Validates Parameters:</strong> It uses the action’s <code class="language-plaintext highlighter-rouge">param_model</code> (e.g., <code class="language-plaintext highlighter-rouge">ClickElementAction</code>) to check if the provided parameters (<code class="language-plaintext highlighter-rouge">{"index": 5}</code>) are correct.</li>
+  <li><strong>Executes the Action:</strong> It calls the actual Python function associated with the action (e.g., the <code class="language-plaintext highlighter-rouge">click_element</code> function), passing it the validated parameters and the necessary <code class="language-plaintext highlighter-rouge">BrowserContext</code> (so the function knows <em>which</em> browser tab to act upon).</li>
+  <li><strong>Reports the Result:</strong> The action function performs the task (e.g., clicking the element) and returns an <code class="language-plaintext highlighter-rouge">ActionResult</code> object, indicating whether it succeeded, failed, or produced some output. The Controller passes this result back to the Agent.</li>
+</ul>
+
+<h2 id="using-the-controller-executing-an-action">Using the Controller: Executing an Action</h2>
+
+<p>In the Agent’s main loop (<a href="01_agent.md">Chapter 1: Agent</a>), after the LLM provides its plan as an <code class="language-plaintext highlighter-rouge">ActionModel</code>, the Agent simply hands this model over to the <code class="language-plaintext highlighter-rouge">Controller</code> to execute it.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Simplified Agent step calling the Controller ---
+# Assume 'llm_response_model' is the ActionModel object parsed from LLM's JSON
+# Assume 'self.controller' is the Controller instance
+# Assume 'self.browser_context' is the current BrowserContext
+</span>
+<span class="c1"># ... inside the Agent's step method ...
+</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="c1"># Agent tells the Controller: "Execute this action!"
+</span>    <span class="n">action_result</span><span class="p">:</span> <span class="n">ActionResult</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">controller</span><span class="p">.</span><span class="n">act</span><span class="p">(</span>
+        <span class="n">action</span><span class="o">=</span><span class="n">llm_response_model</span><span class="p">,</span>      <span class="c1"># The LLM's chosen action and parameters
+</span>        <span class="n">browser_context</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">browser_context</span> <span class="c1"># The browser tab to act within
+</span>        <span class="c1"># Other context like LLMs for extraction might be passed too
+</span>    <span class="p">)</span>
+
+    <span class="c1"># Agent receives the result from the Controller
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Action executed. Result: </span><span class="si">{</span><span class="n">action_result</span><span class="p">.</span><span class="n">extracted_content</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">action_result</span><span class="p">.</span><span class="n">is_done</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"Task marked as done by the action!"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">action_result</span><span class="p">.</span><span class="n">error</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Action encountered an error: </span><span class="si">{</span><span class="n">action_result</span><span class="p">.</span><span class="n">error</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+    <span class="c1"># Agent records this result in the history ([Message Manager](06_message_manager.md))
+</span>    <span class="c1"># ...
+</span>
+<span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Failed to execute action: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Handle the error
+</span></code></pre></div></div>
+
+<p><strong>What happens here?</strong></p>
+
+<ol>
+  <li>The Agent has received <code class="language-plaintext highlighter-rouge">llm_response_model</code> (e.g., representing <code class="language-plaintext highlighter-rouge">{"click_element": {"index": 5}}</code>).</li>
+  <li>It calls <code class="language-plaintext highlighter-rouge">self.controller.act()</code>, passing the action model and the active <code class="language-plaintext highlighter-rouge">browser_context</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">controller.act()</code> method handles looking up the <code class="language-plaintext highlighter-rouge">"click_element"</code> function in the <code class="language-plaintext highlighter-rouge">Registry</code>, validating the <code class="language-plaintext highlighter-rouge">index</code> parameter, and calling the function to perform the click within the <code class="language-plaintext highlighter-rouge">browser_context</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">click_element</code> function executes (interacting with the browser via <code class="language-plaintext highlighter-rouge">BrowserContext</code> methods).</li>
+  <li>It returns an <code class="language-plaintext highlighter-rouge">ActionResult</code> (e.g., <code class="language-plaintext highlighter-rouge">ActionResult(extracted_content="Clicked button with index 5")</code>).</li>
+  <li>The Agent receives this <code class="language-plaintext highlighter-rouge">action_result</code> and proceeds.</li>
+</ol>
+
+<h2 id="how-it-works-under-the-hood-the-execution-flow">How it Works Under the Hood: The Execution Flow</h2>
+
+<p>Let’s trace the journey of an action request from the Agent to the browser click:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent
+    participant Controller
+    participant Registry
+    participant ClickFunc as click_element Function
+    participant BC as BrowserContext
+
+    Note over Agent: LLM decided: click_element(index=5)
+    Agent-&gt;&gt;Controller: act(action={"click_element": {"index": 5}}, browser_context=BC)
+    Note over Controller: Identify action and params
+    Controller-&gt;&gt;Controller: action_name = "click_element", params = {"index": 5}
+    Note over Controller: Ask Registry for the tool
+    Controller-&gt;&gt;Registry: Get action definition for "click_element"
+    Registry--&gt;&gt;Controller: Return RegisteredAction(name="click_element", function=ClickFunc, param_model=ClickElementAction, ...)
+    Note over Controller: Validate params using param_model
+    Controller-&gt;&gt;Controller: ClickElementAction(index=5) # Validation OK
+    Note over Controller: Execute the function
+    Controller-&gt;&gt;ClickFunc: ClickFunc(params=ClickElementAction(index=5), browser=BC)
+    Note over ClickFunc: Perform the click via BrowserContext
+    ClickFunc-&gt;&gt;BC: Find element with index 5
+    BC--&gt;&gt;ClickFunc: Element reference
+    ClickFunc-&gt;&gt;BC: Execute click on element
+    BC--&gt;&gt;ClickFunc: Click successful
+    ClickFunc--&gt;&gt;Controller: Return ActionResult(extracted_content="Clicked button...")
+    Controller--&gt;&gt;Agent: Return ActionResult
+</code></pre>
+
+<p>This diagram shows the Controller orchestrating the process: receiving the request, consulting the Registry, validating, calling the specific action function, and returning the result.</p>
+
+<h2 id="diving-deeper-into-the-code">Diving Deeper into the Code</h2>
+
+<p>Let’s peek at simplified versions of the key files.</p>
+
+<h3 id="1-registering-actions-controllerregistryservicepy">1. Registering Actions (<code class="language-plaintext highlighter-rouge">controller/registry/service.py</code>)</h3>
+
+<p>Actions are typically registered using a decorator <code class="language-plaintext highlighter-rouge">@registry.action</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: controller/registry/service.py (Simplified Registry) ---
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Type</span>
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="c1"># Assume ActionModel, RegisteredAction are defined in views.py
+</span>
+<span class="k">class</span> <span class="nc">Registry</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exclude_actions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">RegisteredAction</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">exclude_actions</span> <span class="o">=</span> <span class="n">exclude_actions</span>
+        <span class="c1"># ... other initializations ...
+</span>
+    <span class="k">def</span> <span class="nf">_create_param_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">function</span><span class="p">:</span> <span class="n">Callable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Type</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">]:</span>
+        <span class="s">"""Creates a Pydantic model from function signature (simplified)"""</span>
+        <span class="c1"># ... (Inspects function signature to build a model) ...
+</span>        <span class="c1"># Example: for func(index: int, text: str), creates a model
+</span>        <span class="c1"># class func_parameters(ActionModel):
+</span>        <span class="c1">#      index: int
+</span>        <span class="c1">#      text: str
+</span>        <span class="c1"># return func_parameters
+</span>        <span class="k">pass</span> <span class="c1"># Placeholder for complex logic
+</span>
+    <span class="k">def</span> <span class="nf">action</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">description</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">param_model</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">]</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="s">"""Decorator for registering actions"""</span>
+        <span class="k">def</span> <span class="nf">decorator</span><span class="p">(</span><span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">func</span><span class="p">.</span><span class="n">__name__</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">exclude_actions</span><span class="p">:</span> <span class="k">return</span> <span class="n">func</span> <span class="c1"># Skip excluded
+</span>
+            <span class="c1"># If no specific param_model provided, try to generate one
+</span>            <span class="n">actual_param_model</span> <span class="o">=</span> <span class="n">param_model</span> <span class="c1"># Or self._create_param_model(func) if needed
+</span>
+            <span class="c1"># Ensure function is awaitable (async)
+</span>            <span class="n">wrapped_func</span> <span class="o">=</span> <span class="n">func</span> <span class="c1"># Assume func is already async for simplicity
+</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="n">RegisteredAction</span><span class="p">(</span>
+                <span class="n">name</span><span class="o">=</span><span class="n">func</span><span class="p">.</span><span class="n">__name__</span><span class="p">,</span>
+                <span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">,</span>
+                <span class="n">function</span><span class="o">=</span><span class="n">wrapped_func</span><span class="p">,</span>
+                <span class="n">param_model</span><span class="o">=</span><span class="n">actual_param_model</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">[</span><span class="n">func</span><span class="p">.</span><span class="n">__name__</span><span class="p">]</span> <span class="o">=</span> <span class="n">action</span> <span class="c1"># Add to the toolbox!
+</span>            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Action '</span><span class="si">{</span><span class="n">func</span><span class="p">.</span><span class="n">__name__</span><span class="si">}</span><span class="s">' registered."</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">func</span>
+        <span class="k">return</span> <span class="n">decorator</span>
+
+    <span class="k">def</span> <span class="nf">get_prompt_description</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="s">"""Get a description of all actions for the prompt (simplified)"""</span>
+        <span class="n">descriptions</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">action</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">.</span><span class="n">values</span><span class="p">():</span>
+             <span class="c1"># Format description for LLM (e.g., "click_element: Click element {index: {'type': 'integer'}}")
+</span>             <span class="n">descriptions</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">action</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="n">action</span><span class="p">.</span><span class="n">description</span><span class="si">}</span><span class="s"> </span><span class="si">{</span><span class="n">action</span><span class="p">.</span><span class="n">param_model</span><span class="p">.</span><span class="n">schema</span><span class="p">()</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">descriptions</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">execute_action</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">action_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">browser</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+         <span class="s">"""Execute a registered action (simplified)"""</span>
+         <span class="k">if</span> <span class="n">action_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">:</span>
+             <span class="k">raise</span> <span class="nb">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s">"Action </span><span class="si">{</span><span class="n">action_name</span><span class="si">}</span><span class="s"> not found"</span><span class="p">)</span>
+
+         <span class="n">action</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">[</span><span class="n">action_name</span><span class="p">]</span>
+         <span class="k">try</span><span class="p">:</span>
+             <span class="c1"># Validate params using the registered Pydantic model
+</span>             <span class="n">validated_params</span> <span class="o">=</span> <span class="n">action</span><span class="p">.</span><span class="n">param_model</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
+
+             <span class="c1"># Call the actual action function with validated params and browser context
+</span>             <span class="c1"># Assumes function takes validated_params model and browser
+</span>             <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">action</span><span class="p">.</span><span class="n">function</span><span class="p">(</span><span class="n">validated_params</span><span class="p">,</span> <span class="n">browser</span><span class="o">=</span><span class="n">browser</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+             <span class="k">return</span> <span class="n">result</span>
+         <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+             <span class="k">raise</span> <span class="nb">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error executing </span><span class="si">{</span><span class="n">action_name</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="k">from</span> <span class="n">e</span>
+
+</code></pre></div></div>
+
+<p>This shows how the <code class="language-plaintext highlighter-rouge">@registry.action</code> decorator takes a function, its description, and parameter model, and stores them in the <code class="language-plaintext highlighter-rouge">registry</code> dictionary. <code class="language-plaintext highlighter-rouge">execute_action</code> is the core method used by the <code class="language-plaintext highlighter-rouge">Controller</code> to run a specific action.</p>
+
+<h3 id="2-defining-action-parameters-controllerviewspy">2. Defining Action Parameters (<code class="language-plaintext highlighter-rouge">controller/views.py</code>)</h3>
+
+<p>Each action often has its own Pydantic model to define its expected parameters.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: controller/views.py (Simplified Action Parameter Models) ---
+</span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span>
+
+<span class="c1"># Example parameter model for the 'click_element' action
+</span><span class="k">class</span> <span class="nc">ClickElementAction</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">index</span><span class="p">:</span> <span class="nb">int</span>              <span class="c1"># The highlight_index of the element to click
+</span>    <span class="n">xpath</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># Optional hint (usually index is enough)
+</span>
+<span class="c1"># Example parameter model for the 'input_text' action
+</span><span class="k">class</span> <span class="nc">InputTextAction</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">index</span><span class="p">:</span> <span class="nb">int</span>              <span class="c1"># The highlight_index of the input field
+</span>    <span class="n">text</span><span class="p">:</span> <span class="nb">str</span>               <span class="c1"># The text to type
+</span>    <span class="n">xpath</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># Optional hint
+</span>
+<span class="c1"># Example parameter model for the 'done' action (task completion)
+</span><span class="k">class</span> <span class="nc">DoneAction</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">text</span><span class="p">:</span> <span class="nb">str</span>               <span class="c1"># A final message or result
+</span>    <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span>           <span class="c1"># Was the overall task successful?
+</span>
+<span class="c1"># ... other action models like GoToUrlAction, ScrollAction etc. ...
+</span></code></pre></div></div>
+
+<p>These models ensure that when the Controller receives parameters like <code class="language-plaintext highlighter-rouge">{"index": 5}</code>, it can validate that <code class="language-plaintext highlighter-rouge">index</code> is indeed an integer as required by <code class="language-plaintext highlighter-rouge">ClickElementAction</code>.</p>
+
+<h3 id="3-the-controller-service-controllerservicepy">3. The Controller Service (<code class="language-plaintext highlighter-rouge">controller/service.py</code>)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">Controller</code> class ties everything together. It initializes the <code class="language-plaintext highlighter-rouge">Registry</code> and registers the default browser actions. Its main job is the <code class="language-plaintext highlighter-rouge">act</code> method.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: controller/service.py (Simplified Controller) ---
+</span><span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">browser_use.agent.views</span> <span class="kn">import</span> <span class="n">ActionModel</span><span class="p">,</span> <span class="n">ActionResult</span> <span class="c1"># Input/Output types
+</span><span class="kn">from</span> <span class="nn">browser_use.browser.context</span> <span class="kn">import</span> <span class="n">BrowserContext</span> <span class="c1"># Needed by actions
+</span><span class="kn">from</span> <span class="nn">browser_use.controller.registry.service</span> <span class="kn">import</span> <span class="n">Registry</span> <span class="c1"># The toolbox
+</span><span class="kn">from</span> <span class="nn">browser_use.controller.views</span> <span class="kn">import</span> <span class="n">ClickElementAction</span><span class="p">,</span> <span class="n">InputTextAction</span><span class="p">,</span> <span class="n">DoneAction</span> <span class="c1"># Param models
+</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="p">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">__name__</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">Controller</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exclude_actions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">registry</span> <span class="o">=</span> <span class="n">Registry</span><span class="p">(</span><span class="n">exclude_actions</span><span class="o">=</span><span class="n">exclude_actions</span><span class="p">)</span> <span class="c1"># Initialize the toolbox
+</span>
+        <span class="c1"># --- Register Default Actions ---
+</span>        <span class="c1"># (Registration happens when Controller is created)
+</span>
+        <span class="o">@</span><span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">.</span><span class="n">action</span><span class="p">(</span><span class="s">"Click element"</span><span class="p">,</span> <span class="n">param_model</span><span class="o">=</span><span class="n">ClickElementAction</span><span class="p">)</span>
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">click_element</span><span class="p">(</span><span class="n">params</span><span class="p">:</span> <span class="n">ClickElementAction</span><span class="p">,</span> <span class="n">browser</span><span class="p">:</span> <span class="n">BrowserContext</span><span class="p">):</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s">"Attempting to click element index </span><span class="si">{</span><span class="n">params</span><span class="p">.</span><span class="n">index</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+            <span class="c1"># --- Actual click logic using browser object ---
+</span>            <span class="n">element_node</span> <span class="o">=</span> <span class="k">await</span> <span class="n">browser</span><span class="p">.</span><span class="n">get_dom_element_by_index</span><span class="p">(</span><span class="n">params</span><span class="p">.</span><span class="n">index</span><span class="p">)</span>
+            <span class="k">await</span> <span class="n">browser</span><span class="p">.</span><span class="n">_click_element_node</span><span class="p">(</span><span class="n">element_node</span><span class="p">)</span> <span class="c1"># Internal browser method
+</span>            <span class="c1"># ---
+</span>            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"🖱️ Clicked element with index </span><span class="si">{</span><span class="n">params</span><span class="p">.</span><span class="n">index</span><span class="si">}</span><span class="s">"</span>
+            <span class="k">return</span> <span class="n">ActionResult</span><span class="p">(</span><span class="n">extracted_content</span><span class="o">=</span><span class="n">msg</span><span class="p">,</span> <span class="n">include_in_memory</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="o">@</span><span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">.</span><span class="n">action</span><span class="p">(</span><span class="s">"Input text into an element"</span><span class="p">,</span> <span class="n">param_model</span><span class="o">=</span><span class="n">InputTextAction</span><span class="p">)</span>
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">input_text</span><span class="p">(</span><span class="n">params</span><span class="p">:</span> <span class="n">InputTextAction</span><span class="p">,</span> <span class="n">browser</span><span class="p">:</span> <span class="n">BrowserContext</span><span class="p">):</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s">"Attempting to type into element index </span><span class="si">{</span><span class="n">params</span><span class="p">.</span><span class="n">index</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+            <span class="c1"># --- Actual typing logic using browser object ---
+</span>            <span class="n">element_node</span> <span class="o">=</span> <span class="k">await</span> <span class="n">browser</span><span class="p">.</span><span class="n">get_dom_element_by_index</span><span class="p">(</span><span class="n">params</span><span class="p">.</span><span class="n">index</span><span class="p">)</span>
+            <span class="k">await</span> <span class="n">browser</span><span class="p">.</span><span class="n">_input_text_element_node</span><span class="p">(</span><span class="n">element_node</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">text</span><span class="p">)</span> <span class="c1"># Internal method
+</span>            <span class="c1"># ---
+</span>            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"⌨️ Input text into index </span><span class="si">{</span><span class="n">params</span><span class="p">.</span><span class="n">index</span><span class="si">}</span><span class="s">"</span>
+            <span class="k">return</span> <span class="n">ActionResult</span><span class="p">(</span><span class="n">extracted_content</span><span class="o">=</span><span class="n">msg</span><span class="p">,</span> <span class="n">include_in_memory</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="o">@</span><span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">.</span><span class="n">action</span><span class="p">(</span><span class="s">"Complete task"</span><span class="p">,</span> <span class="n">param_model</span><span class="o">=</span><span class="n">DoneAction</span><span class="p">)</span>
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">done</span><span class="p">(</span><span class="n">params</span><span class="p">:</span> <span class="n">DoneAction</span><span class="p">):</span>
+             <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s">"Task completion requested. Success: </span><span class="si">{</span><span class="n">params</span><span class="p">.</span><span class="n">success</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+             <span class="k">return</span> <span class="n">ActionResult</span><span class="p">(</span><span class="n">is_done</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">success</span><span class="o">=</span><span class="n">params</span><span class="p">.</span><span class="n">success</span><span class="p">,</span> <span class="n">extracted_content</span><span class="o">=</span><span class="n">params</span><span class="p">.</span><span class="n">text</span><span class="p">)</span>
+
+        <span class="c1"># ... registration for scroll_down, go_to_url, etc. ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">act</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">action</span><span class="p">:</span> <span class="n">ActionModel</span><span class="p">,</span>        <span class="c1"># The ActionModel from the LLM
+</span>        <span class="n">browser_context</span><span class="p">:</span> <span class="n">BrowserContext</span><span class="p">,</span> <span class="c1"># The context to act within
+</span>        <span class="o">**</span><span class="n">kwargs</span> <span class="c1"># Other potential context (LLMs, etc.)
+</span>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ActionResult</span><span class="p">:</span>
+        <span class="s">"""Execute an action defined in the ActionModel"""</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># ActionModel might look like: ActionModel(click_element=ClickElementAction(index=5))
+</span>            <span class="c1"># model_dump gets {'click_element': {'index': 5}}
+</span>            <span class="n">action_data</span> <span class="o">=</span> <span class="n">action</span><span class="p">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">exclude_unset</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">action_name</span><span class="p">,</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">action_data</span><span class="p">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"Executing action: </span><span class="si">{</span><span class="n">action_name</span><span class="si">}</span><span class="s"> with params: </span><span class="si">{</span><span class="n">params</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+                    <span class="c1"># Call the registry's execute method
+</span>                    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">registry</span><span class="p">.</span><span class="n">execute_action</span><span class="p">(</span>
+                        <span class="n">action_name</span><span class="o">=</span><span class="n">action_name</span><span class="p">,</span>
+                        <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">,</span>
+                        <span class="n">browser</span><span class="o">=</span><span class="n">browser_context</span><span class="p">,</span> <span class="c1"># Pass the essential context
+</span>                        <span class="o">**</span><span class="n">kwargs</span> <span class="c1"># Pass any other context needed by actions
+</span>                    <span class="p">)</span>
+
+                    <span class="c1"># Ensure result is ActionResult or convert it
+</span>                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">ActionResult</span><span class="p">):</span> <span class="k">return</span> <span class="n">result</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span> <span class="k">return</span> <span class="n">ActionResult</span><span class="p">(</span><span class="n">extracted_content</span><span class="o">=</span><span class="n">result</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="n">ActionResult</span><span class="p">()</span> <span class="c1"># Default empty result if action returned None
+</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">warning</span><span class="p">(</span><span class="s">"ActionModel had no action to execute."</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">ActionResult</span><span class="p">(</span><span class="n">error</span><span class="o">=</span><span class="s">"No action specified in the model"</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s">"Error during controller.act: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">ActionResult</span><span class="p">(</span><span class="n">error</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span> <span class="c1"># Return error in ActionResult
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">Controller</code> registers all the standard browser actions during initialization. The <code class="language-plaintext highlighter-rouge">act</code> method then dynamically finds and executes the requested action using the <code class="language-plaintext highlighter-rouge">Registry</code>.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <strong>Action Registry</strong> acts as the definitive catalog or “toolbox” of all operations the <code class="language-plaintext highlighter-rouge">Browser Use</code> Agent can perform. The <strong>Action Controller</strong> is the “mechanic” that interprets the LLM’s plan, selects the appropriate tool from the Registry, and executes it within the specified <a href="03_browsercontext.md">BrowserContext</a>.</p>
+
+<p>Together, they provide a robust and extensible way to translate high-level instructions into low-level browser interactions, forming the crucial link between the Agent’s “brain” (LLM planner) and its “hands” (browser manipulation).</p>
+
+<p>Now that we know how actions are chosen and executed, how does the Agent keep track of the conversation with the LLM, including the history of states observed and actions taken? We’ll explore this in the next chapter on the <a href="06_message_manager.md">Message Manager</a>.</p>
+
+<p><a href="06_message_manager.md">Next Chapter: Message Manager</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

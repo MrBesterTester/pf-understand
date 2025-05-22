@@ -1,0 +1,339 @@
+<h1 id="chapter-6-talking-back---fastmcp-context-context">Chapter 6: Talking Back - FastMCP Context (<code class="language-plaintext highlighter-rouge">Context</code>)</h1>
+
+<p>In <a href="05_fastmcp_prompts___prompt____promptmanager__.md">Chapter 5: Reusable Chat Starters - FastMCP Prompts (<code class="language-plaintext highlighter-rouge">Prompt</code>, <code class="language-plaintext highlighter-rouge">PromptManager</code>)</a>, we learned how to create reusable message templates for interacting with AI models. We’ve seen how to build servers with data resources (<a href="03_fastmcp_resources___resource____resourcemanager__.md">Chapter 3</a>) and action tools (<a href="04_fastmcp_tools___tool____toolmanager__.md">Chapter 4</a>).</p>
+
+<p>But imagine you have a tool that takes a while to run, like processing a large file or making a complex calculation. How does your tool communicate back to the user <em>while</em> it’s running? How can it say “I’m 50% done!” or log important steps? Or what if a tool needs to read some data from one of the server’s resources to do its job?</p>
+
+<p>This is where the <strong><code class="language-plaintext highlighter-rouge">Context</code></strong> object comes in. It’s like giving your tool function a temporary <strong>backstage pass</strong> for the specific request it’s handling. This pass grants it access to special features like sending logs, reporting progress, or accessing other parts of the server environment related to that request.</p>
+
+<h2 id="what-is-context">What is <code class="language-plaintext highlighter-rouge">Context</code>?</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">Context</code> object is a special helper object provided by the <code class="language-plaintext highlighter-rouge">FastMCP</code> framework. If you define a tool function (or a resource function) that includes a parameter specifically typed as <code class="language-plaintext highlighter-rouge">Context</code>, <code class="language-plaintext highlighter-rouge">FastMCP</code> will automatically create and pass this object to your function when it’s called.</p>
+
+<p>Think of it this way:</p>
+<ul>
+  <li>Each client request (like <code class="language-plaintext highlighter-rouge">callTool</code> or <code class="language-plaintext highlighter-rouge">readResource</code>) is like a separate event.</li>
+  <li>For that specific event, <code class="language-plaintext highlighter-rouge">FastMCP</code> can provide a <code class="language-plaintext highlighter-rouge">Context</code> object.</li>
+  <li>This <code class="language-plaintext highlighter-rouge">Context</code> object holds information about <em>that specific request</em> (like its unique ID).</li>
+  <li>It also provides methods (functions) to interact with the ongoing session, such as:
+    <ul>
+      <li>Sending log messages back to the client (<code class="language-plaintext highlighter-rouge">ctx.info</code>, <code class="language-plaintext highlighter-rouge">ctx.debug</code>, etc.).</li>
+      <li>Reporting progress updates (<code class="language-plaintext highlighter-rouge">ctx.report_progress</code>).</li>
+      <li>Reading data from other resources defined on the server (<code class="language-plaintext highlighter-rouge">ctx.read_resource</code>).</li>
+    </ul>
+  </li>
+</ul>
+
+<p>It’s your function’s way of communicating out or accessing shared server capabilities during its execution for a particular request.</p>
+
+<h2 id="getting-access-asking-for-the-context">Getting Access: Asking for the <code class="language-plaintext highlighter-rouge">Context</code></h2>
+
+<p>How do you tell <code class="language-plaintext highlighter-rouge">FastMCP</code> that your function needs this backstage pass? You simply add a parameter to your function definition and use a <strong>type hint</strong> to mark it as <code class="language-plaintext highlighter-rouge">Context</code>.</p>
+
+<p>Let’s create a tool that simulates a long-running task and uses <code class="language-plaintext highlighter-rouge">Context</code> to report progress and log messages.</p>
+
+<p><strong>File: <code class="language-plaintext highlighter-rouge">long_task_server.py</code></strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">anyio</span> <span class="c1"># For simulating delay with sleep
+</span><span class="kn">from</span> <span class="nn">mcp.server.fastmcp</span> <span class="kn">import</span> <span class="n">FastMCP</span>
+<span class="c1"># 1. Import the Context type
+</span><span class="kn">from</span> <span class="nn">mcp.server.fastmcp.server</span> <span class="kn">import</span> <span class="n">Context</span>
+
+<span class="c1"># Create the server instance
+</span><span class="n">server</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"LongTaskServer"</span><span class="p">)</span>
+
+<span class="c1"># Define our tool function
+# 2. Add a parameter (e.g., 'ctx') and type hint it as 'Context'
+</span><span class="o">@</span><span class="n">server</span><span class="p">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"long_task"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">"Simulates a task that takes time."</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">run_long_task</span><span class="p">(</span><span class="n">duration_seconds</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Context</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+  <span class="s">"""
+  Simulates a task, reporting progress and logging using Context.
+  """</span>
+  <span class="c1"># 3. Use the context object!
+</span>  <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s">"Starting long task for </span><span class="si">{</span><span class="n">duration_seconds</span><span class="si">}</span><span class="s"> seconds."</span><span class="p">)</span>
+
+  <span class="n">total_steps</span> <span class="o">=</span> <span class="mi">5</span>
+  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">total_steps</span><span class="p">):</span>
+      <span class="n">step</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+      <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"Working on step </span><span class="si">{</span><span class="n">step</span><span class="si">}</span><span class="s">/</span><span class="si">{</span><span class="n">total_steps</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+      <span class="c1"># Simulate work
+</span>      <span class="k">await</span> <span class="n">anyio</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">duration_seconds</span> <span class="o">/</span> <span class="n">total_steps</span><span class="p">)</span>
+      <span class="c1"># Report progress (current step, total steps)
+</span>      <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">report_progress</span><span class="p">(</span><span class="n">step</span><span class="p">,</span> <span class="n">total_steps</span><span class="p">)</span>
+
+  <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Long task completed!"</span><span class="p">)</span>
+  <span class="k">return</span> <span class="sa">f</span><span class="s">"Finished simulated task of </span><span class="si">{</span><span class="n">duration_seconds</span><span class="si">}</span><span class="s"> seconds."</span>
+
+<span class="c1"># Standard run block
+</span><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Starting </span><span class="si">{</span><span class="n">server</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">run</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">server</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s"> finished."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">from mcp.server.fastmcp.server import Context</code></strong>: We import the necessary <code class="language-plaintext highlighter-rouge">Context</code> class.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">async def run_long_task(duration_seconds: int, ctx: Context)</code></strong>:
+    <ul>
+      <li>We define our tool function as usual.</li>
+      <li>Crucially, we add a parameter named <code class="language-plaintext highlighter-rouge">ctx</code>. You can name it anything (like <code class="language-plaintext highlighter-rouge">context</code>, <code class="language-plaintext highlighter-rouge">req_ctx</code>), but <code class="language-plaintext highlighter-rouge">ctx</code> is common.</li>
+      <li>We add the type hint <code class="language-plaintext highlighter-rouge">: Context</code> after the parameter name. This is the signal to <code class="language-plaintext highlighter-rouge">FastMCP</code> to inject the context object here.</li>
+    </ul>
+  </li>
+  <li><strong>Using <code class="language-plaintext highlighter-rouge">ctx</code></strong>: Inside the function, we can now use the methods provided by the <code class="language-plaintext highlighter-rouge">ctx</code> object:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">await ctx.info(...)</code>: Sends an informational log message back to the client connected to this session.</li>
+      <li><code class="language-plaintext highlighter-rouge">await ctx.debug(...)</code>: Sends a debug-level log message. There are also <code class="language-plaintext highlighter-rouge">warning</code> and <code class="language-plaintext highlighter-rouge">error</code> methods.</li>
+      <li><code class="language-plaintext highlighter-rouge">await ctx.report_progress(step, total_steps)</code>: Sends a progress update to the client. The client application might display this in a progress bar.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>When a client calls the <code class="language-plaintext highlighter-rouge">long_task</code> tool, <code class="language-plaintext highlighter-rouge">FastMCP</code> will:</p>
+<ol>
+  <li>See the <code class="language-plaintext highlighter-rouge">ctx: Context</code> parameter.</li>
+  <li>Create a <code class="language-plaintext highlighter-rouge">Context</code> object specific to this request.</li>
+  <li>Call your <code class="language-plaintext highlighter-rouge">run_long_task</code> function, passing the duration and the newly created <code class="language-plaintext highlighter-rouge">ctx</code> object.</li>
+  <li>Your function runs, and calls like <code class="language-plaintext highlighter-rouge">ctx.info</code> or <code class="language-plaintext highlighter-rouge">ctx.report_progress</code> send messages back to the client <em>during</em> the execution of the tool.</li>
+</ol>
+
+<h2 id="using-context-to-access-resources">Using <code class="language-plaintext highlighter-rouge">Context</code> to Access Resources</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">Context</code> object isn’t just for sending information <em>out</em>; it can also be used to access other parts of the server, like reading resources defined using <code class="language-plaintext highlighter-rouge">@server.resource</code>.</p>
+
+<p>Let’s modify our example. Imagine our long task needs some configuration data stored in a resource.</p>
+
+<p><strong>File: <code class="language-plaintext highlighter-rouge">long_task_server_with_resource.py</code></strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">anyio</span>
+<span class="kn">from</span> <span class="nn">mcp.server.fastmcp</span> <span class="kn">import</span> <span class="n">FastMCP</span>
+<span class="kn">from</span> <span class="nn">mcp.server.fastmcp.server</span> <span class="kn">import</span> <span class="n">Context</span>
+
+<span class="c1"># Create the server instance
+</span><span class="n">server</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"LongTaskServer"</span><span class="p">)</span>
+
+<span class="c1"># Define a simple resource that holds some config data
+</span><span class="o">@</span><span class="n">server</span><span class="p">.</span><span class="n">resource</span><span class="p">(</span><span class="n">uri</span><span class="o">=</span><span class="s">"config://task_settings"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">"Settings for the long task."</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">get_task_settings</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+  <span class="s">"""Returns task settings as a simple string."""</span>
+  <span class="c1"># In a real app, this might load from a file or database
+</span>  <span class="k">print</span><span class="p">(</span><span class="s">"Resource 'config://task_settings' was read!"</span><span class="p">)</span>
+  <span class="k">return</span> <span class="s">"Default speed: Normal"</span> <span class="c1"># Simple example setting
+</span>
+<span class="c1"># Define our tool function
+</span><span class="o">@</span><span class="n">server</span><span class="p">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"long_task"</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">"Simulates a task using config resource."</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">run_long_task</span><span class="p">(</span><span class="n">duration_seconds</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Context</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+  <span class="s">"""
+  Simulates a task, reads config via Context, reports progress.
+  """</span>
+  <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s">"Starting long task for </span><span class="si">{</span><span class="n">duration_seconds</span><span class="si">}</span><span class="s"> seconds."</span><span class="p">)</span>
+
+  <span class="c1"># 1. Use context to read the resource
+</span>  <span class="k">try</span><span class="p">:</span>
+      <span class="c1"># read_resource returns a list of content chunks
+</span>      <span class="n">resource_contents</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">read_resource</span><span class="p">(</span><span class="s">"config://task_settings"</span><span class="p">)</span>
+      <span class="c1"># Assuming simple text content for this example
+</span>      <span class="n">settings</span> <span class="o">=</span> <span class="s">""</span>
+      <span class="k">for</span> <span class="n">content_part</span> <span class="ow">in</span> <span class="n">resource_contents</span><span class="p">:</span>
+          <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">content_part</span><span class="p">,</span> <span class="s">'content'</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">content_part</span><span class="p">.</span><span class="n">content</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+              <span class="n">settings</span> <span class="o">=</span> <span class="n">content_part</span><span class="p">.</span><span class="n">content</span>
+              <span class="k">break</span>
+      <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s">"Loaded settings: </span><span class="si">{</span><span class="n">settings</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+  <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+      <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s">"Could not read task settings: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+
+  <span class="n">total_steps</span> <span class="o">=</span> <span class="mi">5</span>
+  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">total_steps</span><span class="p">):</span>
+      <span class="n">step</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+      <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s">"Working on step </span><span class="si">{</span><span class="n">step</span><span class="si">}</span><span class="s">/</span><span class="si">{</span><span class="n">total_steps</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+      <span class="k">await</span> <span class="n">anyio</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">duration_seconds</span> <span class="o">/</span> <span class="n">total_steps</span><span class="p">)</span>
+      <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">report_progress</span><span class="p">(</span><span class="n">step</span><span class="p">,</span> <span class="n">total_steps</span><span class="p">)</span>
+
+  <span class="k">await</span> <span class="n">ctx</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Long task completed!"</span><span class="p">)</span>
+  <span class="k">return</span> <span class="sa">f</span><span class="s">"Finished simulated task of </span><span class="si">{</span><span class="n">duration_seconds</span><span class="si">}</span><span class="s"> seconds using settings."</span>
+
+<span class="c1"># Standard run block
+</span><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Starting </span><span class="si">{</span><span class="n">server</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">run</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">server</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s"> finished."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">@server.resource(...)</code></strong>: We added a simple resource named <code class="language-plaintext highlighter-rouge">config://task_settings</code> that just returns a string.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">resource_contents = await ctx.read_resource("config://task_settings")</code></strong>: Inside our <code class="language-plaintext highlighter-rouge">run_long_task</code> tool, we now use <code class="language-plaintext highlighter-rouge">ctx.read_resource()</code> to fetch the content of our configuration resource. This allows the tool to dynamically access data managed by the server without having direct access to the resource’s implementation function (<code class="language-plaintext highlighter-rouge">get_task_settings</code>).</li>
+  <li><strong>Processing Content</strong>: The <code class="language-plaintext highlighter-rouge">read_resource</code> method returns an iterable of <code class="language-plaintext highlighter-rouge">ReadResourceContents</code> objects (often just one). We extracted the string content to use it.</li>
+</ol>
+
+<p>Now, our tool can both communicate outwards (logs, progress) and interact inwards (read resources) using the same <code class="language-plaintext highlighter-rouge">Context</code> object, all within the scope of the single request it’s handling.</p>
+
+<h2 id="how-context-works-under-the-hood">How <code class="language-plaintext highlighter-rouge">Context</code> Works Under the Hood</h2>
+
+<p>It feels like magic that just adding <code class="language-plaintext highlighter-rouge">: Context</code> gives your function these powers, but it’s a well-defined process within <code class="language-plaintext highlighter-rouge">FastMCP</code>.</p>
+
+<ol>
+  <li><strong>Request Arrives:</strong> A client sends a request, for example, <code class="language-plaintext highlighter-rouge">callTool</code> for our <code class="language-plaintext highlighter-rouge">long_task</code>.</li>
+  <li><strong>Low-Level Handling:</strong> The underlying <code class="language-plaintext highlighter-rouge">MCPServer</code> receives the request and creates a <code class="language-plaintext highlighter-rouge">RequestContext</code> object. This low-level context holds the raw request details, a reference to the current <code class="language-plaintext highlighter-rouge">ServerSession</code>, and the request ID.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">FastMCP</code> Takes Over:</strong> The request is routed to the appropriate <code class="language-plaintext highlighter-rouge">FastMCP</code> handler method (e.g., <code class="language-plaintext highlighter-rouge">FastMCP.call_tool</code>).</li>
+  <li><strong>Context Creation:</strong> Before calling the actual tool function, <code class="language-plaintext highlighter-rouge">FastMCP</code> calls its internal <code class="language-plaintext highlighter-rouge">get_context()</code> method. This method creates the high-level <code class="language-plaintext highlighter-rouge">Context</code> object we use. It wraps the low-level <code class="language-plaintext highlighter-rouge">RequestContext</code> and also adds a reference to the <code class="language-plaintext highlighter-rouge">FastMCP</code> server instance itself.</li>
+  <li><strong>Function Inspection:</strong> The <code class="language-plaintext highlighter-rouge">ToolManager</code> (when asked to run the tool) inspects the signature of your target function (<code class="language-plaintext highlighter-rouge">run_long_task</code>). It sees the <code class="language-plaintext highlighter-rouge">ctx: Context</code> parameter.</li>
+  <li><strong>Injection:</strong> The <code class="language-plaintext highlighter-rouge">ToolManager</code> (specifically the <code class="language-plaintext highlighter-rouge">Tool.run</code> method which uses <code class="language-plaintext highlighter-rouge">FuncMetadata.call_fn_with_arg_validation</code>) knows it needs to provide a <code class="language-plaintext highlighter-rouge">Context</code> object. It takes the <code class="language-plaintext highlighter-rouge">Context</code> created in step 4 and passes it as the argument for the <code class="language-plaintext highlighter-rouge">ctx</code> parameter when calling your <code class="language-plaintext highlighter-rouge">run_long_task</code> function.</li>
+  <li><strong>Execution:</strong> Your function runs. When you call <code class="language-plaintext highlighter-rouge">ctx.info("...")</code>, the <code class="language-plaintext highlighter-rouge">Context</code> object uses its reference to the underlying <code class="language-plaintext highlighter-rouge">RequestContext</code> and <code class="language-plaintext highlighter-rouge">ServerSession</code> to send the appropriate log message back to the client via the session. Similarly, <code class="language-plaintext highlighter-rouge">ctx.report_progress</code> uses the session, and <code class="language-plaintext highlighter-rouge">ctx.read_resource</code> uses the reference to the <code class="language-plaintext highlighter-rouge">FastMCP</code> instance to call its <code class="language-plaintext highlighter-rouge">read_resource</code> method.</li>
+</ol>
+
+<p><strong>Simplified Sequence Diagram (<code class="language-plaintext highlighter-rouge">callTool</code> with <code class="language-plaintext highlighter-rouge">Context</code>):</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Client
+    participant FastMCPServer as FastMCP (server.py)
+    participant ToolMgr as ToolManager (_tool_manager)
+    participant ToolRunner as Tool.run / FuncMetadata
+    participant YourToolFunc as run_long_task(ctx: Context)
+    participant ContextObj as Context
+
+    Client-&gt;&gt;+FastMCPServer: callTool(name="long_task", args={...})
+    FastMCPServer-&gt;&gt;FastMCPServer: Create low-level RequestContext
+    FastMCPServer-&gt;&gt;+ContextObj: Create Context (wraps RequestContext, FastMCP)
+    FastMCPServer-&gt;&gt;+ToolMgr: call_tool(name="long_task", args={...})
+    ToolMgr-&gt;&gt;+ToolRunner: run(arguments={...}, context=ContextObj)
+    ToolRunner-&gt;&gt;ToolRunner: Inspect run_long_task, see 'ctx: Context'
+    ToolRunner-&gt;&gt;+YourToolFunc: Call run_long_task(duration=..., ctx=ContextObj)
+    YourToolFunc-&gt;&gt;ContextObj: ctx.info("Starting...")
+    ContextObj-&gt;&gt;FastMCPServer: Use session.send_log_message(...)
+    YourToolFunc-&gt;&gt;ContextObj: ctx.report_progress(...)
+    ContextObj-&gt;&gt;FastMCPServer: Use session.send_progress_notification(...)
+    YourToolFunc-&gt;&gt;ContextObj: ctx.read_resource("config://...")
+    ContextObj-&gt;&gt;FastMCPServer: Call fastmcp.read_resource("config://...")
+    FastMCPServer--&gt;&gt;ContextObj: Return resource content
+    ContextObj--&gt;&gt;YourToolFunc: Return resource content
+    YourToolFunc--&gt;&gt;-ToolRunner: Return "Finished..."
+    ToolRunner--&gt;&gt;-ToolMgr: Return "Finished..."
+    ToolMgr--&gt;&gt;-FastMCPServer: Return "Finished..."
+    FastMCPServer-&gt;&gt;-Client: Send Response: result="Finished..."
+</code></pre>
+
+<p><strong>Looking at the Code (Briefly):</strong></p>
+
+<ul>
+  <li>
+    <p><strong>Context Creation (<code class="language-plaintext highlighter-rouge">server/fastmcp/server.py</code>)</strong>: The <code class="language-plaintext highlighter-rouge">FastMCP.get_context</code> method is responsible for creating the <code class="language-plaintext highlighter-rouge">Context</code> object when needed, typically just before calling a tool or resource handler. It grabs the low-level context and wraps it.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside server/fastmcp/server.py (Simplified FastMCP.get_context)
+</span><span class="kn">from</span> <span class="nn">mcp.shared.context</span> <span class="kn">import</span> <span class="n">RequestContext</span> <span class="c1"># Low-level context
+</span>
+<span class="k">class</span> <span class="nc">FastMCP</span><span class="p">:</span>
+    <span class="c1"># ... (other methods) ...
+</span>
+    <span class="k">def</span> <span class="nf">get_context</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Context</span><span class="p">[</span><span class="n">ServerSession</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="s">"""Returns a Context object."""</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Get the low-level context for the current request
+</span>            <span class="n">request_context</span><span class="p">:</span> <span class="n">RequestContext</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_mcp_server</span><span class="p">.</span><span class="n">request_context</span>
+        <span class="k">except</span> <span class="nb">LookupError</span><span class="p">:</span>
+            <span class="n">request_context</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># Not available outside a request
+</span>
+        <span class="c1"># Create our high-level Context, passing the low-level one
+</span>        <span class="c1"># and a reference to this FastMCP instance ('self')
+</span>        <span class="k">return</span> <span class="n">Context</span><span class="p">(</span><span class="n">request_context</span><span class="o">=</span><span class="n">request_context</span><span class="p">,</span> <span class="n">fastmcp</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Context Injection (<code class="language-plaintext highlighter-rouge">server/fastmcp/tools/base.py</code>)</strong>: The <code class="language-plaintext highlighter-rouge">Tool.from_function</code> method inspects the function signature to see if a <code class="language-plaintext highlighter-rouge">Context</code> parameter exists and stores its name (<code class="language-plaintext highlighter-rouge">context_kwarg</code>). Later, <code class="language-plaintext highlighter-rouge">Tool.run</code> uses this information (via <code class="language-plaintext highlighter-rouge">FuncMetadata</code>) to pass the context object when calling your function.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside server/fastmcp/tools/base.py (Simplified Tool.from_function)
+</span><span class="k">class</span> <span class="nc">Tool</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="c1"># ... fields ...
+</span>    <span class="n">context_kwarg</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(...)</span>
+
+    <span class="o">@</span><span class="nb">classmethod</span>
+    <span class="k">def</span> <span class="nf">from_function</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">fn</span><span class="p">,</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="n">Tool</span><span class="p">:</span>
+        <span class="c1"># ... other inspection ...
+</span>        <span class="n">context_param_name</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">sig</span> <span class="o">=</span> <span class="n">inspect</span><span class="p">.</span><span class="n">signature</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">param_name</span><span class="p">,</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">sig</span><span class="p">.</span><span class="n">parameters</span><span class="p">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># Check if the type hint is Context
+</span>            <span class="k">if</span> <span class="n">param</span><span class="p">.</span><span class="n">annotation</span> <span class="ow">is</span> <span class="n">Context</span><span class="p">:</span>
+                <span class="n">context_param_name</span> <span class="o">=</span> <span class="n">param_name</span>
+                <span class="k">break</span>
+        <span class="c1"># ... create FuncMetadata, skipping context arg ...
+</span>        <span class="k">return</span> <span class="n">cls</span><span class="p">(</span>
+            <span class="c1"># ...,
+</span>            <span class="n">context_kwarg</span><span class="o">=</span><span class="n">context_param_name</span><span class="p">,</span>
+            <span class="c1"># ...
+</span>        <span class="p">)</span>
+
+<span class="c1"># Inside Tool.run (simplified concept)
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arguments</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="c1"># ... validate args ...
+</span>    <span class="n">kwargs_for_fn</span> <span class="o">=</span> <span class="n">validated_args</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">context_kwarg</span> <span class="ow">and</span> <span class="n">context</span><span class="p">:</span>
+         <span class="c1"># Add the context object to the arguments passed to the function
+</span>        <span class="n">kwargs_for_fn</span><span class="p">[</span><span class="bp">self</span><span class="p">.</span><span class="n">context_kwarg</span><span class="p">]</span> <span class="o">=</span> <span class="n">context</span>
+
+    <span class="c1"># Call the original function (self.fn)
+</span>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">fn</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs_for_fn</span><span class="p">)</span> <span class="c1"># Or sync call
+</span>    <span class="k">return</span> <span class="n">result</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Context Implementation (<code class="language-plaintext highlighter-rouge">server/fastmcp/server.py</code>)</strong>: The <code class="language-plaintext highlighter-rouge">Context</code> class itself implements methods like <code class="language-plaintext highlighter-rouge">info</code>, <code class="language-plaintext highlighter-rouge">report_progress</code>, <code class="language-plaintext highlighter-rouge">read_resource</code> by calling methods on the stored <code class="language-plaintext highlighter-rouge">_request_context.session</code> or <code class="language-plaintext highlighter-rouge">_fastmcp</code> instance.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Inside server/fastmcp/server.py (Simplified Context methods)
+</span><span class="k">class</span> <span class="nc">Context</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">Generic</span><span class="p">[</span><span class="n">ServerSessionT</span><span class="p">,</span> <span class="n">LifespanContextT</span><span class="p">]):</span>
+    <span class="n">_request_context</span><span class="p">:</span> <span class="n">RequestContext</span><span class="p">[...]</span> <span class="o">|</span> <span class="bp">None</span>
+    <span class="n">_fastmcp</span><span class="p">:</span> <span class="n">FastMCP</span> <span class="o">|</span> <span class="bp">None</span>
+    <span class="c1"># ... (init, properties) ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">report_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">progress</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c1"># Get progress token from low-level context meta if available
+</span>        <span class="n">progress_token</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">request_context</span><span class="p">.</span><span class="n">meta</span><span class="p">.</span><span class="n">progressToken</span> <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">request_context</span><span class="p">.</span><span class="n">meta</span> <span class="k">else</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="n">progress_token</span><span class="p">:</span>
+            <span class="c1"># Use the session object from the low-level context
+</span>            <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">request_context</span><span class="p">.</span><span class="n">session</span><span class="p">.</span><span class="n">send_progress_notification</span><span class="p">(...)</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">read_resource</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">):</span>
+        <span class="c1"># Use the stored FastMCP instance
+</span>        <span class="k">assert</span> <span class="bp">self</span><span class="p">.</span><span class="n">_fastmcp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_fastmcp</span><span class="p">.</span><span class="n">read_resource</span><span class="p">(</span><span class="n">uri</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="p">...):</span>
+         <span class="c1"># Use the session object from the low-level context
+</span>        <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">request_context</span><span class="p">.</span><span class="n">session</span><span class="p">.</span><span class="n">send_log_message</span><span class="p">(...)</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="o">**</span><span class="n">extra</span><span class="p">):</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">log</span><span class="p">(</span><span class="s">"info"</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="o">**</span><span class="n">extra</span><span class="p">)</span>
+    <span class="c1"># ... (debug, warning, error methods) ...
+</span></code></pre></div>    </div>
+  </li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the <code class="language-plaintext highlighter-rouge">Context</code> object in <code class="language-plaintext highlighter-rouge">FastMCP</code> – your function’s essential backstage pass during a request.</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">Context</code> provides access to request-specific information and server capabilities.</li>
+  <li>You gain access by adding a parameter type-hinted as <code class="language-plaintext highlighter-rouge">Context</code> to your tool or resource function definition.</li>
+  <li>It allows your functions to:
+    <ul>
+      <li>Send log messages (<code class="language-plaintext highlighter-rouge">ctx.info</code>, <code class="language-plaintext highlighter-rouge">ctx.debug</code>, etc.).</li>
+      <li>Report progress (<code class="language-plaintext highlighter-rouge">ctx.report_progress</code>).</li>
+      <li>Read server resources (<code class="language-plaintext highlighter-rouge">ctx.read_resource</code>).</li>
+      <li>Access request details (<code class="language-plaintext highlighter-rouge">ctx.request_id</code>).</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> automatically creates and injects the <code class="language-plaintext highlighter-rouge">Context</code> object when your function is called for a specific request.</li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">Context</code> object is key to building more interactive and communicative tools and resources that can provide feedback to the user and interact with their environment during execution.</p>
+
+<p>So far, we’ve focused on the high-level abstractions <code class="language-plaintext highlighter-rouge">FastMCP</code> provides (<code class="language-plaintext highlighter-rouge">Tool</code>, <code class="language-plaintext highlighter-rouge">Resource</code>, <code class="language-plaintext highlighter-rouge">Prompt</code>, <code class="language-plaintext highlighter-rouge">Context</code>). In the next chapter, we’ll take a step back and look at the fundamental data structures defined by the MCP specification itself: <a href="07_mcp_protocol_types.md">Chapter 7: MCP Protocol Types</a>. Understanding these types helps clarify the data being exchanged between clients and servers under the hood.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

@@ -1,0 +1,343 @@
+<h1 id="chapter-6-llm---the-agents-brain">Chapter 6: LLM - The Agent’s Brain</h1>
+
+<p>In the <a href="05_process.md">previous chapter</a>, we explored the <code class="language-plaintext highlighter-rouge">Process</code> - how the <code class="language-plaintext highlighter-rouge">Crew</code> organizes the workflow for its <code class="language-plaintext highlighter-rouge">Agent</code>s, deciding whether they work sequentially or are managed hierarchically. We now have specialized agents (<a href="02_agent.md">Agent</a>), defined work (<a href="03_task.md">Task</a>), useful abilities (<a href="04_tool.md">Tool</a>), and a workflow strategy (<a href="05_process.md">Process</a>).</p>
+
+<p>But what actually does the <em>thinking</em> inside an agent? When we give the ‘Travel Researcher’ agent the task “Find sunny European cities,” what part of the agent understands this request, decides to use the search tool, interprets the results, and writes the final list?</p>
+
+<p>This core thinking component is the <strong>Large Language Model</strong>, or <strong>LLM</strong>.</p>
+
+<h2 id="why-do-agents-need-an-llm">Why Do Agents Need an LLM?</h2>
+
+<p>Imagine our ‘Travel Researcher’ agent again. It has a <code class="language-plaintext highlighter-rouge">role</code>, <code class="language-plaintext highlighter-rouge">goal</code>, and <code class="language-plaintext highlighter-rouge">backstory</code>. It has a <code class="language-plaintext highlighter-rouge">Task</code> to complete and maybe a <code class="language-plaintext highlighter-rouge">Tool</code> to search the web. But it needs something to:</p>
+
+<ol>
+  <li><strong>Understand:</strong> Read the task description, its own role/goal, and any context from previous tasks.</li>
+  <li><strong>Reason:</strong> Figure out a plan. “Okay, I need sunny cities. My description says I’m an expert. The task asks for 3. I should use the search tool to get current info.”</li>
+  <li><strong>Act:</strong> Decide <em>when</em> to use a tool and <em>what</em> input to give it (e.g., formulate the search query).</li>
+  <li><strong>Generate:</strong> Take the information (search results, its own knowledge) and write the final output in the expected format.</li>
+</ol>
+
+<p>The LLM is the engine that performs all these cognitive actions. It’s the “brain” that drives the agent’s behavior based on the instructions and tools provided.</p>
+
+<p><strong>Problem Solved:</strong> The LLM provides the core intelligence for each <code class="language-plaintext highlighter-rouge">Agent</code>. It processes language, makes decisions (like which tool to use or what text to generate), and ultimately enables the agent to perform its assigned <code class="language-plaintext highlighter-rouge">Task</code> based on its defined profile.</p>
+
+<h2 id="what-is-an-llm-in-crewai">What is an LLM in CrewAI?</h2>
+
+<p>Think of an LLM as a highly advanced, versatile AI assistant you can interact with using text. Models like OpenAI’s GPT-4, Google’s Gemini, Anthropic’s Claude, or open-source models run locally via tools like Ollama are all examples of LLMs. They are trained on vast amounts of text data and can understand instructions, answer questions, write text, summarize information, and even make logical deductions.</p>
+
+<p>In CrewAI, the <code class="language-plaintext highlighter-rouge">LLM</code> concept is an <strong>abstraction</strong>. CrewAI itself doesn’t <em>include</em> these massive language models. Instead, it provides a standardized way to <strong>connect to and interact with</strong> various LLMs, whether they are hosted by companies like OpenAI or run on your own computer.</p>
+
+<p><strong>How CrewAI Handles LLMs:</strong></p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">litellm</code> Integration:</strong> CrewAI uses a fantastic library called <code class="language-plaintext highlighter-rouge">litellm</code> under the hood. <code class="language-plaintext highlighter-rouge">litellm</code> acts like a universal translator, allowing CrewAI to talk to over 100 different LLM providers (OpenAI, Azure OpenAI, Gemini, Anthropic, Ollama, Hugging Face, etc.) using a consistent interface. This means you can easily switch the “brain” of your agents without rewriting large parts of your code.</li>
+  <li><strong>Standard Interface:</strong> The CrewAI <code class="language-plaintext highlighter-rouge">LLM</code> abstraction (often represented by helper classes or configuration settings) simplifies how you specify which model to use and how it should behave. It handles common parameters like:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">model</code>: The specific name of the LLM you want to use (e.g., <code class="language-plaintext highlighter-rouge">"gpt-4o"</code>, <code class="language-plaintext highlighter-rouge">"ollama/llama3"</code>, <code class="language-plaintext highlighter-rouge">"gemini-pro"</code>).</li>
+      <li><code class="language-plaintext highlighter-rouge">temperature</code>: Controls the randomness (creativity) of the output. Lower values (e.g., 0.1) make the output more deterministic and focused, while higher values (e.g., 0.8) make it more creative but potentially less factual.</li>
+      <li><code class="language-plaintext highlighter-rouge">max_tokens</code>: The maximum number of words (tokens) the LLM should generate in its response.</li>
+    </ul>
+  </li>
+  <li><strong>API Management:</strong> It manages the technical details of sending requests to the chosen LLM provider and receiving the responses.</li>
+</ul>
+
+<p>Essentially, CrewAI lets you plug in the LLM brain of your choice for your agents.</p>
+
+<h2 id="configuring-an-llm-for-your-crew">Configuring an LLM for Your Crew</h2>
+
+<p>You need to tell CrewAI which LLM(s) your agents should use. There are several ways to do this, ranging from letting CrewAI detect settings automatically to explicitly configuring specific models.</p>
+
+<p><strong>1. Automatic Detection (Environment Variables)</strong></p>
+
+<p>Often the easiest way for common models like OpenAI’s is to set environment variables. CrewAI (via <code class="language-plaintext highlighter-rouge">litellm</code>) can pick these up automatically.</p>
+
+<p>If you set these in your system or a <code class="language-plaintext highlighter-rouge">.env</code> file:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Example .env file</span>
+<span class="nv">OPENAI_API_KEY</span><span class="o">=</span><span class="s2">"sk-your_openai_api_key_here"</span>
+<span class="c"># Optional: Specify the model, otherwise it uses a default like gpt-4o</span>
+<span class="nv">OPENAI_MODEL_NAME</span><span class="o">=</span><span class="s2">"gpt-4o"</span>
+</code></pre></div></div>
+
+<p>Then, often you don’t need to specify the LLM explicitly in your code:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># agent.py (simplified)
+</span><span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Agent</span>
+
+<span class="c1"># If OPENAI_API_KEY and OPENAI_MODEL_NAME are set in the environment,
+# CrewAI might automatically configure an OpenAI LLM for this agent.
+</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+    <span class="n">role</span><span class="o">=</span><span class="s">'Travel Researcher'</span><span class="p">,</span>
+    <span class="n">goal</span><span class="o">=</span><span class="s">'Find interesting cities in Europe'</span><span class="p">,</span>
+    <span class="n">backstory</span><span class="o">=</span><span class="s">'Expert researcher.'</span><span class="p">,</span>
+    <span class="c1"># No 'llm=' parameter needed here if env vars are set
+</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>2. Explicit Configuration (Recommended for Clarity)</strong></p>
+
+<p>It’s usually better to be explicit about which LLM you want to use. CrewAI integrates well with LangChain’s LLM wrappers, which are commonly used.</p>
+
+<p><strong>Example: Using OpenAI (GPT-4o)</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Make sure you have langchain_openai installed: pip install langchain-openai
+</span><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">langchain_openai</span> <span class="kn">import</span> <span class="n">ChatOpenAI</span>
+<span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Agent</span>
+
+<span class="c1"># Set the API key (best practice: use environment variables)
+# os.environ["OPENAI_API_KEY"] = "sk-your_key_here"
+</span>
+<span class="c1"># Instantiate the OpenAI LLM wrapper
+</span><span class="n">openai_llm</span> <span class="o">=</span> <span class="n">ChatOpenAI</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s">"gpt-4o"</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+
+<span class="c1"># Pass the configured LLM to the Agent
+</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+    <span class="n">role</span><span class="o">=</span><span class="s">'Travel Researcher'</span><span class="p">,</span>
+    <span class="n">goal</span><span class="o">=</span><span class="s">'Find interesting cities in Europe'</span><span class="p">,</span>
+    <span class="n">backstory</span><span class="o">=</span><span class="s">'Expert researcher.'</span><span class="p">,</span>
+    <span class="n">llm</span><span class="o">=</span><span class="n">openai_llm</span> <span class="c1"># Explicitly assign the LLM
+</span><span class="p">)</span>
+
+<span class="c1"># You can also assign a default LLM to the Crew
+# from crewai import Crew
+# trip_crew = Crew(
+#   agents=[researcher],
+#   tasks=[...],
+#   # Manager LLM for hierarchical process
+#   manager_llm=openai_llm
+#   # A function_calling_llm can also be set for tool use reasoning
+#   # function_calling_llm=openai_llm
+# )
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We import <code class="language-plaintext highlighter-rouge">ChatOpenAI</code> from <code class="language-plaintext highlighter-rouge">langchain_openai</code>.</li>
+  <li>We create an instance, specifying the <code class="language-plaintext highlighter-rouge">model</code> name and optionally other parameters like <code class="language-plaintext highlighter-rouge">temperature</code>.</li>
+  <li>We pass this <code class="language-plaintext highlighter-rouge">openai_llm</code> object to the <code class="language-plaintext highlighter-rouge">llm</code> parameter when creating the <code class="language-plaintext highlighter-rouge">Agent</code>. This agent will now use GPT-4o for its thinking.</li>
+  <li>You can also assign LLMs at the <code class="language-plaintext highlighter-rouge">Crew</code> level, especially the <code class="language-plaintext highlighter-rouge">manager_llm</code> for hierarchical processes or a default <code class="language-plaintext highlighter-rouge">function_calling_llm</code> which helps agents decide <em>which</em> tool to use.</li>
+</ul>
+
+<p><strong>Example: Using a Local Model via Ollama (Llama 3)</strong></p>
+
+<p>If you have Ollama running locally with a model like Llama 3 pulled (<code class="language-plaintext highlighter-rouge">ollama pull llama3</code>):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Make sure you have langchain_community installed: pip install langchain-community
+</span><span class="kn">from</span> <span class="nn">langchain_community.llms</span> <span class="kn">import</span> <span class="n">Ollama</span>
+<span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Agent</span>
+
+<span class="c1"># Instantiate the Ollama LLM wrapper
+# Make sure Ollama server is running!
+</span><span class="n">ollama_llm</span> <span class="o">=</span> <span class="n">Ollama</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s">"llama3"</span><span class="p">,</span> <span class="n">base_url</span><span class="o">=</span><span class="s">"http://localhost:11434"</span><span class="p">)</span>
+<span class="c1"># temperature, etc. can also be set if supported by the model/wrapper
+</span>
+<span class="c1"># Pass the configured LLM to the Agent
+</span><span class="n">local_researcher</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+    <span class="n">role</span><span class="o">=</span><span class="s">'Travel Researcher'</span><span class="p">,</span>
+    <span class="n">goal</span><span class="o">=</span><span class="s">'Find interesting cities in Europe'</span><span class="p">,</span>
+    <span class="n">backstory</span><span class="o">=</span><span class="s">'Expert researcher.'</span><span class="p">,</span>
+    <span class="n">llm</span><span class="o">=</span><span class="n">ollama_llm</span> <span class="c1"># Use the local Llama 3 model
+</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We import <code class="language-plaintext highlighter-rouge">Ollama</code> from <code class="language-plaintext highlighter-rouge">langchain_community.llms</code>.</li>
+  <li>We create an instance, specifying the <code class="language-plaintext highlighter-rouge">model</code> name (“llama3” in this case, assuming it’s available in your Ollama setup) and the <code class="language-plaintext highlighter-rouge">base_url</code> where your Ollama server is running.</li>
+  <li>We pass <code class="language-plaintext highlighter-rouge">ollama_llm</code> to the <code class="language-plaintext highlighter-rouge">Agent</code>. Now, this agent’s “brain” runs entirely on your local machine!</li>
+</ul>
+
+<p><strong>CrewAI’s <code class="language-plaintext highlighter-rouge">LLM</code> Class (Advanced/Direct <code class="language-plaintext highlighter-rouge">litellm</code> Usage)</strong></p>
+
+<p>CrewAI also provides its own <code class="language-plaintext highlighter-rouge">LLM</code> class (<code class="language-plaintext highlighter-rouge">from crewai import LLM</code>) which allows more direct configuration using <code class="language-plaintext highlighter-rouge">litellm</code> parameters. This is less common for beginners than using the LangChain wrappers shown above, but offers fine-grained control.</p>
+
+<p><strong>Passing LLMs to the Crew</strong></p>
+
+<p>Besides assigning an LLM to each agent individually, you can set defaults or specific roles at the <code class="language-plaintext highlighter-rouge">Crew</code> level:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Crew</span><span class="p">,</span> <span class="n">Process</span>
+<span class="kn">from</span> <span class="nn">langchain_openai</span> <span class="kn">import</span> <span class="n">ChatOpenAI</span>
+
+<span class="c1"># Assume agents 'researcher', 'planner' and tasks 'task1', 'task2' are defined
+</span>
+<span class="n">openai_llm</span> <span class="o">=</span> <span class="n">ChatOpenAI</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s">"gpt-4o"</span><span class="p">)</span>
+<span class="n">fast_llm</span> <span class="o">=</span> <span class="n">ChatOpenAI</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s">"gpt-3.5-turbo"</span><span class="p">)</span> <span class="c1"># Maybe a faster/cheaper model
+</span>
+<span class="n">trip_crew</span> <span class="o">=</span> <span class="n">Crew</span><span class="p">(</span>
+    <span class="n">agents</span><span class="o">=</span><span class="p">[</span><span class="n">researcher</span><span class="p">,</span> <span class="n">planner</span><span class="p">],</span> <span class="c1"># Agents might have their own LLMs assigned too
+</span>    <span class="n">tasks</span><span class="o">=</span><span class="p">[</span><span class="n">task1</span><span class="p">,</span> <span class="n">task2</span><span class="p">],</span>
+    <span class="n">process</span><span class="o">=</span><span class="n">Process</span><span class="p">.</span><span class="n">hierarchical</span><span class="p">,</span>
+    <span class="c1"># The Manager agent will use gpt-4o
+</span>    <span class="n">manager_llm</span><span class="o">=</span><span class="n">openai_llm</span><span class="p">,</span>
+    <span class="c1"># Use gpt-3.5-turbo specifically for deciding which tool to use (can save costs)
+</span>    <span class="n">function_calling_llm</span><span class="o">=</span><span class="n">fast_llm</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">manager_llm</code>: Specifies the brain for the manager agent in a hierarchical process.</li>
+  <li><code class="language-plaintext highlighter-rouge">function_calling_llm</code>: Specifies the LLM used by agents primarily to decide <em>which tool to call</em> and <em>with what arguments</em>. This can sometimes be a faster/cheaper model than the one used for generating the final detailed response. If not set, agents typically use their main <code class="language-plaintext highlighter-rouge">llm</code>.</li>
+</ul>
+
+<p>If an agent doesn’t have an <code class="language-plaintext highlighter-rouge">llm</code> explicitly assigned, it might inherit the <code class="language-plaintext highlighter-rouge">function_calling_llm</code> or default to environment settings. It’s usually clearest to assign LLMs explicitly where needed.</p>
+
+<h2 id="how-llm-interaction-works-internally">How LLM Interaction Works Internally</h2>
+
+<p>When an <a href="02_agent.md">Agent</a> needs to think (e.g., execute a <a href="03_task.md">Task</a>), the process looks like this:</p>
+
+<ol>
+  <li><strong>Prompt Assembly:</strong> The <code class="language-plaintext highlighter-rouge">Agent</code> gathers all relevant information: its <code class="language-plaintext highlighter-rouge">role</code>, <code class="language-plaintext highlighter-rouge">goal</code>, <code class="language-plaintext highlighter-rouge">backstory</code>, the <code class="language-plaintext highlighter-rouge">Task</code> description, <code class="language-plaintext highlighter-rouge">expected_output</code>, any <code class="language-plaintext highlighter-rouge">context</code> from previous tasks, and the descriptions of its available <code class="language-plaintext highlighter-rouge">Tool</code>s. It assembles this into a detailed prompt.</li>
+  <li><strong>LLM Object Call:</strong> The <code class="language-plaintext highlighter-rouge">Agent</code> passes this prompt to its configured <code class="language-plaintext highlighter-rouge">LLM</code> object (e.g., the <code class="language-plaintext highlighter-rouge">ChatOpenAI</code> instance or the <code class="language-plaintext highlighter-rouge">Ollama</code> instance we created).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">litellm</code> Invocation:</strong> The CrewAI/LangChain <code class="language-plaintext highlighter-rouge">LLM</code> object uses <code class="language-plaintext highlighter-rouge">litellm</code>’s <code class="language-plaintext highlighter-rouge">completion</code> function, passing the assembled prompt (formatted as messages), the target <code class="language-plaintext highlighter-rouge">model</code> name, and other parameters (<code class="language-plaintext highlighter-rouge">temperature</code>, <code class="language-plaintext highlighter-rouge">max_tokens</code>, <code class="language-plaintext highlighter-rouge">tools</code>, etc.).</li>
+  <li><strong>API Request:</strong> <code class="language-plaintext highlighter-rouge">litellm</code> handles the specifics of communicating with the target LLM’s API (e.g., sending a request to OpenAI’s API endpoint or the local Ollama server).</li>
+  <li><strong>LLM Processing:</strong> The actual LLM (GPT-4, Llama 3, etc.) processes the request.</li>
+  <li><strong>API Response:</strong> The LLM provider sends back the response (which could be generated text or a decision to use a specific tool with certain arguments).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">litellm</code> Response Handling:</strong> <code class="language-plaintext highlighter-rouge">litellm</code> receives the API response and standardizes it.</li>
+  <li><strong>LLM Object Response:</strong> The <code class="language-plaintext highlighter-rouge">LLM</code> object receives the standardized response from <code class="language-plaintext highlighter-rouge">litellm</code>.</li>
+  <li><strong>Result to Agent:</strong> The <code class="language-plaintext highlighter-rouge">LLM</code> object returns the result (text or tool call information) back to the <code class="language-plaintext highlighter-rouge">Agent</code>.</li>
+  <li><strong>Agent Action:</strong> The <code class="language-plaintext highlighter-rouge">Agent</code> then either uses the generated text as its output or, if the LLM decided to use a tool, it executes the specified tool.</li>
+</ol>
+
+<p>Let’s visualize this:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent
+    participant LLM_Object as LLM Object (e.g., ChatOpenAI)
+    participant LiteLLM
+    participant ProviderAPI as Actual LLM API (e.g., OpenAI)
+
+    Agent-&gt;&gt;Agent: Assemble Prompt (Role, Goal, Task, Tools...)
+    Agent-&gt;&gt;LLM_Object: call(prompt, tools_schema)
+    LLM_Object-&gt;&gt;LiteLLM: litellm.completion(model, messages, ...)
+    LiteLLM-&gt;&gt;ProviderAPI: Send API Request
+    ProviderAPI--&gt;&gt;LiteLLM: Receive API Response (text or tool_call)
+    LiteLLM--&gt;&gt;LLM_Object: Standardized Response
+    LLM_Object--&gt;&gt;Agent: Result (text or tool_call)
+    Agent-&gt;&gt;Agent: Process Result (Output text or Execute tool)
+</code></pre>
+
+<p><strong>Diving into the Code (<code class="language-plaintext highlighter-rouge">llm.py</code>, <code class="language-plaintext highlighter-rouge">utilities/llm_utils.py</code>)</strong></p>
+
+<p>The primary logic resides in <code class="language-plaintext highlighter-rouge">crewai/llm.py</code> and the helper <code class="language-plaintext highlighter-rouge">crewai/utilities/llm_utils.py</code>.</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">crewai/utilities/llm_utils.py</code>:</strong> The <code class="language-plaintext highlighter-rouge">create_llm</code> function is key. It handles the logic of figuring out which LLM to instantiate based on environment variables, direct <code class="language-plaintext highlighter-rouge">LLM</code> object input, or string names. It tries to create an <code class="language-plaintext highlighter-rouge">LLM</code> instance.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">crewai/llm.py</code>:</strong>
+    <ul>
+      <li>The <code class="language-plaintext highlighter-rouge">LLM</code> class itself holds the configuration (<code class="language-plaintext highlighter-rouge">model</code>, <code class="language-plaintext highlighter-rouge">temperature</code>, etc.).</li>
+      <li>The <code class="language-plaintext highlighter-rouge">call</code> method is the main entry point. It takes the <code class="language-plaintext highlighter-rouge">messages</code> (the prompt) and optional <code class="language-plaintext highlighter-rouge">tools</code>.</li>
+      <li>It calls <code class="language-plaintext highlighter-rouge">_prepare_completion_params</code> to format the request parameters based on the LLM’s requirements and the provided configuration.</li>
+      <li>Crucially, it then calls <code class="language-plaintext highlighter-rouge">litellm.completion(**params)</code>. This is where the magic happens – <code class="language-plaintext highlighter-rouge">litellm</code> takes over communication with the actual LLM API.</li>
+      <li>It handles the response from <code class="language-plaintext highlighter-rouge">litellm</code>, checking for text content or tool calls (<code class="language-plaintext highlighter-rouge">_handle_non_streaming_response</code> or <code class="language-plaintext highlighter-rouge">_handle_streaming_response</code>).</li>
+      <li>It uses helper methods like <code class="language-plaintext highlighter-rouge">_format_messages_for_provider</code> to deal with quirks of different LLMs (like Anthropic needing a ‘user’ message first).</li>
+    </ul>
+  </li>
+</ul>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from crewai/llm.py
+</span>
+<span class="c1"># Import litellm and other necessary modules
+</span><span class="kn">import</span> <span class="nn">litellm</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="k">class</span> <span class="nc">LLM</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">temperature</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.7</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">temperature</span> <span class="o">=</span> <span class="n">temperature</span>
+        <span class="c1"># ... store other parameters like max_tokens, api_key, base_url ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">additional_params</span> <span class="o">=</span> <span class="n">kwargs</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">stream</span> <span class="o">=</span> <span class="bp">False</span> <span class="c1"># Default to non-streaming
+</span>
+    <span class="k">def</span> <span class="nf">_prepare_completion_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">messages</span><span class="p">,</span> <span class="n">tools</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="c1"># Formats messages based on provider (e.g., Anthropic)
+</span>        <span class="n">formatted_messages</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_format_messages_for_provider</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
+
+        <span class="n">params</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s">"model"</span><span class="p">:</span> <span class="bp">self</span><span class="p">.</span><span class="n">model</span><span class="p">,</span>
+            <span class="s">"messages"</span><span class="p">:</span> <span class="n">formatted_messages</span><span class="p">,</span>
+            <span class="s">"temperature"</span><span class="p">:</span> <span class="bp">self</span><span class="p">.</span><span class="n">temperature</span><span class="p">,</span>
+            <span class="s">"tools"</span><span class="p">:</span> <span class="n">tools</span><span class="p">,</span>
+            <span class="s">"stream"</span><span class="p">:</span> <span class="bp">self</span><span class="p">.</span><span class="n">stream</span><span class="p">,</span>
+            <span class="c1"># ... add other stored parameters (max_tokens, api_key etc.) ...
+</span>            <span class="o">**</span><span class="bp">self</span><span class="p">.</span><span class="n">additional_params</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="c1"># Remove None values
+</span>        <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">params</span><span class="p">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">}</span>
+
+    <span class="k">def</span> <span class="nf">call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">messages</span><span class="p">,</span> <span class="n">tools</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">callbacks</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">available_functions</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="c1"># ... (emit start event, validate params) ...
+</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Prepare the parameters for litellm
+</span>            <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_prepare_completion_params</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">tools</span><span class="p">)</span>
+
+            <span class="c1"># Decide whether to stream or not (simplified here)
+</span>            <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">stream</span><span class="p">:</span>
+                 <span class="c1"># Handles chunk processing, tool calls from stream end
+</span>                <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_handle_streaming_response</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">callbacks</span><span class="p">,</span> <span class="n">available_functions</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                 <span class="c1"># Makes single call, handles tool calls from response
+</span>                <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_handle_non_streaming_response</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">callbacks</span><span class="p">,</span> <span class="n">available_functions</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># ... (emit failure event, handle exceptions like context window exceeded) ...
+</span>            <span class="k">raise</span> <span class="n">e</span>
+
+    <span class="k">def</span> <span class="nf">_handle_non_streaming_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">callbacks</span><span class="p">,</span> <span class="n">available_functions</span><span class="p">):</span>
+         <span class="c1"># THE CORE CALL TO LITELLM
+</span>        <span class="n">response</span> <span class="o">=</span> <span class="n">litellm</span><span class="p">.</span><span class="n">completion</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="c1"># Extract text content
+</span>        <span class="n">text_response</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">message</span><span class="p">.</span><span class="n">content</span> <span class="ow">or</span> <span class="s">""</span>
+
+        <span class="c1"># Check for tool calls in the response
+</span>        <span class="n">tool_calls</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">message</span><span class="p">,</span> <span class="s">"tool_calls"</span><span class="p">,</span> <span class="p">[])</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">tool_calls</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">available_functions</span><span class="p">:</span>
+            <span class="c1"># ... (emit success event) ...
+</span>            <span class="k">return</span> <span class="n">text_response</span> <span class="c1"># Return plain text
+</span>        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Handle the tool call (runs the actual function)
+</span>            <span class="n">tool_result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_handle_tool_call</span><span class="p">(</span><span class="n">tool_calls</span><span class="p">,</span> <span class="n">available_functions</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">tool_result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">tool_result</span> <span class="c1"># Return tool output
+</span>            <span class="k">else</span><span class="p">:</span>
+                 <span class="c1"># ... (emit success event for text if tool failed?) ...
+</span>                <span class="k">return</span> <span class="n">text_response</span> <span class="c1"># Fallback to text if tool fails
+</span>
+    <span class="k">def</span> <span class="nf">_handle_tool_call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool_calls</span><span class="p">,</span> <span class="n">available_functions</span><span class="p">):</span>
+        <span class="c1"># Extracts function name and args from tool_calls[0]
+</span>        <span class="c1"># Looks up function in available_functions
+</span>        <span class="c1"># Executes the function with args
+</span>        <span class="c1"># Returns the result
+</span>        <span class="c1"># ... (error handling) ...
+</span>        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">_format_messages_for_provider</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">messages</span><span class="p">):</span>
+        <span class="c1"># Handles provider-specific message formatting rules
+</span>        <span class="c1"># (e.g., ensuring Anthropic starts with 'user' role)
+</span>        <span class="k">pass</span>
+
+    <span class="c1"># ... other methods like _handle_streaming_response ...
+</span></code></pre></div></div>
+
+<p>This simplified view shows how the <code class="language-plaintext highlighter-rouge">LLM</code> class acts as a wrapper around <code class="language-plaintext highlighter-rouge">litellm</code>, preparing requests and processing responses, shielding the rest of CrewAI from the complexities of different LLM APIs.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about the <strong>LLM</strong>, the essential “brain” powering your CrewAI <a href="02_agent.md">Agent</a>s. It’s the component that understands language, reasons about tasks, decides on actions (like using <a href="04_tool.md">Tool</a>s), and generates text.</p>
+
+<p>We saw that CrewAI uses the <code class="language-plaintext highlighter-rouge">litellm</code> library to provide a flexible way to connect to a wide variety of LLM providers (like OpenAI, Google Gemini, Anthropic Claude, or local models via Ollama). You can configure which LLM your agents or crew use, either implicitly through environment variables or explicitly by passing configured LLM objects (often using LangChain wrappers) during <code class="language-plaintext highlighter-rouge">Agent</code> or <code class="language-plaintext highlighter-rouge">Crew</code> creation.</p>
+
+<p>This abstraction makes CrewAI powerful, allowing you to experiment with different models to find the best fit for your specific needs and budget.</p>
+
+<p>But sometimes, agents need to remember things from past interactions or previous tasks within the same run. How does CrewAI handle short-term and potentially long-term memory? Let’s explore that in the next chapter!</p>
+
+<p><strong>Next:</strong> <a href="07_memory.md">Chapter 7: Memory - Giving Agents Recall</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

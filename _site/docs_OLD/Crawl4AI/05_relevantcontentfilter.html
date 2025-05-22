@@ -1,0 +1,442 @@
+<h1 id="chapter-5-focusing-on-what-matters---relevantcontentfilter">Chapter 5: Focusing on What Matters - RelevantContentFilter</h1>
+
+<p>In <a href="04_contentscrapingstrategy.md">Chapter 4: Cleaning Up the Mess - ContentScrapingStrategy</a>, we learned how Crawl4AI takes the raw, messy HTML from a webpage and cleans it up using a <code class="language-plaintext highlighter-rouge">ContentScrapingStrategy</code>. This gives us a tidier version of the HTML (<code class="language-plaintext highlighter-rouge">cleaned_html</code>) and extracts basic elements like links and images.</p>
+
+<p>But even after this initial cleanup, the page might still contain a lot of “noise” relative to what we <em>actually</em> care about. Imagine a news article page: the <code class="language-plaintext highlighter-rouge">ContentScrapingStrategy</code> might remove scripts and styles, but it could still leave the main article text, plus related article links, user comments, sidebars with ads, and maybe a lengthy footer.</p>
+
+<p>If our goal is just to get the main article content (e.g., to summarize it or feed it to an AI), all that extra stuff is just noise. How can we filter the cleaned content even further to keep only the truly relevant parts?</p>
+
+<h2 id="what-problem-does-relevantcontentfilter-solve">What Problem Does <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> Solve?</h2>
+
+<p>Think of the <code class="language-plaintext highlighter-rouge">cleaned_html</code> from the previous step like flour that’s been roughly sifted – the biggest lumps are gone, but there might still be smaller clumps or bran mixed in. If you want super fine flour for a delicate cake, you need a finer sieve.</p>
+
+<p><code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> acts as this <strong>finer sieve</strong> or a <strong>Relevance Sieve</strong>. It’s a strategy applied <em>after</em> the initial cleaning by <code class="language-plaintext highlighter-rouge">ContentScrapingStrategy</code> but <em>before</em> the final processing (like generating the final Markdown output or using an AI for extraction). Its job is to go through the cleaned content and decide which parts are truly relevant to our goal, removing the rest.</p>
+
+<p>This helps us:</p>
+
+<ol>
+  <li><strong>Reduce Noise:</strong> Eliminate irrelevant sections like comments, footers, navigation bars, or tangential “related content” blocks.</li>
+  <li><strong>Focus AI:</strong> If we’re sending the content to a Large Language Model (LLM), feeding it only the most relevant parts saves processing time (and potentially money) and can lead to better results.</li>
+  <li><strong>Improve Accuracy:</strong> By removing distracting noise, subsequent steps like data extraction are less likely to grab the wrong information.</li>
+</ol>
+
+<h2 id="what-is-relevantcontentfilter">What is <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code>?</h2>
+
+<p><code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> is an abstract concept (a blueprint) in Crawl4AI representing a <strong>method for identifying and retaining only the relevant portions of cleaned HTML content</strong>. It defines <em>that</em> we need a way to filter for relevance, but the specific technique used can vary.</p>
+
+<p>This allows us to choose different filtering approaches depending on the task and the type of content.</p>
+
+<h2 id="the-different-filters-tools-for-sieving">The Different Filters: Tools for Sieving</h2>
+
+<p>Crawl4AI provides several concrete implementations (the actual sieves) of <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code>:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">BM25ContentFilter</code> (The Keyword Sieve):</strong>
+    <ul>
+      <li><strong>Analogy:</strong> Like a mini search engine operating <em>within</em> the webpage.</li>
+      <li><strong>How it Works:</strong> You give it (or it figures out) some keywords related to what you’re looking for (e.g., from a user query like “product specifications” or derived from the page title). It then uses a search algorithm called BM25 to score different chunks of the cleaned HTML based on how relevant they are to those keywords. Only the chunks scoring above a certain threshold are kept.</li>
+      <li><strong>Good For:</strong> Finding specific sections about a known topic within a larger page (e.g., finding only the paragraphs discussing “climate change impact” on a long environmental report page).</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">PruningContentFilter</code> (The Structural Sieve):</strong>
+    <ul>
+      <li><strong>Analogy:</strong> Like a gardener pruning a bush, removing weak or unnecessary branches based on their structure.</li>
+      <li><strong>How it Works:</strong> This filter doesn’t care about keywords. Instead, it looks at the <em>structure</em> and <em>characteristics</em> of the HTML elements. It removes elements that often represent noise, such as those with very little text compared to the number of links (low text density), elements with common “noise” words in their CSS classes or IDs (like <code class="language-plaintext highlighter-rouge">sidebar</code>, <code class="language-plaintext highlighter-rouge">comments</code>, <code class="language-plaintext highlighter-rouge">footer</code>), or elements deemed structurally insignificant.</li>
+      <li><strong>Good For:</strong> Removing common boilerplate sections (like headers, footers, simple sidebars, navigation) based purely on layout and density clues, even if you don’t have a specific topic query.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">LLMContentFilter</code> (The AI Sieve):</strong>
+    <ul>
+      <li><strong>Analogy:</strong> Asking a smart assistant to read the cleaned content and pick out only the parts relevant to your request.</li>
+      <li><strong>How it Works:</strong> This filter sends the cleaned HTML (often broken into manageable chunks) to a Large Language Model (like GPT). You provide an instruction (e.g., “Extract only the main article content, removing all comments and related links” or “Keep only the sections discussing financial results”). The AI uses its understanding of language and context to identify and return only the relevant parts, often already formatted nicely (like in Markdown).</li>
+      <li><strong>Good For:</strong> Handling complex relevance decisions that require understanding meaning and context, following nuanced natural language instructions. (Note: Requires configuring LLM access, like API keys, and can be slower and potentially costlier than other methods).</li>
+    </ul>
+  </li>
+</ol>
+
+<h2 id="how-relevantcontentfilter-is-used-via-markdown-generation">How <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> is Used (Via Markdown Generation)</h2>
+
+<p>In Crawl4AI, the <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> is typically integrated into the <strong>Markdown generation</strong> step. The standard markdown generator (<code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code>) can accept a <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> instance.</p>
+
+<p>When configured this way:</p>
+
+<ol>
+  <li>The <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code> fetches the page and uses the <code class="language-plaintext highlighter-rouge">ContentScrapingStrategy</code> to get <code class="language-plaintext highlighter-rouge">cleaned_html</code>.</li>
+  <li>It then calls the <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> to produce the Markdown output.</li>
+  <li>The generator first creates the standard, “raw” Markdown from the <em>entire</em> <code class="language-plaintext highlighter-rouge">cleaned_html</code>.</li>
+  <li><strong>If</strong> a <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> was provided to the generator, it then uses this filter on the <code class="language-plaintext highlighter-rouge">cleaned_html</code> to select only the relevant HTML fragments.</li>
+  <li>It converts <em>these filtered fragments</em> into Markdown. This becomes the <code class="language-plaintext highlighter-rouge">fit_markdown</code>.</li>
+</ol>
+
+<p>So, the <code class="language-plaintext highlighter-rouge">CrawlResult</code> will contain <em>both</em>:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">result.markdown.raw_markdown</code>: Markdown based on the full <code class="language-plaintext highlighter-rouge">cleaned_html</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">result.markdown.fit_markdown</code>: Markdown based <em>only</em> on the parts deemed relevant by the filter.</li>
+</ul>
+
+<p>Let’s see how to configure this.</p>
+
+<h3 id="example-1-using-bm25contentfilter-to-find-specific-content">Example 1: Using <code class="language-plaintext highlighter-rouge">BM25ContentFilter</code> to find specific content</h3>
+
+<p>Imagine we crawled a page about renewable energy, but we only want the parts specifically discussing <strong>solar power</strong>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># chapter5_example_1.py
+</span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AsyncWebCrawler</span><span class="p">,</span>
+    <span class="n">CrawlerRunConfig</span><span class="p">,</span>
+    <span class="n">DefaultMarkdownGenerator</span><span class="p">,</span> <span class="c1"># The standard markdown generator
+</span>    <span class="n">BM25ContentFilter</span>         <span class="c1"># The keyword-based filter
+</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># 1. Create the BM25 filter with our query
+</span>    <span class="n">solar_filter</span> <span class="o">=</span> <span class="n">BM25ContentFilter</span><span class="p">(</span><span class="n">user_query</span><span class="o">=</span><span class="s">"solar power technology"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Filter created for query: '</span><span class="si">{</span><span class="n">solar_filter</span><span class="p">.</span><span class="n">user_query</span><span class="si">}</span><span class="s">'"</span><span class="p">)</span>
+
+    <span class="c1"># 2. Create a Markdown generator that USES this filter
+</span>    <span class="n">markdown_generator_with_filter</span> <span class="o">=</span> <span class="n">DefaultMarkdownGenerator</span><span class="p">(</span>
+        <span class="n">content_filter</span><span class="o">=</span><span class="n">solar_filter</span>
+    <span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Markdown generator configured with BM25 filter."</span><span class="p">)</span>
+
+    <span class="c1"># 3. Create CrawlerRunConfig using this specific markdown generator
+</span>    <span class="n">run_config</span> <span class="o">=</span> <span class="n">CrawlerRunConfig</span><span class="p">(</span>
+        <span class="n">markdown_generator</span><span class="o">=</span><span class="n">markdown_generator_with_filter</span>
+    <span class="p">)</span>
+
+    <span class="c1"># 4. Run the crawl
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="c1"># Example URL (replace with a real page having relevant content)
+</span>        <span class="n">url_to_crawl</span> <span class="o">=</span> <span class="s">"https://en.wikipedia.org/wiki/Renewable_energy"</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawling </span><span class="si">{</span><span class="n">url_to_crawl</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">url_to_crawl</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">run_config</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">result</span><span class="p">.</span><span class="n">success</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawl successful!"</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Raw Markdown length: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">raw_markdown</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Fit Markdown length: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">fit_markdown</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+            <span class="c1"># The fit_markdown should be shorter and focused on solar power
+</span>            <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">--- Start of Fit Markdown (Solar Power Focus) ---"</span><span class="p">)</span>
+            <span class="c1"># Print first 500 chars of the filtered markdown
+</span>            <span class="k">print</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">fit_markdown</span><span class="p">[:</span><span class="mi">500</span><span class="p">]</span> <span class="o">+</span> <span class="s">"..."</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">"--- End of Fit Markdown Snippet ---"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawl failed: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">error_message</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Create Filter:</strong> We make an instance of <code class="language-plaintext highlighter-rouge">BM25ContentFilter</code>, telling it we’re interested in “solar power technology”.</li>
+  <li><strong>Create Generator:</strong> We make an instance of <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> and pass our <code class="language-plaintext highlighter-rouge">solar_filter</code> to its <code class="language-plaintext highlighter-rouge">content_filter</code> parameter.</li>
+  <li><strong>Configure Run:</strong> We create <code class="language-plaintext highlighter-rouge">CrawlerRunConfig</code> and tell it to use our special <code class="language-plaintext highlighter-rouge">markdown_generator_with_filter</code> for this run.</li>
+  <li><strong>Crawl &amp; Check:</strong> We run the crawl as usual. In the <code class="language-plaintext highlighter-rouge">result</code>, <code class="language-plaintext highlighter-rouge">result.markdown.raw_markdown</code> will have the markdown for the whole page, while <code class="language-plaintext highlighter-rouge">result.markdown.fit_markdown</code> will <em>only</em> contain markdown derived from the HTML parts that the <code class="language-plaintext highlighter-rouge">BM25ContentFilter</code> scored highly for relevance to “solar power technology”. You’ll likely see the <code class="language-plaintext highlighter-rouge">fit_markdown</code> is significantly shorter.</li>
+</ol>
+
+<h3 id="example-2-using-pruningcontentfilter-to-remove-boilerplate">Example 2: Using <code class="language-plaintext highlighter-rouge">PruningContentFilter</code> to remove boilerplate</h3>
+
+<p>Now, let’s try removing common noise like sidebars or footers based on structure, without needing a specific query.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># chapter5_example_2.py
+</span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AsyncWebCrawler</span><span class="p">,</span>
+    <span class="n">CrawlerRunConfig</span><span class="p">,</span>
+    <span class="n">DefaultMarkdownGenerator</span><span class="p">,</span>
+    <span class="n">PruningContentFilter</span> <span class="c1"># The structural filter
+</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># 1. Create the Pruning filter (no query needed)
+</span>    <span class="n">pruning_filter</span> <span class="o">=</span> <span class="n">PruningContentFilter</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Filter created: PruningContentFilter (structural)"</span><span class="p">)</span>
+
+    <span class="c1"># 2. Create a Markdown generator that uses this filter
+</span>    <span class="n">markdown_generator_with_filter</span> <span class="o">=</span> <span class="n">DefaultMarkdownGenerator</span><span class="p">(</span>
+        <span class="n">content_filter</span><span class="o">=</span><span class="n">pruning_filter</span>
+    <span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Markdown generator configured with Pruning filter."</span><span class="p">)</span>
+
+    <span class="c1"># 3. Create CrawlerRunConfig using this generator
+</span>    <span class="n">run_config</span> <span class="o">=</span> <span class="n">CrawlerRunConfig</span><span class="p">(</span>
+        <span class="n">markdown_generator</span><span class="o">=</span><span class="n">markdown_generator_with_filter</span>
+    <span class="p">)</span>
+
+    <span class="c1"># 4. Run the crawl
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="c1"># Example URL (replace with a real page that has boilerplate)
+</span>        <span class="n">url_to_crawl</span> <span class="o">=</span> <span class="s">"https://www.python.org/"</span> <span class="c1"># Python homepage likely has headers/footers
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawling </span><span class="si">{</span><span class="n">url_to_crawl</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">url_to_crawl</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">run_config</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">result</span><span class="p">.</span><span class="n">success</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawl successful!"</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Raw Markdown length: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">raw_markdown</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Fit Markdown length: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">fit_markdown</span><span class="p">)</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+            <span class="c1"># fit_markdown should have less header/footer/sidebar content
+</span>            <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">--- Start of Fit Markdown (Pruned) ---"</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">fit_markdown</span><span class="p">[:</span><span class="mi">500</span><span class="p">]</span> <span class="o">+</span> <span class="s">"..."</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">"--- End of Fit Markdown Snippet ---"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawl failed: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">error_message</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<p>The structure is the same as the BM25 example, but:</p>
+
+<ol>
+  <li>We instantiate <code class="language-plaintext highlighter-rouge">PruningContentFilter()</code>, which doesn’t require a <code class="language-plaintext highlighter-rouge">user_query</code>.</li>
+  <li>We pass this filter to the <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code>.</li>
+  <li>The resulting <code class="language-plaintext highlighter-rouge">result.markdown.fit_markdown</code> should contain Markdown primarily from the main content areas of the page, with structurally identified boilerplate removed.</li>
+</ol>
+
+<h3 id="example-3-using-llmcontentfilter-conceptual">Example 3: Using <code class="language-plaintext highlighter-rouge">LLMContentFilter</code> (Conceptual)</h3>
+
+<p>Using <code class="language-plaintext highlighter-rouge">LLMContentFilter</code> follows the same pattern, but requires setting up LLM provider details.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># chapter5_example_3_conceptual.py
+</span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AsyncWebCrawler</span><span class="p">,</span>
+    <span class="n">CrawlerRunConfig</span><span class="p">,</span>
+    <span class="n">DefaultMarkdownGenerator</span><span class="p">,</span>
+    <span class="n">LLMContentFilter</span><span class="p">,</span>
+    <span class="c1"># Assume LlmConfig is set up correctly (see LLM-specific docs)
+</span>    <span class="c1"># from crawl4ai.async_configs import LlmConfig
+</span><span class="p">)</span>
+
+<span class="c1"># Assume llm_config is properly configured with API keys, provider, etc.
+# Example: llm_config = LlmConfig(provider="openai", api_token="env:OPENAI_API_KEY")
+# For this example, we'll pretend it's ready.
+</span><span class="k">class</span> <span class="nc">MockLlmConfig</span><span class="p">:</span> <span class="c1"># Mock for demonstration
+</span>    <span class="n">provider</span> <span class="o">=</span> <span class="s">"mock_provider"</span>
+    <span class="n">api_token</span> <span class="o">=</span> <span class="s">"mock_token"</span>
+    <span class="n">base_url</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">llm_config</span> <span class="o">=</span> <span class="n">MockLlmConfig</span><span class="p">()</span>
+
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># 1. Create the LLM filter with an instruction
+</span>    <span class="n">instruction</span> <span class="o">=</span> <span class="s">"Extract only the main news article content. Remove headers, footers, ads, comments, and related links."</span>
+    <span class="n">llm_filter</span> <span class="o">=</span> <span class="n">LLMContentFilter</span><span class="p">(</span>
+        <span class="n">instruction</span><span class="o">=</span><span class="n">instruction</span><span class="p">,</span>
+        <span class="n">llmConfig</span><span class="o">=</span><span class="n">llm_config</span> <span class="c1"># Pass the LLM configuration
+</span>    <span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Filter created: LLMContentFilter"</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Instruction: '</span><span class="si">{</span><span class="n">llm_filter</span><span class="p">.</span><span class="n">instruction</span><span class="si">}</span><span class="s">'"</span><span class="p">)</span>
+
+    <span class="c1"># 2. Create a Markdown generator using this filter
+</span>    <span class="n">markdown_generator_with_filter</span> <span class="o">=</span> <span class="n">DefaultMarkdownGenerator</span><span class="p">(</span>
+        <span class="n">content_filter</span><span class="o">=</span><span class="n">llm_filter</span>
+    <span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Markdown generator configured with LLM filter."</span><span class="p">)</span>
+
+    <span class="c1"># 3. Create CrawlerRunConfig
+</span>    <span class="n">run_config</span> <span class="o">=</span> <span class="n">CrawlerRunConfig</span><span class="p">(</span>
+        <span class="n">markdown_generator</span><span class="o">=</span><span class="n">markdown_generator_with_filter</span>
+    <span class="p">)</span>
+
+    <span class="c1"># 4. Run the crawl
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="c1"># Example URL (replace with a real news article)
+</span>        <span class="n">url_to_crawl</span> <span class="o">=</span> <span class="s">"https://httpbin.org/html"</span> <span class="c1"># Using simple page for demo
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawling </span><span class="si">{</span><span class="n">url_to_crawl</span><span class="si">}</span><span class="s">..."</span><span class="p">)</span>
+
+        <span class="c1"># In a real scenario, this would call the LLM API
+</span>        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">url_to_crawl</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">run_config</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">result</span><span class="p">.</span><span class="n">success</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawl successful!"</span><span class="p">)</span>
+            <span class="c1"># The fit_markdown would contain the AI-filtered content
+</span>            <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">--- Start of Fit Markdown (AI Filtered - Conceptual) ---"</span><span class="p">)</span>
+            <span class="c1"># Because we used a mock LLM/simple page, fit_markdown might be empty or simple.
+</span>            <span class="c1"># On a real page with a real LLM, it would ideally contain just the main article.
+</span>            <span class="k">print</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">fit_markdown</span><span class="p">[:</span><span class="mi">500</span><span class="p">]</span> <span class="o">+</span> <span class="s">"..."</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">"--- End of Fit Markdown Snippet ---"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="se">\n</span><span class="s">Crawl failed: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">error_message</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>We create <code class="language-plaintext highlighter-rouge">LLMContentFilter</code>, providing our natural language <code class="language-plaintext highlighter-rouge">instruction</code> and the necessary <code class="language-plaintext highlighter-rouge">llmConfig</code> (which holds provider details and API keys - mocked here for simplicity).</li>
+  <li>We integrate it into <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> and <code class="language-plaintext highlighter-rouge">CrawlerRunConfig</code> as before.</li>
+  <li>When <code class="language-plaintext highlighter-rouge">arun</code> is called, the <code class="language-plaintext highlighter-rouge">LLMContentFilter</code> would (in a real scenario) interact with the configured LLM API, sending chunks of the <code class="language-plaintext highlighter-rouge">cleaned_html</code> and the instruction, then assembling the AI’s response into the <code class="language-plaintext highlighter-rouge">fit_markdown</code>.</li>
+</ol>
+
+<h2 id="under-the-hood-how-filtering-fits-in">Under the Hood: How Filtering Fits In</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code> doesn’t run on its own; it’s invoked by another component, typically the <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code>.</p>
+
+<p>Here’s the sequence:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant AWC as AsyncWebCrawler
+    participant Config as CrawlerRunConfig
+    participant Scraper as ContentScrapingStrategy
+    participant MDGen as DefaultMarkdownGenerator
+    participant Filter as RelevantContentFilter
+    participant Result as CrawlResult
+
+    User-&gt;&gt;AWC: arun(url, config=my_config)
+    Note over AWC: Config includes Markdown Generator with a Filter
+    AWC-&gt;&gt;Scraper: scrap(raw_html)
+    Scraper--&gt;&gt;AWC: cleaned_html, links, etc.
+    AWC-&gt;&gt;MDGen: generate_markdown(cleaned_html, config=my_config)
+    Note over MDGen: Uses html2text for raw markdown
+    MDGen--&gt;&gt;MDGen: raw_markdown = html2text(cleaned_html)
+    Note over MDGen: Now, check for content_filter
+    alt Filter Provided in MDGen
+        MDGen-&gt;&gt;Filter: filter_content(cleaned_html)
+        Filter--&gt;&gt;MDGen: filtered_html_fragments
+        Note over MDGen: Uses html2text on filtered fragments
+        MDGen--&gt;&gt;MDGen: fit_markdown = html2text(filtered_html_fragments)
+    else No Filter Provided
+        MDGen--&gt;&gt;MDGen: fit_markdown = "" (or None)
+    end
+    Note over MDGen: Generate citations if needed
+    MDGen--&gt;&gt;AWC: MarkdownGenerationResult (raw, fit, references)
+    AWC-&gt;&gt;Result: Package everything
+    AWC--&gt;&gt;User: Return CrawlResult
+</code></pre>
+
+<p><strong>Code Glimpse:</strong></p>
+
+<p>Inside <code class="language-plaintext highlighter-rouge">crawl4ai/markdown_generation_strategy.py</code>, the <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code>’s <code class="language-plaintext highlighter-rouge">generate_markdown</code> method has logic like this (simplified):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from markdown_generation_strategy.py
+</span><span class="kn">from</span> <span class="nn">.models</span> <span class="kn">import</span> <span class="n">MarkdownGenerationResult</span>
+<span class="kn">from</span> <span class="nn">.html2text</span> <span class="kn">import</span> <span class="n">CustomHTML2Text</span>
+<span class="kn">from</span> <span class="nn">.content_filter_strategy</span> <span class="kn">import</span> <span class="n">RelevantContentFilter</span> <span class="c1"># Import filter base class
+</span>
+<span class="k">class</span> <span class="nc">DefaultMarkdownGenerator</span><span class="p">(</span><span class="n">MarkdownGenerationStrategy</span><span class="p">):</span>
+    <span class="c1"># ... __init__ stores self.content_filter ...
+</span>
+    <span class="k">def</span> <span class="nf">generate_markdown</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">cleaned_html</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="c1"># ... other params like base_url, options ...
+</span>        <span class="n">content_filter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">RelevantContentFilter</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MarkdownGenerationResult</span><span class="p">:</span>
+
+        <span class="n">h</span> <span class="o">=</span> <span class="n">CustomHTML2Text</span><span class="p">(...)</span> <span class="c1"># Setup html2text converter
+</span>        <span class="c1"># ... apply options ...
+</span>
+        <span class="c1"># 1. Generate raw markdown from the full cleaned_html
+</span>        <span class="n">raw_markdown</span> <span class="o">=</span> <span class="n">h</span><span class="p">.</span><span class="n">handle</span><span class="p">(</span><span class="n">cleaned_html</span><span class="p">)</span>
+        <span class="c1"># ... post-process raw_markdown ...
+</span>
+        <span class="c1"># 2. Convert links to citations (if enabled)
+</span>        <span class="n">markdown_with_citations</span><span class="p">,</span> <span class="n">references_markdown</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">convert_links_to_citations</span><span class="p">(...)</span>
+
+        <span class="c1"># 3. Generate fit markdown IF a filter is available
+</span>        <span class="n">fit_markdown</span> <span class="o">=</span> <span class="s">""</span>
+        <span class="n">filtered_html</span> <span class="o">=</span> <span class="s">""</span>
+        <span class="c1"># Use the filter passed directly, or the one stored during initialization
+</span>        <span class="n">active_filter</span> <span class="o">=</span> <span class="n">content_filter</span> <span class="ow">or</span> <span class="bp">self</span><span class="p">.</span><span class="n">content_filter</span>
+        <span class="k">if</span> <span class="n">active_filter</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Call the filter's main method
+</span>                <span class="n">filtered_html_fragments</span> <span class="o">=</span> <span class="n">active_filter</span><span class="p">.</span><span class="n">filter_content</span><span class="p">(</span><span class="n">cleaned_html</span><span class="p">)</span>
+                <span class="c1"># Join fragments (assuming filter returns list of HTML strings)
+</span>                <span class="n">filtered_html</span> <span class="o">=</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">filtered_html_fragments</span><span class="p">)</span>
+                <span class="c1"># Convert ONLY the filtered HTML to markdown
+</span>                <span class="n">fit_markdown</span> <span class="o">=</span> <span class="n">h</span><span class="p">.</span><span class="n">handle</span><span class="p">(</span><span class="n">filtered_html</span><span class="p">)</span>
+            <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">fit_markdown</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"Error during filtering: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span>
+                <span class="c1"># Log error...
+</span>
+        <span class="k">return</span> <span class="n">MarkdownGenerationResult</span><span class="p">(</span>
+            <span class="n">raw_markdown</span><span class="o">=</span><span class="n">raw_markdown</span><span class="p">,</span>
+            <span class="n">markdown_with_citations</span><span class="o">=</span><span class="n">markdown_with_citations</span><span class="p">,</span>
+            <span class="n">references_markdown</span><span class="o">=</span><span class="n">references_markdown</span><span class="p">,</span>
+            <span class="n">fit_markdown</span><span class="o">=</span><span class="n">fit_markdown</span><span class="p">,</span> <span class="c1"># Contains the filtered result
+</span>            <span class="n">fit_html</span><span class="o">=</span><span class="n">filtered_html</span><span class="p">,</span>     <span class="c1"># The HTML fragments kept by the filter
+</span>        <span class="p">)</span>
+
+</code></pre></div></div>
+
+<p>And inside <code class="language-plaintext highlighter-rouge">crawl4ai/content_filter_strategy.py</code>, you find the blueprint and implementations:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from content_filter_strategy.py
+</span><span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span>
+<span class="c1"># ... other imports like BeautifulSoup, BM25Okapi ...
+</span>
+<span class="k">class</span> <span class="nc">RelevantContentFilter</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="s">"""Abstract base class for content filtering strategies"""</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user_query</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="p">...):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">user_query</span> <span class="o">=</span> <span class="n">user_query</span>
+        <span class="c1"># ... common setup ...
+</span>
+    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">def</span> <span class="nf">filter_content</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">html</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="s">"""
+        Takes cleaned HTML, returns a list of HTML fragments
+        deemed relevant by the specific strategy.
+        """</span>
+        <span class="k">pass</span>
+    <span class="c1"># ... common helper methods like extract_page_query, is_excluded ...
+</span>
+<span class="k">class</span> <span class="nc">BM25ContentFilter</span><span class="p">(</span><span class="n">RelevantContentFilter</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user_query</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">bm25_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="p">...):</span>
+        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">(</span><span class="n">user_query</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">bm25_threshold</span> <span class="o">=</span> <span class="n">bm25_threshold</span>
+        <span class="c1"># ... BM25 specific setup ...
+</span>
+    <span class="k">def</span> <span class="nf">filter_content</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">html</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="c1"># 1. Parse HTML (e.g., with BeautifulSoup)
+</span>        <span class="c1"># 2. Extract text chunks (candidates)
+</span>        <span class="c1"># 3. Determine query (user_query or extracted)
+</span>        <span class="c1"># 4. Tokenize query and chunks
+</span>        <span class="c1"># 5. Calculate BM25 scores for chunks vs query
+</span>        <span class="c1"># 6. Filter chunks based on score and threshold
+</span>        <span class="c1"># 7. Return the HTML string of the selected chunks
+</span>        <span class="c1"># ... implementation details ...
+</span>        <span class="n">relevant_html_fragments</span> <span class="o">=</span> <span class="p">[</span><span class="s">"&lt;p&gt;Relevant paragraph 1...&lt;/p&gt;"</span><span class="p">,</span> <span class="s">"&lt;h2&gt;Relevant Section&lt;/h2&gt;..."</span><span class="p">]</span> <span class="c1"># Placeholder
+</span>        <span class="k">return</span> <span class="n">relevant_html_fragments</span>
+
+<span class="c1"># ... Implementations for PruningContentFilter and LLMContentFilter ...
+</span></code></pre></div></div>
+
+<p>The key is that each filter implements the <code class="language-plaintext highlighter-rouge">filter_content</code> method, returning the list of HTML fragments it considers relevant. The <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> then uses these fragments to create the <code class="language-plaintext highlighter-rouge">fit_markdown</code>.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code>, Crawl4AI’s “Relevance Sieve”!</p>
+
+<ul>
+  <li>It addresses the problem that even cleaned HTML can contain noise relative to a specific goal.</li>
+  <li>It acts as a strategy to filter cleaned HTML, keeping only the relevant parts.</li>
+  <li>Different filter types exist: <code class="language-plaintext highlighter-rouge">BM25ContentFilter</code> (keywords), <code class="language-plaintext highlighter-rouge">PruningContentFilter</code> (structure), and <code class="language-plaintext highlighter-rouge">LLMContentFilter</code> (AI/semantic).</li>
+  <li>It’s typically used <em>within</em> the <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> to produce a focused <code class="language-plaintext highlighter-rouge">fit_markdown</code> output in the <code class="language-plaintext highlighter-rouge">CrawlResult</code>, alongside the standard <code class="language-plaintext highlighter-rouge">raw_markdown</code>.</li>
+  <li>You configure it by passing the chosen filter instance to the <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> and then passing that generator to the <code class="language-plaintext highlighter-rouge">CrawlerRunConfig</code>.</li>
+</ul>
+
+<p>By using <code class="language-plaintext highlighter-rouge">RelevantContentFilter</code>, you can significantly improve the signal-to-noise ratio of the content you get from webpages, making downstream tasks like summarization or analysis more effective.</p>
+
+<p>But what if just getting relevant <em>text</em> isn’t enough? What if you need specific, <em>structured</em> data like product names, prices, and ratings from an e-commerce page, or names and affiliations from a list of conference speakers?</p>
+
+<p><strong>Next:</strong> Let’s explore how to extract structured data with <a href="06_extractionstrategy.md">Chapter 6: Getting Specific Data - ExtractionStrategy</a>.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

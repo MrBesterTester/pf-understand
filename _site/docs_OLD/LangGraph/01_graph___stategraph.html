@@ -1,0 +1,314 @@
+<h1 id="chapter-1-graph--stategraph---the-blueprint-of-your-application">Chapter 1: Graph / StateGraph - The Blueprint of Your Application</h1>
+
+<p>Welcome to the LangGraph tutorial! We’re excited to help you learn how to build powerful, stateful applications with Large Language Models (LLMs).</p>
+
+<p>Imagine you’re building an application, maybe a chatbot, an agent that performs tasks, or something that processes data in multiple steps. As these applications get more complex, just calling an LLM once isn’t enough. You need a way to structure the flow – maybe call an LLM, then a tool, then another LLM based on the result. How do you manage this sequence of steps and the information passed between them?</p>
+
+<p>That’s where <strong>Graphs</strong> come in!</p>
+
+<h2 id="what-problem-do-graphs-solve">What Problem Do Graphs Solve?</h2>
+
+<p>Think of a complex task like baking a cake. You don’t just throw all the ingredients in the oven. There’s a sequence: mix dry ingredients, mix wet ingredients, combine them, pour into a pan, bake, cool, frost. Each step depends on the previous one.</p>
+
+<p>LangGraph helps you define these steps and the order they should happen in. It provides a way to create a <strong>flowchart</strong> or a <strong>blueprint</strong> for your application’s logic.</p>
+
+<p>The core idea is to break down your application into:</p>
+
+<ol>
+  <li><strong>Nodes:</strong> These are the individual steps or actions (like “mix dry ingredients” or “call the LLM”).</li>
+  <li><strong>Edges:</strong> These are the connections or transitions between the steps, defining the order (after mixing dry ingredients, mix wet ingredients).</li>
+</ol>
+
+<p>LangGraph provides different types of graphs, but the most common and useful one for building stateful applications is the <code class="language-plaintext highlighter-rouge">StateGraph</code>.</p>
+
+<h2 id="core-concepts-graph-stategraph-and-messagegraph">Core Concepts: <code class="language-plaintext highlighter-rouge">Graph</code>, <code class="language-plaintext highlighter-rouge">StateGraph</code>, and <code class="language-plaintext highlighter-rouge">MessageGraph</code></h2>
+
+<p>Let’s look at the main types of graphs you’ll encounter:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">Graph</code> (The Basic Blueprint)</strong>
+    <ul>
+      <li>This is the most fundamental type. You define nodes (steps) and edges (connections).</li>
+      <li>It’s like a basic flowchart diagram.</li>
+      <li>You explicitly define how information passes from one node to the next.</li>
+      <li>While foundational, you’ll often use the more specialized <code class="language-plaintext highlighter-rouge">StateGraph</code> for convenience.</li>
+    </ul>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># This is a conceptual example - we usually use StateGraph
+</span><span class="kn">from</span> <span class="nn">langgraph.graph</span> <span class="kn">import</span> <span class="n">Graph</span>
+
+<span class="c1"># Define simple functions or Runnables as nodes
+</span><span class="k">def</span> <span class="nf">step_one</span><span class="p">(</span><span class="n">input_data</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Running Step 1"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">input_data</span> <span class="o">*</span> <span class="mi">2</span>
+
+<span class="k">def</span> <span class="nf">step_two</span><span class="p">(</span><span class="n">processed_data</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Running Step 2"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">processed_data</span> <span class="o">+</span> <span class="mi">5</span>
+
+<span class="c1"># Create a basic graph
+</span><span class="n">basic_graph_builder</span> <span class="o">=</span> <span class="n">Graph</span><span class="p">()</span>
+
+<span class="c1"># Add nodes
+</span><span class="n">basic_graph_builder</span><span class="p">.</span><span class="n">add_node</span><span class="p">(</span><span class="s">"A"</span><span class="p">,</span> <span class="n">step_one</span><span class="p">)</span>
+<span class="n">basic_graph_builder</span><span class="p">.</span><span class="n">add_node</span><span class="p">(</span><span class="s">"B"</span><span class="p">,</span> <span class="n">step_two</span><span class="p">)</span>
+
+<span class="c1"># Add edges (connections)
+</span><span class="n">basic_graph_builder</span><span class="p">.</span><span class="n">add_edge</span><span class="p">(</span><span class="s">"A"</span><span class="p">,</span> <span class="s">"B"</span><span class="p">)</span> <span class="c1"># Run B after A
+</span><span class="n">basic_graph_builder</span><span class="p">.</span><span class="n">set_entry_point</span><span class="p">(</span><span class="s">"A"</span><span class="p">)</span> <span class="c1"># Start at A
+# basic_graph_builder.set_finish_point("B") # Not needed for this simple Graph type
+</span></code></pre></div>    </div>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">StateGraph</code> (The Collaborative Whiteboard)</strong>
+    <ul>
+      <li>This is the workhorse for most LangGraph applications. It’s a specialized <code class="language-plaintext highlighter-rouge">Graph</code>.</li>
+      <li><strong>Key Idea:</strong> Nodes communicate <em>implicitly</em> by reading from and writing to a shared <strong>State</strong> object.</li>
+      <li><strong>Analogy:</strong> Imagine a central whiteboard (the State). Each node (person) can read what’s on the whiteboard, do some work, and then update the whiteboard with new information or changes.</li>
+      <li>You define the <em>structure</em> of this shared state first (e.g., what keys it holds).</li>
+      <li>Each node receives the <em>current</em> state and returns a <em>dictionary</em> containing only the parts of the state it wants to <em>update</em>. LangGraph handles merging these updates into the main state.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">MessageGraph</code> (The Chatbot Specialist)</strong>
+    <ul>
+      <li>This is a further specialization of <code class="language-plaintext highlighter-rouge">StateGraph</code>, designed specifically for building chatbots or conversational agents.</li>
+      <li>It automatically manages a <code class="language-plaintext highlighter-rouge">messages</code> list within its state.</li>
+      <li>Nodes typically take the current list of messages and return new messages to be added.</li>
+      <li>It uses a special function (<code class="language-plaintext highlighter-rouge">add_messages</code>) to append messages while handling potential duplicates or updates based on message IDs. This makes building chat flows much simpler.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>For the rest of this chapter, we’ll focus on <code class="language-plaintext highlighter-rouge">StateGraph</code> as it introduces the core concepts most clearly.</p>
+
+<h2 id="building-a-simple-stategraph">Building a Simple <code class="language-plaintext highlighter-rouge">StateGraph</code></h2>
+
+<p>Let’s build a tiny application that takes a number, adds 1 to it, and then multiplies it by 2.</p>
+
+<p><strong>Step 1: Define the State</strong></p>
+
+<p>First, we define the “whiteboard” – the structure of the data our graph will work with. We use Python’s <code class="language-plaintext highlighter-rouge">TypedDict</code> for this.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TypedDict</span>
+
+<span class="k">class</span> <span class="nc">MyState</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
+    <span class="c1"># Our state will hold a single number called 'value'
+</span>    <span class="n">value</span><span class="p">:</span> <span class="nb">int</span>
+</code></pre></div></div>
+
+<p>This tells our <code class="language-plaintext highlighter-rouge">StateGraph</code> that the shared information will always contain an integer named <code class="language-plaintext highlighter-rouge">value</code>.</p>
+
+<p><strong>Step 2: Define the Nodes</strong></p>
+
+<p>Nodes are functions (or LangChain Runnables) that perform the work. They take the current <code class="language-plaintext highlighter-rouge">State</code> as input and return a dictionary containing the <em>updates</em> to the state.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Node 1: Adds 1 to the value
+</span><span class="k">def</span> <span class="nf">add_one</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">MyState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"--- Running Adder Node ---"</span><span class="p">)</span>
+    <span class="n">current_value</span> <span class="o">=</span> <span class="n">state</span><span class="p">[</span><span class="s">'value'</span><span class="p">]</span>
+    <span class="n">new_value</span> <span class="o">=</span> <span class="n">current_value</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Input value: </span><span class="si">{</span><span class="n">current_value</span><span class="si">}</span><span class="s">, Output value: </span><span class="si">{</span><span class="n">new_value</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Return *only* the key we want to update
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"value"</span><span class="p">:</span> <span class="n">new_value</span><span class="p">}</span>
+
+<span class="c1"># Node 2: Multiplies the value by 2
+</span><span class="k">def</span> <span class="nf">multiply_by_two</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">MyState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"--- Running Multiplier Node ---"</span><span class="p">)</span>
+    <span class="n">current_value</span> <span class="o">=</span> <span class="n">state</span><span class="p">[</span><span class="s">'value'</span><span class="p">]</span>
+    <span class="n">new_value</span> <span class="o">=</span> <span class="n">current_value</span> <span class="o">*</span> <span class="mi">2</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Input value: </span><span class="si">{</span><span class="n">current_value</span><span class="si">}</span><span class="s">, Output value: </span><span class="si">{</span><span class="n">new_value</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># Return the update
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"value"</span><span class="p">:</span> <span class="n">new_value</span><span class="p">}</span>
+</code></pre></div></div>
+
+<p>Notice how each function takes <code class="language-plaintext highlighter-rouge">state</code> and returns a <code class="language-plaintext highlighter-rouge">dict</code> specifying which part of the state (<code class="language-plaintext highlighter-rouge">"value"</code>) should be updated and with what new value.</p>
+
+<p><strong>Step 3: Create the Graph and Add Nodes/Edges</strong></p>
+
+<p>Now we assemble our blueprint using <code class="language-plaintext highlighter-rouge">StateGraph</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">langgraph.graph</span> <span class="kn">import</span> <span class="n">StateGraph</span><span class="p">,</span> <span class="n">END</span><span class="p">,</span> <span class="n">START</span>
+
+<span class="c1"># Create a StateGraph instance linked to our state definition
+</span><span class="n">workflow</span> <span class="o">=</span> <span class="n">StateGraph</span><span class="p">(</span><span class="n">MyState</span><span class="p">)</span>
+
+<span class="c1"># Add the nodes to the graph
+</span><span class="n">workflow</span><span class="p">.</span><span class="n">add_node</span><span class="p">(</span><span class="s">"adder"</span><span class="p">,</span> <span class="n">add_one</span><span class="p">)</span>
+<span class="n">workflow</span><span class="p">.</span><span class="n">add_node</span><span class="p">(</span><span class="s">"multiplier"</span><span class="p">,</span> <span class="n">multiply_by_two</span><span class="p">)</span>
+
+<span class="c1"># Set the entry point --&gt; where does the flow start?
+</span><span class="n">workflow</span><span class="p">.</span><span class="n">set_entry_point</span><span class="p">(</span><span class="s">"adder"</span><span class="p">)</span>
+
+<span class="c1"># Add edges --&gt; how do the nodes connect?
+</span><span class="n">workflow</span><span class="p">.</span><span class="n">add_edge</span><span class="p">(</span><span class="s">"adder"</span><span class="p">,</span> <span class="s">"multiplier"</span><span class="p">)</span> <span class="c1"># After adder, run multiplier
+</span>
+<span class="c1"># Set the finish point --&gt; where does the flow end?
+# We use the special identifier END
+</span><span class="n">workflow</span><span class="p">.</span><span class="n">add_edge</span><span class="p">(</span><span class="s">"multiplier"</span><span class="p">,</span> <span class="n">END</span><span class="p">)</span>
+</code></pre></div></div>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">StateGraph(MyState)</code>: Creates the graph, telling it to use our <code class="language-plaintext highlighter-rouge">MyState</code> structure.</li>
+  <li><code class="language-plaintext highlighter-rouge">add_node("name", function)</code>: Registers our functions as steps in the graph with unique names.</li>
+  <li><code class="language-plaintext highlighter-rouge">set_entry_point("adder")</code>: Specifies that the <code class="language-plaintext highlighter-rouge">adder</code> node should run first. This implicitly creates an edge from a special <code class="language-plaintext highlighter-rouge">START</code> point to <code class="language-plaintext highlighter-rouge">adder</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">add_edge("adder", "multiplier")</code>: Creates a connection. After <code class="language-plaintext highlighter-rouge">adder</code> finishes, <code class="language-plaintext highlighter-rouge">multiplier</code> will run.</li>
+  <li><code class="language-plaintext highlighter-rouge">add_edge("multiplier", END)</code>: Specifies that after <code class="language-plaintext highlighter-rouge">multiplier</code> finishes, the graph execution should stop. <code class="language-plaintext highlighter-rouge">END</code> is a special marker for the graph’s conclusion.</li>
+</ul>
+
+<p><strong>Step 4: Compile the Graph</strong></p>
+
+<p>Before we can run it, we need to <code class="language-plaintext highlighter-rouge">compile</code> the graph. This finalizes the structure and makes it executable.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Compile the workflow into an executable object
+</span><span class="n">app</span> <span class="o">=</span> <span class="n">workflow</span><span class="p">.</span><span class="nb">compile</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p><strong>Step 5: Run It!</strong></p>
+
+<p>Now we can invoke our compiled graph (<code class="language-plaintext highlighter-rouge">app</code>) with some initial state.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Define the initial state
+</span><span class="n">initial_state</span> <span class="o">=</span> <span class="p">{</span><span class="s">"value"</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>
+
+<span class="c1"># Run the graph
+</span><span class="n">final_state</span> <span class="o">=</span> <span class="n">app</span><span class="p">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">initial_state</span><span class="p">)</span>
+
+<span class="c1"># Print the final result
+</span><span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">--- Final State ---"</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">final_state</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Expected Output:</strong></p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--- Running Adder Node ---
+Input value: 5, Output value: 6
+--- Running Multiplier Node ---
+Input value: 6, Output value: 12
+
+--- Final State ---
+{'value': 12}
+</code></pre></div></div>
+
+<p>As you can see, the graph executed the nodes in the defined order (<code class="language-plaintext highlighter-rouge">adder</code> then <code class="language-plaintext highlighter-rouge">multiplier</code>), automatically passing the updated state between them!</p>
+
+<h2 id="how-does-stategraph-work-under-the-hood">How Does <code class="language-plaintext highlighter-rouge">StateGraph</code> Work Under the Hood?</h2>
+
+<p>You defined the nodes and edges, but what actually happens when you call <code class="language-plaintext highlighter-rouge">invoke()</code>?</p>
+
+<ol>
+  <li><strong>Initialization:</strong> LangGraph takes your initial input (<code class="language-plaintext highlighter-rouge">{"value": 5}</code>) and puts it onto the “whiteboard” (the internal state).</li>
+  <li><strong>Execution Engine:</strong> A powerful internal component called the <a href="05_pregel_execution_engine.md">Pregel Execution Engine</a> takes over. It looks at the current state and the graph structure.</li>
+  <li><strong>Following Edges:</strong> It starts at the <code class="language-plaintext highlighter-rouge">START</code> node and follows the edge to the entry point (<code class="language-plaintext highlighter-rouge">adder</code>).</li>
+  <li><strong>Node Execution:</strong> It runs the <code class="language-plaintext highlighter-rouge">adder</code> function, passing it the current state (<code class="language-plaintext highlighter-rouge">{"value": 5}</code>).</li>
+  <li><strong>State Update:</strong> The <code class="language-plaintext highlighter-rouge">adder</code> function returns <code class="language-plaintext highlighter-rouge">{"value": 6}</code>. The Pregel engine uses special mechanisms called <a href="03_channels.md">Channels</a> to update the value associated with the <code class="language-plaintext highlighter-rouge">"value"</code> key on the “whiteboard”. The state is now <code class="language-plaintext highlighter-rouge">{"value": 6}</code>.</li>
+  <li><strong>Next Step:</strong> The engine sees the edge from <code class="language-plaintext highlighter-rouge">adder</code> to <code class="language-plaintext highlighter-rouge">multiplier</code>.</li>
+  <li><strong>Node Execution:</strong> It runs the <code class="language-plaintext highlighter-rouge">multiplier</code> function, passing it the <em>updated</em> state (<code class="language-plaintext highlighter-rouge">{"value": 6}</code>).</li>
+  <li><strong>State Update:</strong> <code class="language-plaintext highlighter-rouge">multiplier</code> returns <code class="language-plaintext highlighter-rouge">{"value": 12}</code>. The engine updates the state again via the <a href="03_channels.md">Channels</a>. The state is now <code class="language-plaintext highlighter-rouge">{"value": 12}</code>.</li>
+  <li><strong>Following Edges:</strong> The engine sees the edge from <code class="language-plaintext highlighter-rouge">multiplier</code> to <code class="language-plaintext highlighter-rouge">END</code>.</li>
+  <li><strong>Finish:</strong> Reaching <code class="language-plaintext highlighter-rouge">END</code> signals the execution is complete. The final state (<code class="language-plaintext highlighter-rouge">{"value": 12}</code>) is returned.</li>
+</ol>
+
+<p>Here’s a simplified visual:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant App (CompiledGraph)
+    participant State
+    participant AdderNode as adder
+    participant MultiplierNode as multiplier
+
+    User-&gt;&gt;App: invoke({"value": 5})
+    App-&gt;&gt;State: Initialize state = {"value": 5}
+    App-&gt;&gt;AdderNode: Execute(state)
+    AdderNode-&gt;&gt;State: Read value (5)
+    AdderNode--&gt;&gt;App: Return {"value": 6}
+    App-&gt;&gt;State: Update state = {"value": 6}
+    App-&gt;&gt;MultiplierNode: Execute(state)
+    MultiplierNode-&gt;&gt;State: Read value (6)
+    MultiplierNode--&gt;&gt;App: Return {"value": 12}
+    App-&gt;&gt;State: Update state = {"value": 12}
+    App-&gt;&gt;User: Return final state {"value": 12}
+</code></pre>
+
+<p>Don’t worry too much about the details of Pregel or Channels yet – we’ll cover them in later chapters. The key takeaway is that <code class="language-plaintext highlighter-rouge">StateGraph</code> manages the state and orchestrates the execution based on your defined nodes and edges.</p>
+
+<h2 id="a-peek-at-the-code-graphstatepy-graphgraphpy">A Peek at the Code (<code class="language-plaintext highlighter-rouge">graph/state.py</code>, <code class="language-plaintext highlighter-rouge">graph/graph.py</code>)</h2>
+
+<p>Let’s briefly look at the code snippets provided to see how these concepts map to the implementation:</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">StateGraph.__init__</code> (<code class="language-plaintext highlighter-rouge">graph/state.py</code>)</strong>:
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view
+</span><span class="k">class</span> <span class="nc">StateGraph</span><span class="p">(</span><span class="n">Graph</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_schema</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Type</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="p">...):</span>
+        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="c1"># ... stores the state_schema ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">schema</span> <span class="o">=</span> <span class="n">state_schema</span>
+        <span class="c1"># ... analyzes the schema to understand state keys and how to update them ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_add_schema</span><span class="p">(</span><span class="n">state_schema</span><span class="p">)</span>
+        <span class="c1"># ... sets up internal dictionaries for channels, nodes etc. ...
+</span></code></pre></div>    </div>
+    <p>This code initializes the graph, crucially storing the <code class="language-plaintext highlighter-rouge">state_schema</code> you provide. It analyzes this schema to figure out the “keys” on your whiteboard (like <code class="language-plaintext highlighter-rouge">"value"</code>) and sets up the internal structures (<a href="03_channels.md">Channels</a>) needed to manage updates to each key.</p>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">StateGraph.add_node</code> (<code class="language-plaintext highlighter-rouge">graph/state.py</code>)</strong>:
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view
+</span><span class="k">def</span> <span class="nf">add_node</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">RunnableLike</span><span class="p">,</span> <span class="p">...):</span>
+    <span class="c1"># ... basic checks for name conflicts, reserved names (START, END) ...
+</span>    <span class="k">if</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">channels</span><span class="p">:</span> <span class="c1"># Cannot use a state key name as a node name
+</span>         <span class="k">raise</span> <span class="nb">ValueError</span><span class="p">(...)</span>
+    <span class="c1"># ... wrap the provided action (function/runnable) ...
+</span>    <span class="n">runnable</span> <span class="o">=</span> <span class="n">coerce_to_runnable</span><span class="p">(</span><span class="n">action</span><span class="p">,</span> <span class="p">...)</span>
+    <span class="c1"># ... store the node details (runnable, input type etc.) ...
+</span>    <span class="bp">self</span><span class="p">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">node</span><span class="p">]</span> <span class="o">=</span> <span class="n">StateNodeSpec</span><span class="p">(</span><span class="n">runnable</span><span class="p">,</span> <span class="p">...,</span> <span class="nb">input</span><span class="o">=</span><span class="nb">input</span> <span class="ow">or</span> <span class="bp">self</span><span class="p">.</span><span class="n">schema</span><span class="p">,</span> <span class="p">...)</span>
+    <span class="k">return</span> <span class="bp">self</span>
+</code></pre></div>    </div>
+    <p>When you add a node, it stores the associated function (<code class="language-plaintext highlighter-rouge">action</code>) and links it to the provided <code class="language-plaintext highlighter-rouge">node</code> name. It also figures out what input schema the node expects (usually the main graph state schema).</p>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Graph.add_edge</code> (<code class="language-plaintext highlighter-rouge">graph/graph.py</code>)</strong>:
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from the base Graph class
+</span><span class="k">def</span> <span class="nf">add_edge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">end_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="c1"># ... checks for invalid edges (e.g., starting from END) ...
+</span>    <span class="c1"># ... basic validation ...
+</span>    <span class="c1"># Stores the connection as a simple pair
+</span>    <span class="bp">self</span><span class="p">.</span><span class="n">edges</span><span class="p">.</span><span class="n">add</span><span class="p">((</span><span class="n">start_key</span><span class="p">,</span> <span class="n">end_key</span><span class="p">))</span>
+    <span class="k">return</span> <span class="bp">self</span>
+</code></pre></div>    </div>
+    <p>Adding an edge is relatively simple – it just records the <code class="language-plaintext highlighter-rouge">(start_key, end_key)</code> pair in a set, representing the connection.</p>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">StateGraph.compile</code> (<code class="language-plaintext highlighter-rouge">graph/state.py</code>)</strong>:
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view
+</span><span class="k">def</span> <span class="nf">compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="p">...):</span>
+    <span class="c1"># ... validation checks ...
+</span>    <span class="bp">self</span><span class="p">.</span><span class="n">validate</span><span class="p">(...)</span>
+    <span class="c1"># ... create the CompiledStateGraph instance ...
+</span>    <span class="n">compiled</span> <span class="o">=</span> <span class="n">CompiledStateGraph</span><span class="p">(</span><span class="n">builder</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="p">...)</span>
+    <span class="c1"># ... add nodes, edges, branches to the compiled version ...
+</span>    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">nodes</span><span class="p">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">compiled</span><span class="p">.</span><span class="n">attach_node</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">node</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">edges</span><span class="p">:</span>
+        <span class="n">compiled</span><span class="p">.</span><span class="n">attach_edge</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+    <span class="c1"># ... more setup for branches, entry/exit points ...
+</span>    <span class="c1"># ... finalize and return the compiled graph ...
+</span>    <span class="k">return</span> <span class="n">compiled</span><span class="p">.</span><span class="n">validate</span><span class="p">()</span>
+</code></pre></div>    </div>
+    <p>Compilation takes your defined nodes and edges and builds the final, executable <code class="language-plaintext highlighter-rouge">CompiledStateGraph</code>. It sets up the internal machinery (<a href="05_pregel_execution_engine.md">Pregel</a>, <a href="03_channels.md">Channels</a>) based on your blueprint.</p>
+  </li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned the fundamental concept in LangGraph: the <strong>Graph</strong>.</p>
+
+<ul>
+  <li>Graphs define the structure and flow of your application using <strong>Nodes</strong> (steps) and <strong>Edges</strong> (connections).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">StateGraph</code></strong> is the most common type, where nodes communicate implicitly by reading and updating a shared <strong>State</strong> object (like a whiteboard).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">MessageGraph</code></strong> is a specialized <code class="language-plaintext highlighter-rouge">StateGraph</code> for easily building chatbots.</li>
+  <li>You define the state structure, write node functions that update parts of the state, connect them with edges, and <code class="language-plaintext highlighter-rouge">compile</code> the graph to make it runnable.</li>
+</ul>
+
+<p>Now that you understand how to define the overall <em>structure</em> of your application using <code class="language-plaintext highlighter-rouge">StateGraph</code>, the next step is to dive deeper into what constitutes a <strong>Node</strong>.</p>
+
+<p>Let’s move on to <a href="02_nodes___pregelnode__.md">Chapter 2: Nodes (<code class="language-plaintext highlighter-rouge">PregelNode</code>)</a> to explore how individual steps are defined and executed.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

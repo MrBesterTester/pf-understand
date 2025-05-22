@@ -1,0 +1,401 @@
+<h1 id="chapter-7-security-utilities">Chapter 7: Security Utilities</h1>
+
+<p>Hi there! 👋 In <a href="06_error_handling.md">Chapter 6: Error Handling</a>, we learned how to handle situations where things go wrong in our API, like when a user requests an item that doesn’t exist. Now, let’s talk about protecting our API endpoints.</p>
+
+<p>Imagine our online store API. Anyone should be able to browse items (<code class="language-plaintext highlighter-rouge">GET /items/</code>). But maybe only registered, logged-in users should be allowed to <em>create</em> new items (<code class="language-plaintext highlighter-rouge">POST /items/</code>) or view their own profile (<code class="language-plaintext highlighter-rouge">GET /users/me</code>). How do we ensure only the right people can access certain parts of our API?</p>
+
+<p>That’s where <strong>Security Utilities</strong> come in!</p>
+
+<p><strong>Our Goal Today:</strong> Learn how FastAPI provides ready-made tools to implement common security mechanisms like username/password checks or API keys, making it easy to protect your endpoints.</p>
+
+<h2 id="what-problem-does-this-solve">What Problem Does This Solve?</h2>
+
+<p>When you build an API, some parts might be public, but others need protection. You need a way to:</p>
+
+<ol>
+  <li><strong>Identify the User:</strong> Figure out <em>who</em> is making the request. Are they logged in? Do they have a valid API key? This process is called <strong>Authentication</strong> (AuthN - proving who you are).</li>
+  <li><strong>Check Permissions (Optional but related):</strong> Once you know who the user is, you might need to check if they have permission to do what they’re asking. Can user “Alice” delete user “Bob”? This is called <strong>Authorization</strong> (AuthZ - checking what you’re allowed to do). (We’ll focus mainly on Authentication in this beginner chapter).</li>
+  <li><strong>Ask for Credentials:</strong> How does the user provide their identity? Common ways include:
+    <ul>
+      <li><strong>HTTP Basic Authentication:</strong> Sending a username and password directly (encoded) in the request headers. Simple, but less secure over plain HTTP.</li>
+      <li><strong>API Keys:</strong> Sending a secret key (a long string) in the headers, query parameters, or cookies. Common for server-to-server communication.</li>
+      <li><strong>OAuth2 Bearer Tokens:</strong> Sending a temporary token (obtained after logging in) in the headers. Very common for web and mobile apps.</li>
+    </ul>
+  </li>
+  <li><strong>Document Security:</strong> How do you tell users of your API (in the <code class="language-plaintext highlighter-rouge">/docs</code>) that certain endpoints require authentication and how to provide it?</li>
+</ol>
+
+<p>Implementing these security schemes from scratch can be complex and tricky. FastAPI gives you pre-built components (like different types of locks and keys) that handle the common patterns for asking for and receiving credentials.</p>
+
+<h2 id="key-concepts">Key Concepts</h2>
+
+<ol>
+  <li>
+    <p><strong>Security Schemes:</strong> These are the standard protocols or methods used for authentication, like HTTP Basic, API Keys (in different locations), and OAuth2. FastAPI provides classes that represent these schemes (e.g., <code class="language-plaintext highlighter-rouge">HTTPBasic</code>, <code class="language-plaintext highlighter-rouge">APIKeyHeader</code>, <code class="language-plaintext highlighter-rouge">OAuth2PasswordBearer</code>). Think of these as the <em>type</em> of lock mechanism you want to install on your door.</p>
+  </li>
+  <li>
+    <p><strong><code class="language-plaintext highlighter-rouge">fastapi.security</code> Module:</strong> This module contains all the pre-built security scheme classes. You’ll import things like <code class="language-plaintext highlighter-rouge">HTTPBasic</code>, <code class="language-plaintext highlighter-rouge">APIKeyHeader</code>, <code class="language-plaintext highlighter-rouge">APIKeyQuery</code>, <code class="language-plaintext highlighter-rouge">APIKeyCookie</code>, <code class="language-plaintext highlighter-rouge">OAuth2PasswordBearer</code> from here.</p>
+  </li>
+  <li>
+    <p><strong>Credentials:</strong> The actual “secret” information the user provides to prove their identity (username/password, the API key string, the OAuth2 token string).</p>
+  </li>
+  <li>
+    <p><strong>Verifier Dependency:</strong> A function you write (a dependency, like we learned about in <a href="05_dependency_injection.md">Chapter 5: Dependency Injection</a>) that takes the credentials extracted by the security scheme and checks if they are valid. It might check a username/password against a database or validate an API key. This function decides if the “key” fits the “lock”.</p>
+  </li>
+  <li>
+    <p><strong><code class="language-plaintext highlighter-rouge">Security()</code> Function:</strong> This is a special function imported from <code class="language-plaintext highlighter-rouge">fastapi</code> (<code class="language-plaintext highlighter-rouge">from fastapi import Security</code>). It works almost exactly like <code class="language-plaintext highlighter-rouge">Depends()</code>, but it’s specifically designed for security dependencies. You use it like this: <code class="language-plaintext highlighter-rouge">user: Annotated[UserType, Security(your_verifier_dependency)]</code>.</p>
+    <ul>
+      <li><strong>Main Difference from <code class="language-plaintext highlighter-rouge">Depends()</code>:</strong> Using <code class="language-plaintext highlighter-rouge">Security()</code> tells FastAPI to automatically add the corresponding security requirements to your OpenAPI documentation (<code class="language-plaintext highlighter-rouge">/docs</code>). This means <code class="language-plaintext highlighter-rouge">/docs</code> will show a little lock icon on protected endpoints and provide UI elements for users to enter their credentials (like username/password or a token) when trying out the API.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><strong>Analogy:</strong></p>
+<ul>
+  <li><strong>Security Scheme (<code class="language-plaintext highlighter-rouge">HTTPBasic</code>, <code class="language-plaintext highlighter-rouge">APIKeyHeader</code>):</strong> The type of lock on the door (e.g., a key lock, a combination lock).</li>
+  <li><strong>Scheme Instance (<code class="language-plaintext highlighter-rouge">security = HTTPBasic()</code>):</strong> Installing that specific lock on a particular door frame.</li>
+  <li><strong>Credentials (<code class="language-plaintext highlighter-rouge">username/password</code>, <code class="language-plaintext highlighter-rouge">API key</code>):</strong> The key or combination provided by the person trying to open the door.</li>
+  <li><strong>Verifier Dependency (<code class="language-plaintext highlighter-rouge">get_current_user</code>):</strong> The person or mechanism that takes the key/combination, checks if it’s correct, and decides whether to let the person in.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Security(get_current_user)</code>:</strong> Declaring that the door requires the verifier to check the key/combination before allowing entry, and also putting a “Lock” sign on the door in the building map (<code class="language-plaintext highlighter-rouge">/docs</code>).</li>
+</ul>
+
+<h2 id="using-security-utilities-http-basic-auth-example">Using Security Utilities: HTTP Basic Auth Example</h2>
+
+<p>Let’s protect an endpoint using the simplest method: HTTP Basic Authentication. We’ll create an endpoint <code class="language-plaintext highlighter-rouge">/users/me</code> that requires a valid username and password.</p>
+
+<p><strong>Step 1: Import necessary tools</strong></p>
+
+<p>We need <code class="language-plaintext highlighter-rouge">HTTPBasic</code> (the scheme), <code class="language-plaintext highlighter-rouge">HTTPBasicCredentials</code> (a Pydantic model to hold the extracted username/password), <code class="language-plaintext highlighter-rouge">Security</code> (to declare the dependency), <code class="language-plaintext highlighter-rouge">Annotated</code>, and <code class="language-plaintext highlighter-rouge">HTTPException</code> (for errors).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># main.py (or your router file)
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Annotated</span>
+
+<span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">Depends</span><span class="p">,</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">HTTPException</span><span class="p">,</span> <span class="n">status</span>
+<span class="kn">from</span> <span class="nn">fastapi.security</span> <span class="kn">import</span> <span class="n">HTTPBasic</span><span class="p">,</span> <span class="n">HTTPBasicCredentials</span>
+</code></pre></div></div>
+
+<p><strong>Step 2: Create an instance of the security scheme</strong></p>
+
+<p>We create an instance of <code class="language-plaintext highlighter-rouge">HTTPBasic</code>. This object knows <em>how</em> to ask the browser/client for username/password via standard HTTP mechanisms.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Right after imports
+</span><span class="n">security</span> <span class="o">=</span> <span class="n">HTTPBasic</span><span class="p">()</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span> <span class="c1"># Or use your APIRouter
+</span></code></pre></div></div>
+
+<p><strong>Step 3: Define the “Verifier” Dependency Function</strong></p>
+
+<p>This function will receive the credentials extracted by <code class="language-plaintext highlighter-rouge">security</code> and check if they are valid. For this beginner example, we’ll use hardcoded values. In a real app, you’d check against a database.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Our "verifier" function
+</span><span class="k">def</span> <span class="nf">get_current_username</span><span class="p">(</span><span class="n">credentials</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">HTTPBasicCredentials</span><span class="p">,</span> <span class="n">Depends</span><span class="p">(</span><span class="n">security</span><span class="p">)]):</span>
+    <span class="c1"># NOTE: In a real app, NEVER hardcode credentials like this!
+</span>    <span class="c1">#       Always use secure password hashing (e.g., with passlib)
+</span>    <span class="c1">#       and check against a database.
+</span>    <span class="n">correct_username</span> <span class="o">=</span> <span class="s">"stanley"</span>
+    <span class="n">correct_password</span> <span class="o">=</span> <span class="s">"password123"</span> <span class="c1"># Don't do this in production!
+</span>
+    <span class="c1"># Basic check (insecure comparison for demonstration)
+</span>    <span class="n">is_correct_username</span> <span class="o">=</span> <span class="n">credentials</span><span class="p">.</span><span class="n">username</span> <span class="o">==</span> <span class="n">correct_username</span>
+    <span class="n">is_correct_password</span> <span class="o">=</span> <span class="n">credentials</span><span class="p">.</span><span class="n">password</span> <span class="o">==</span> <span class="n">correct_password</span> <span class="c1"># Insecure!
+</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">is_correct_username</span> <span class="ow">and</span> <span class="n">is_correct_password</span><span class="p">):</span>
+        <span class="c1"># If credentials are bad, raise an exception
+</span>        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span>
+            <span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="p">.</span><span class="n">HTTP_401_UNAUTHORIZED</span><span class="p">,</span>
+            <span class="n">detail</span><span class="o">=</span><span class="s">"Incorrect email or password"</span><span class="p">,</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s">"WWW-Authenticate"</span><span class="p">:</span> <span class="s">"Basic"</span><span class="p">},</span> <span class="c1"># Required header for 401 Basic Auth
+</span>        <span class="p">)</span>
+    <span class="c1"># If credentials are okay, return the username
+</span>    <span class="k">return</span> <span class="n">credentials</span><span class="p">.</span><span class="n">username</span>
+
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">get_current_username</code> is our dependency function.</li>
+  <li><code class="language-plaintext highlighter-rouge">credentials: Annotated[HTTPBasicCredentials, Depends(security)]</code>: It depends on our <code class="language-plaintext highlighter-rouge">security</code> object (<code class="language-plaintext highlighter-rouge">HTTPBasic</code>). FastAPI will run <code class="language-plaintext highlighter-rouge">security</code> first. <code class="language-plaintext highlighter-rouge">security</code> will extract the username and password from the <code class="language-plaintext highlighter-rouge">Authorization: Basic ...</code> header and provide them as an <code class="language-plaintext highlighter-rouge">HTTPBasicCredentials</code> object to this function.</li>
+  <li>Inside, we perform a (very insecure, for demo only!) check against hardcoded values.</li>
+  <li>If the check fails, we <code class="language-plaintext highlighter-rouge">raise HTTPException</code> with status <code class="language-plaintext highlighter-rouge">401 Unauthorized</code>. The <code class="language-plaintext highlighter-rouge">headers={"WWW-Authenticate": "Basic"}</code> part is important; it tells the browser <em>how</em> it should ask for credentials (using the Basic scheme).</li>
+  <li>If the check passes, we return the validated username.</li>
+</ul>
+
+<p><strong>Step 4: Use <code class="language-plaintext highlighter-rouge">Security()</code> in the Path Operation</strong></p>
+
+<p>Now, let’s create our protected endpoint <code class="language-plaintext highlighter-rouge">/users/me</code>. Instead of <code class="language-plaintext highlighter-rouge">Depends</code>, we use <code class="language-plaintext highlighter-rouge">Security</code> with our verifier function.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"/users/me"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">read_current_user</span><span class="p">(</span>
+    <span class="c1"># Use Security() with the verifier function
+</span>    <span class="n">username</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Security</span><span class="p">(</span><span class="n">get_current_username</span><span class="p">)]</span>
+<span class="p">):</span>
+    <span class="c1"># If the code reaches here, get_current_username ran successfully
+</span>    <span class="c1"># and returned the validated username.
+</span>    <span class="c1"># 'username' variable now holds the result from get_current_username.
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"username"</span><span class="p">:</span> <span class="n">username</span><span class="p">}</span>
+
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">username: Annotated[str, Security(get_current_username)]</code>: We declare that this path operation requires the <code class="language-plaintext highlighter-rouge">get_current_username</code> dependency, using <code class="language-plaintext highlighter-rouge">Security</code>.
+    <ul>
+      <li>FastAPI will first run <code class="language-plaintext highlighter-rouge">get_current_username</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">get_current_username</code> will, in turn, trigger <code class="language-plaintext highlighter-rouge">security</code> (<code class="language-plaintext highlighter-rouge">HTTPBasic</code>) to get the credentials.</li>
+      <li>If <code class="language-plaintext highlighter-rouge">get_current_username</code> succeeds (doesn’t raise an exception), its return value (the username string) will be injected into the <code class="language-plaintext highlighter-rouge">username</code> parameter of <code class="language-plaintext highlighter-rouge">read_current_user</code>.</li>
+      <li>If <code class="language-plaintext highlighter-rouge">get_current_username</code> (or the underlying <code class="language-plaintext highlighter-rouge">HTTPBasic</code>) raises an <code class="language-plaintext highlighter-rouge">HTTPException</code>, the request stops, the error response is sent, and <code class="language-plaintext highlighter-rouge">read_current_user</code> is never called.</li>
+      <li>Crucially, <code class="language-plaintext highlighter-rouge">Security()</code> also adds the HTTP Basic security requirement to the OpenAPI schema for this endpoint.</li>
+    </ul>
+  </li>
+</ul>
+
+<p><strong>How it Behaves:</strong></p>
+
+<ol>
+  <li><strong>Run the App:</strong> <code class="language-plaintext highlighter-rouge">uvicorn main:app --reload</code></li>
+  <li><strong>Visit <code class="language-plaintext highlighter-rouge">/docs</code>:</strong> Go to <code class="language-plaintext highlighter-rouge">http://127.0.0.1:8000/docs</code>.
+    <ul>
+      <li>You’ll see the <code class="language-plaintext highlighter-rouge">/users/me</code> endpoint now has a <strong>padlock icon</strong> 🔒 next to it.</li>
+      <li>Click the “Authorize” button (usually near the top right). A popup will appear asking for Username and Password for the “HTTPBasic” scheme.</li>
+      <li>Enter <code class="language-plaintext highlighter-rouge">stanley</code> and <code class="language-plaintext highlighter-rouge">password123</code> and click Authorize.</li>
+      <li>Now, try out the <code class="language-plaintext highlighter-rouge">/users/me</code> endpoint. Click “Try it out”, then “Execute”. It should work and return <code class="language-plaintext highlighter-rouge">{"username": "stanley"}</code>. The browser automatically added the correct <code class="language-plaintext highlighter-rouge">Authorization</code> header because you authorized in the UI.</li>
+      <li>Click “Authorize” again and “Logout”. Now try executing <code class="language-plaintext highlighter-rouge">/users/me</code> again. You’ll get a <code class="language-plaintext highlighter-rouge">401 Unauthorized</code> error with <code class="language-plaintext highlighter-rouge">{"detail": "Not authenticated"}</code> (this default comes from <code class="language-plaintext highlighter-rouge">HTTPBasic</code> when no credentials are provided).</li>
+    </ul>
+  </li>
+  <li><strong>Use <code class="language-plaintext highlighter-rouge">curl</code> (Command Line):</strong>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">curl http://127.0.0.1:8000/users/me</code> -&gt; Returns <code class="language-plaintext highlighter-rouge">{"detail":"Not authenticated"}</code> (401).</li>
+      <li><code class="language-plaintext highlighter-rouge">curl -u wronguser:wrongpass http://127.0.0.1:8000/users/me</code> -&gt; Returns <code class="language-plaintext highlighter-rouge">{"detail":"Incorrect email or password"}</code> (401). The <code class="language-plaintext highlighter-rouge">-u</code> flag makes <code class="language-plaintext highlighter-rouge">curl</code> use HTTP Basic Auth.</li>
+      <li><code class="language-plaintext highlighter-rouge">curl -u stanley:password123 http://127.0.0.1:8000/users/me</code> -&gt; Returns <code class="language-plaintext highlighter-rouge">{"username": "stanley"}</code> (200 OK).</li>
+    </ul>
+  </li>
+</ol>
+
+<p>You’ve successfully protected an endpoint using HTTP Basic Auth!</p>
+
+<h2 id="other-common-schemes-briefly">Other Common Schemes (Briefly)</h2>
+
+<p>The pattern is very similar for other schemes.</p>
+
+<h3 id="api-key-in-header">API Key in Header</h3>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Imports ---
+</span><span class="kn">from</span> <span class="nn">fastapi.security</span> <span class="kn">import</span> <span class="n">APIKeyHeader</span>
+
+<span class="c1"># --- Scheme Instance ---
+</span><span class="n">api_key_header_scheme</span> <span class="o">=</span> <span class="n">APIKeyHeader</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"X-API-KEY"</span><span class="p">)</span> <span class="c1"># Expect key in X-API-KEY header
+</span>
+<span class="c1"># --- Verifier Dependency (Example) ---
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">get_api_key</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Security</span><span class="p">(</span><span class="n">api_key_header_scheme</span><span class="p">)]</span> <span class="c1"># Use Security() with the SCHEME instance here
+</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">api_key</span> <span class="o">==</span> <span class="s">"SECRET_API_KEY"</span><span class="p">:</span> <span class="c1"># Check the key (use a secure way in real apps!)
+</span>        <span class="k">return</span> <span class="n">api_key</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span>
+            <span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="p">.</span><span class="n">HTTP_403_FORBIDDEN</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s">"Could not validate API KEY"</span>
+        <span class="p">)</span>
+
+<span class="c1"># --- Path Operation ---
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"/secure-data"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">get_secure_data</span><span class="p">(</span>
+    <span class="c1"># Inject the VALIDATED key using Depends() - no need for Security() again
+</span>    <span class="c1"># if the get_api_key dependency already uses Security() internally.
+</span>    <span class="c1"># Alternatively, if get_api_key just returned the key without raising errors,
+</span>    <span class="c1"># you could use Security(get_api_key) here. Let's stick to the pattern:
+</span>    <span class="c1"># the verifier dependency uses Security(scheme), the endpoint uses Depends(verifier)
+</span>    <span class="c1"># or directly uses Security(verifier) if the verifier handles errors.
+</span>    <span class="c1"># Let's adjust get_api_key to make it cleaner:
+</span>    <span class="n">api_key</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Security</span><span class="p">(</span><span class="n">api_key_header_scheme</span><span class="p">)]</span> <span class="c1"># Scheme extracts the key
+</span><span class="p">):</span>
+    <span class="c1"># Now, a separate check or use the key
+</span>    <span class="k">if</span> <span class="n">api_key</span> <span class="o">==</span> <span class="s">"SECRET_API_KEY"</span><span class="p">:</span> <span class="c1"># Re-checking here for simplicity, ideally done in a dependent function
+</span>         <span class="k">return</span> <span class="p">{</span><span class="s">"data"</span><span class="p">:</span> <span class="s">"sensitive data"</span><span class="p">,</span> <span class="s">"api_key_used"</span><span class="p">:</span> <span class="n">api_key</span><span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+         <span class="c1"># This path might not be reachable if auto_error=True in APIKeyHeader
+</span>         <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="p">.</span><span class="n">HTTP_403_FORBIDDEN</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s">"Invalid API Key provided"</span><span class="p">)</span>
+
+<span class="c1"># Let's refine the API Key example pattern to match the Basic Auth pattern:
+# Scheme Instance
+</span><span class="n">api_key_header_scheme</span> <span class="o">=</span> <span class="n">APIKeyHeader</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"X-API-KEY"</span><span class="p">,</span> <span class="n">auto_error</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span> <span class="c1"># auto_error=False lets verifier handle missing key
+</span>
+<span class="c1"># Verifier Dependency
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">verify_api_key</span><span class="p">(</span><span class="n">api_key</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="bp">None</span><span class="p">,</span> <span class="n">Security</span><span class="p">(</span><span class="n">api_key_header_scheme</span><span class="p">)]):</span>
+    <span class="k">if</span> <span class="n">api_key</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="p">.</span><span class="n">HTTP_403_FORBIDDEN</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s">"X-API-KEY header missing"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">api_key</span> <span class="o">==</span> <span class="s">"SECRET_API_KEY"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">api_key</span> <span class="c1"># Return key or user info associated with the key
+</span>    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="p">.</span><span class="n">HTTP_403_FORBIDDEN</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s">"Invalid API Key"</span><span class="p">)</span>
+
+<span class="c1"># Path Operation using the verifier
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"/secure-data"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">get_secure_data_v2</span><span class="p">(</span>
+    <span class="c1"># Use Security() with the VERIFIER function
+</span>    <span class="n">verified_key</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Security</span><span class="p">(</span><span class="n">verify_api_key</span><span class="p">)]</span>
+<span class="p">):</span>
+    <span class="c1"># verified_key holds the result from verify_api_key (the validated key)
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"data"</span><span class="p">:</span> <span class="s">"sensitive data"</span><span class="p">,</span> <span class="s">"key"</span><span class="p">:</span> <span class="n">verified_key</span><span class="p">}</span>
+
+</code></pre></div></div>
+
+<h3 id="oauth2-password-bearer-flow">OAuth2 Password Bearer Flow</h3>
+
+<p>This is common for user logins in web apps. It usually involves two endpoints: one to exchange username/password for a token (<code class="language-plaintext highlighter-rouge">/token</code>), and protected endpoints that require the token.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Imports ---
+</span><span class="kn">from</span> <span class="nn">fastapi.security</span> <span class="kn">import</span> <span class="n">OAuth2PasswordBearer</span><span class="p">,</span> <span class="n">OAuth2PasswordRequestForm</span>
+
+<span class="c1"># --- Scheme Instance ---
+# The 'tokenUrl' points to the path operation where users get the token
+</span><span class="n">oauth2_scheme</span> <span class="o">=</span> <span class="n">OAuth2PasswordBearer</span><span class="p">(</span><span class="n">tokenUrl</span><span class="o">=</span><span class="s">"token"</span><span class="p">)</span>
+
+<span class="c1"># --- Token Endpoint (Example) ---
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">post</span><span class="p">(</span><span class="s">"/token"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">login_for_access_token</span><span class="p">(</span>
+    <span class="n">form_data</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">OAuth2PasswordRequestForm</span><span class="p">,</span> <span class="n">Depends</span><span class="p">()]</span>
+<span class="p">):</span>
+    <span class="c1"># 1. Verify form_data.username and form_data.password (check DB)
+</span>    <span class="c1"># 2. If valid, create an access token (e.g., a JWT)
+</span>    <span class="c1"># 3. Return the token
+</span>    <span class="c1"># (Skipping implementation details for brevity)
+</span>    <span class="n">access_token</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"token_for_</span><span class="si">{</span><span class="n">form_data</span><span class="p">.</span><span class="n">username</span><span class="si">}</span><span class="s">"</span> <span class="c1"># Fake token
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"access_token"</span><span class="p">:</span> <span class="n">access_token</span><span class="p">,</span> <span class="s">"token_type"</span><span class="p">:</span> <span class="s">"bearer"</span><span class="p">}</span>
+
+<span class="c1"># --- Verifier Dependency (Example: decode token and get user) ---
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">get_current_user</span><span class="p">(</span><span class="n">token</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Security</span><span class="p">(</span><span class="n">oauth2_scheme</span><span class="p">)]):</span>
+    <span class="c1"># In a real app:
+</span>    <span class="c1"># 1. Decode the token (e.g., JWT)
+</span>    <span class="c1"># 2. Validate the token (check expiry, signature)
+</span>    <span class="c1"># 3. Extract user identifier from token payload
+</span>    <span class="c1"># 4. Fetch user from database
+</span>    <span class="c1"># 5. Raise HTTPException if token is invalid or user doesn't exist
+</span>    <span class="k">if</span> <span class="n">token</span> <span class="o">==</span> <span class="s">"token_for_stanley"</span><span class="p">:</span> <span class="c1"># Fake check
+</span>        <span class="k">return</span> <span class="p">{</span><span class="s">"username"</span><span class="p">:</span> <span class="s">"stanley"</span><span class="p">,</span> <span class="s">"email"</span><span class="p">:</span> <span class="s">"stanley@example.com"</span><span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span>
+            <span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="p">.</span><span class="n">HTTP_401_UNAUTHORIZED</span><span class="p">,</span>
+            <span class="n">detail</span><span class="o">=</span><span class="s">"Invalid authentication credentials"</span><span class="p">,</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s">"WWW-Authenticate"</span><span class="p">:</span> <span class="s">"Bearer"</span><span class="p">},</span>
+        <span class="p">)</span>
+
+<span class="c1"># --- Protected Path Operation ---
+</span><span class="o">@</span><span class="n">app</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"/users/me/oauth"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">read_users_me_oauth</span><span class="p">(</span>
+    <span class="c1"># Use Security() with the user verifier function
+</span>    <span class="n">current_user</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="n">Security</span><span class="p">(</span><span class="n">get_current_user</span><span class="p">)]</span>
+<span class="p">):</span>
+    <span class="c1"># current_user holds the dict returned by get_current_user
+</span>    <span class="k">return</span> <span class="n">current_user</span>
+</code></pre></div></div>
+
+<p>The core pattern remains: Instantiate the scheme -&gt; Define a verifier dependency that uses the scheme -&gt; Protect endpoints using <code class="language-plaintext highlighter-rouge">Security(verifier_dependency)</code>.</p>
+
+<h2 id="how-it-works-under-the-hood-simplified">How it Works Under the Hood (Simplified)</h2>
+
+<p>Let’s trace the HTTP Basic Auth example (<code class="language-plaintext highlighter-rouge">GET /users/me</code> requiring <code class="language-plaintext highlighter-rouge">stanley</code>/<code class="language-plaintext highlighter-rouge">password123</code>):</p>
+
+<ol>
+  <li><strong>Request:</strong> Client sends <code class="language-plaintext highlighter-rouge">GET /users/me</code> with header <code class="language-plaintext highlighter-rouge">Authorization: Basic c3RhbmxleTpwYXNzd29yZDEyMw==</code> (where <code class="language-plaintext highlighter-rouge">c3Rh...</code> is base64(“stanley:password123”)).</li>
+  <li><strong>Routing:</strong> FastAPI matches the request to <code class="language-plaintext highlighter-rouge">read_current_user</code>.</li>
+  <li><strong>Dependency Analysis:</strong> FastAPI sees <code class="language-plaintext highlighter-rouge">username: Annotated[str, Security(get_current_username)]</code>. It knows it needs to resolve the <code class="language-plaintext highlighter-rouge">get_current_username</code> dependency using the <code class="language-plaintext highlighter-rouge">Security</code> mechanism.</li>
+  <li><strong>Security Dependency Resolution:</strong>
+    <ul>
+      <li>FastAPI looks inside <code class="language-plaintext highlighter-rouge">get_current_username</code> and sees its dependency: <code class="language-plaintext highlighter-rouge">credentials: Annotated[HTTPBasicCredentials, Depends(security)]</code>.</li>
+      <li>It needs to resolve <code class="language-plaintext highlighter-rouge">security</code> (our <code class="language-plaintext highlighter-rouge">HTTPBasic()</code> instance).</li>
+    </ul>
+  </li>
+  <li><strong>Scheme Execution (<code class="language-plaintext highlighter-rouge">HTTPBasic.__call__</code>)</strong>:
+    <ul>
+      <li>FastAPI calls the <code class="language-plaintext highlighter-rouge">security</code> object (which is callable).</li>
+      <li>The <code class="language-plaintext highlighter-rouge">HTTPBasic</code> object’s <code class="language-plaintext highlighter-rouge">__call__</code> method executes. It reads the <code class="language-plaintext highlighter-rouge">Authorization</code> header from the request.</li>
+      <li>It finds the <code class="language-plaintext highlighter-rouge">Basic</code> scheme and the parameter <code class="language-plaintext highlighter-rouge">c3RhbmxleTpwYXNzd29yZDEyMw==</code>.</li>
+      <li>It base64-decodes the parameter to get <code class="language-plaintext highlighter-rouge">stanley:password123</code>.</li>
+      <li>It splits this into username (<code class="language-plaintext highlighter-rouge">stanley</code>) and password (<code class="language-plaintext highlighter-rouge">password123</code>).</li>
+      <li>It creates and returns an <code class="language-plaintext highlighter-rouge">HTTPBasicCredentials(username="stanley", password="password123")</code> object.</li>
+      <li><em>(If the header was missing or malformed, <code class="language-plaintext highlighter-rouge">HTTPBasic.__call__</code> would raise <code class="language-plaintext highlighter-rouge">HTTPException(401)</code> here, stopping the process).</em></li>
+    </ul>
+  </li>
+  <li><strong>Verifier Execution (<code class="language-plaintext highlighter-rouge">get_current_username</code>)</strong>:
+    <ul>
+      <li>FastAPI now has the result from <code class="language-plaintext highlighter-rouge">security</code>. It calls <code class="language-plaintext highlighter-rouge">get_current_username(credentials=&lt;HTTPBasicCredentials object&gt;)</code>.</li>
+      <li>Your verifier code runs. It compares the credentials. They match the hardcoded values.</li>
+      <li>The function returns the username <code class="language-plaintext highlighter-rouge">"stanley"</code>.</li>
+      <li><em>(If the credentials didn’t match, your code would raise <code class="language-plaintext highlighter-rouge">HTTPException(401)</code> here, stopping the process).</em></li>
+    </ul>
+  </li>
+  <li><strong>Path Operation Execution (<code class="language-plaintext highlighter-rouge">read_current_user</code>)</strong>:
+    <ul>
+      <li>FastAPI now has the result from <code class="language-plaintext highlighter-rouge">get_current_username</code>. It calls <code class="language-plaintext highlighter-rouge">read_current_user(username="stanley")</code>.</li>
+      <li>Your path operation function runs and returns <code class="language-plaintext highlighter-rouge">{"username": "stanley"}</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Response:</strong> FastAPI sends the 200 OK JSON response back to the client.</li>
+  <li><strong>OpenAPI Generation:</strong> Separately, when generating <code class="language-plaintext highlighter-rouge">/openapi.json</code>, FastAPI sees <code class="language-plaintext highlighter-rouge">Security(get_current_username)</code> -&gt; <code class="language-plaintext highlighter-rouge">Depends(security)</code> -&gt; <code class="language-plaintext highlighter-rouge">security</code> is <code class="language-plaintext highlighter-rouge">HTTPBasic</code>. It adds the “HTTPBasic” security requirement definition to the global <code class="language-plaintext highlighter-rouge">components.securitySchemes</code> and references it in the security requirements for the <code class="language-plaintext highlighter-rouge">/users/me</code> path operation. This is what makes the lock icon appear in <code class="language-plaintext highlighter-rouge">/docs</code>.</li>
+</ol>
+
+<p>Here’s a simplified diagram:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Client
+    participant FastAPIApp as FastAPI App
+    participant HTTPBasicInst as security (HTTPBasic Instance)
+    participant VerifierFunc as get_current_username
+    participant PathOpFunc as read_current_user
+
+    Client-&gt;&gt;+FastAPIApp: GET /users/me (Authorization: Basic ...)
+    FastAPIApp-&gt;&gt;FastAPIApp: Match route, see Security(get_current_username)
+    FastAPIApp-&gt;&gt;FastAPIApp: Resolve get_current_username dependencies: Depends(security)
+    FastAPIApp-&gt;&gt;+HTTPBasicInst: Call security(request)
+    HTTPBasicInst-&gt;&gt;HTTPBasicInst: Read header, decode base64, split user/pass
+    HTTPBasicInst--&gt;&gt;-FastAPIApp: Return HTTPBasicCredentials(user="stanley", pass="...")
+    FastAPIApp-&gt;&gt;+VerifierFunc: Call get_current_username(credentials=...)
+    VerifierFunc-&gt;&gt;VerifierFunc: Check credentials -&gt; OK
+    VerifierFunc--&gt;&gt;-FastAPIApp: Return username "stanley"
+    FastAPIApp-&gt;&gt;+PathOpFunc: Call read_current_user(username="stanley")
+    PathOpFunc--&gt;&gt;-FastAPIApp: Return {"username": "stanley"}
+    FastAPIApp--&gt;&gt;-Client: Send 200 OK JSON Response
+</code></pre>
+
+<h2 id="code-connections">Code Connections</h2>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">fastapi.Security</code></strong>: The function you import and use. It’s a thin wrapper around <code class="language-plaintext highlighter-rouge">fastapi.params.Security</code>. (<code class="language-plaintext highlighter-rouge">fastapi/param_functions.py</code>)</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">fastapi.params.Security</code></strong>: The class that signals a security dependency, inheriting from <code class="language-plaintext highlighter-rouge">Depends</code> but adding the <code class="language-plaintext highlighter-rouge">scopes</code> parameter. (<code class="language-plaintext highlighter-rouge">fastapi/params.py</code>)</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">fastapi.security.*</code></strong>: This package contains the scheme implementations:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">fastapi.security.http</code>: Contains <code class="language-plaintext highlighter-rouge">HTTPBase</code>, <code class="language-plaintext highlighter-rouge">HTTPBasic</code>, <code class="language-plaintext highlighter-rouge">HTTPBearer</code>, <code class="language-plaintext highlighter-rouge">HTTPDigest</code>, and the <code class="language-plaintext highlighter-rouge">HTTPBasicCredentials</code>, <code class="language-plaintext highlighter-rouge">HTTPAuthorizationCredentials</code> models.</li>
+      <li><code class="language-plaintext highlighter-rouge">fastapi.security.api_key</code>: Contains <code class="language-plaintext highlighter-rouge">APIKeyHeader</code>, <code class="language-plaintext highlighter-rouge">APIKeyQuery</code>, <code class="language-plaintext highlighter-rouge">APIKeyCookie</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">fastapi.security.oauth2</code>: Contains <code class="language-plaintext highlighter-rouge">OAuth2</code>, <code class="language-plaintext highlighter-rouge">OAuth2PasswordBearer</code>, <code class="language-plaintext highlighter-rouge">OAuth2AuthorizationCodeBearer</code>, <code class="language-plaintext highlighter-rouge">OAuth2PasswordRequestForm</code>, <code class="language-plaintext highlighter-rouge">SecurityScopes</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Scheme <code class="language-plaintext highlighter-rouge">__call__</code> methods</strong>: Each scheme class (e.g., <code class="language-plaintext highlighter-rouge">HTTPBasic</code>, <code class="language-plaintext highlighter-rouge">APIKeyHeader</code>, <code class="language-plaintext highlighter-rouge">OAuth2PasswordBearer</code>) implements <code class="language-plaintext highlighter-rouge">async def __call__(self, request: Request)</code> which contains the logic to extract credentials from the specific request location (headers, query, etc.).</li>
+  <li><strong>Dependency Injection System</strong>: The core system described in <a href="05_dependency_injection.md">Chapter 5: Dependency Injection</a> resolves the dependencies, calling the scheme instance and then your verifier function.</li>
+  <li><strong>OpenAPI Integration</strong>: FastAPI’s OpenAPI generation logic specifically checks for <code class="language-plaintext highlighter-rouge">Security</code> dependencies and uses the associated scheme model (<code class="language-plaintext highlighter-rouge">security.model</code>) to add the correct security requirements to the schema.</li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now learned the basics of securing your FastAPI endpoints!</p>
+
+<ul>
+  <li>You understand the need for <strong>authentication</strong> (who is the user?).</li>
+  <li>You know about common <strong>security schemes</strong> like HTTP Basic, API Keys, and OAuth2 Bearer tokens.</li>
+  <li>You learned that FastAPI provides <strong>utility classes</strong> (e.g., <code class="language-plaintext highlighter-rouge">HTTPBasic</code>, <code class="language-plaintext highlighter-rouge">APIKeyHeader</code>, <code class="language-plaintext highlighter-rouge">OAuth2PasswordBearer</code>) in the <code class="language-plaintext highlighter-rouge">fastapi.security</code> module to handle these schemes.</li>
+  <li>You saw how to use the <strong><code class="language-plaintext highlighter-rouge">Security()</code></strong> function (similar to <code class="language-plaintext highlighter-rouge">Depends()</code>) to integrate these schemes into your path operations via <strong>verifier dependencies</strong>.</li>
+  <li>You understand that <code class="language-plaintext highlighter-rouge">Security()</code> automatically adds security requirements to your <strong>OpenAPI documentation</strong> (<code class="language-plaintext highlighter-rouge">/docs</code>).</li>
+  <li>You grasped the core pattern: <strong>Scheme Instance -&gt; Verifier Dependency -&gt; <code class="language-plaintext highlighter-rouge">Security(verifier)</code></strong>.</li>
+</ul>
+
+<p>Using these tools allows you to easily add robust security layers to your API without reinventing the wheel.</p>
+
+<p>Sometimes, after handling a request and sending a response, you might need to perform some follow-up actions, like sending a notification email or processing some data, without making the user wait. How can we do that?</p>
+
+<p>Ready to run tasks in the background? Let’s move on to <a href="08_background_tasks.md">Chapter 8: Background Tasks</a>!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

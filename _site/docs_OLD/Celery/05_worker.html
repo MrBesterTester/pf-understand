@@ -1,0 +1,243 @@
+<h1 id="chapter-5-worker---the-task-doer">Chapter 5: Worker - The Task Doer</h1>
+
+<p>In <a href="04_broker_connection__amqp_.md">Chapter 4: Broker Connection (AMQP)</a>, we learned how Celery uses a message broker, like a postal service, to send task messages. When you call <code class="language-plaintext highlighter-rouge">add.delay(2, 2)</code>, a message asking to run the <code class="language-plaintext highlighter-rouge">add</code> task with arguments <code class="language-plaintext highlighter-rouge">(2, 2)</code> gets dropped into a mailbox (the broker queue).</p>
+
+<p>But who actually checks that mailbox, picks up the message, and performs the addition? That’s the job of the <strong>Celery Worker</strong>.</p>
+
+<h2 id="what-problem-does-the-worker-solve">What Problem Does the Worker Solve?</h2>
+
+<p>Imagine our workshop analogy again. You’ve defined the blueprint for a job (<a href="03_task.md">Task</a>) and you’ve dropped the work order into the central inbox (<a href="04_broker_connection__amqp_.md">Broker Connection (AMQP)</a>). Now you need an actual employee or a machine to:</p>
+
+<ol>
+  <li>Look in the inbox for new work orders.</li>
+  <li>Pick up an order.</li>
+  <li>Follow the instructions (run the task code).</li>
+  <li>Maybe put the finished product (the result) somewhere specific.</li>
+  <li>Mark the order as complete.</li>
+</ol>
+
+<p>The <strong>Celery Worker</strong> is that employee or machine. It’s a separate program (process) that you run, whose sole purpose is to execute the tasks you send to the broker. Without a worker running, your task messages would just sit in the queue forever, waiting for someone to process them.</p>
+
+<h2 id="starting-your-first-worker">Starting Your First Worker</h2>
+
+<p>Running a worker is typically done from your command line or terminal. You need to tell the worker where to find your <a href="01_celery_app.md">Celery App</a> instance (which holds the configuration, including the broker address and the list of known tasks).</p>
+
+<p>Assuming you have:</p>
+<ul>
+  <li>A file <code class="language-plaintext highlighter-rouge">celery_app.py</code> containing your <code class="language-plaintext highlighter-rouge">app = Celery(...)</code> instance.</li>
+  <li>A file <code class="language-plaintext highlighter-rouge">tasks.py</code> containing your task definitions (like <code class="language-plaintext highlighter-rouge">add</code> and <code class="language-plaintext highlighter-rouge">send_welcome_email</code>) decorated with <code class="language-plaintext highlighter-rouge">@app.task</code>.</li>
+  <li>Your message broker (e.g., Redis or RabbitMQ) running.</li>
+</ul>
+
+<p>You can start a worker like this:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># In your terminal, in the same directory as celery_app.py and tasks.py</span>
+<span class="c"># Make sure your Python environment has celery and the broker driver installed</span>
+<span class="c"># (e.g., pip install celery redis)</span>
+
+celery <span class="nt">-A</span> celery_app worker <span class="nt">--loglevel</span><span class="o">=</span>info
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">celery</code>: This is the main Celery command-line program.</li>
+  <li><code class="language-plaintext highlighter-rouge">-A celery_app</code>: The <code class="language-plaintext highlighter-rouge">-A</code> flag (or <code class="language-plaintext highlighter-rouge">--app</code>) tells Celery where to find your <code class="language-plaintext highlighter-rouge">Celery</code> app instance. <code class="language-plaintext highlighter-rouge">celery_app</code> refers to the <code class="language-plaintext highlighter-rouge">celery_app.py</code> file (or module) and implies Celery should look for an instance named <code class="language-plaintext highlighter-rouge">app</code> inside it.</li>
+  <li><code class="language-plaintext highlighter-rouge">worker</code>: This specifies that you want to run the worker component.</li>
+  <li><code class="language-plaintext highlighter-rouge">--loglevel=info</code>: This sets the logging level. <code class="language-plaintext highlighter-rouge">info</code> is a good starting point, showing you when the worker connects, finds tasks, and executes them. Other levels include <code class="language-plaintext highlighter-rouge">debug</code> (more verbose), <code class="language-plaintext highlighter-rouge">warning</code>, <code class="language-plaintext highlighter-rouge">error</code>, and <code class="language-plaintext highlighter-rouge">critical</code>.</li>
+</ul>
+
+<p><strong>What You’ll See:</strong></p>
+
+<p>When the worker starts successfully, you’ll see a banner like this (details may vary):</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code> -------------- celery@yourhostname v5.x.x (stars)
+--- ***** -----
+-- ******* ---- Linux-5.15.0...-generic-x86_64-with-... 2023-10-27 10:00:00
+- *** --- * ---
+- ** ---------- [config]
+- ** ---------- .&gt; app:         tasks:0x7f...
+- ** ---------- .&gt; transport:   redis://localhost:6379/0
+- ** ---------- .&gt; results:     redis://localhost:6379/0
+- *** --- * --- .&gt; concurrency: 8 (prefork)
+-- ******* ---- .&gt; task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** -----
+ -------------- [queues]
+                .&gt; celery           exchange=celery(direct) key=celery
+
+
+[tasks]
+  . tasks.add
+  . tasks.send_welcome_email
+
+[2023-10-27 10:00:01,000: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2023-10-27 10:00:01,050: INFO/MainProcess] mingle: searching for neighbors
+[2023-10-27 10:00:02,100: INFO/MainProcess] mingle: all alone
+[2023-10-27 10:00:02,150: INFO/MainProcess] celery@yourhostname ready.
+</code></pre></div></div>
+
+<p><strong>Key Parts of the Banner:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">celery@yourhostname</code>: The unique name of this worker instance.</li>
+  <li><code class="language-plaintext highlighter-rouge">transport</code>: The broker URL it connected to (from your app config).</li>
+  <li><code class="language-plaintext highlighter-rouge">results</code>: The result backend URL (if configured).</li>
+  <li><code class="language-plaintext highlighter-rouge">concurrency</code>: How many tasks this worker can potentially run at once (defaults to the number of CPU cores) and the execution pool type (<code class="language-plaintext highlighter-rouge">prefork</code> is common). We’ll touch on this later.</li>
+  <li><code class="language-plaintext highlighter-rouge">queues</code>: The specific “mailboxes” (queues) the worker is listening to. <code class="language-plaintext highlighter-rouge">celery</code> is the default queue name.</li>
+  <li><code class="language-plaintext highlighter-rouge">[tasks]</code>: A list of all the tasks the worker discovered (like our <code class="language-plaintext highlighter-rouge">tasks.add</code> and <code class="language-plaintext highlighter-rouge">tasks.send_welcome_email</code>). If your tasks don’t show up here, the worker won’t be able to run them!</li>
+</ul>
+
+<p>The final <code class="language-plaintext highlighter-rouge">celery@yourhostname ready.</code> message means the worker is connected and waiting for jobs!</p>
+
+<h2 id="what-the-worker-does">What the Worker Does</h2>
+
+<p>Now that the worker is running, let’s trace what happens when you send a task (e.g., from <code class="language-plaintext highlighter-rouge">run_tasks.py</code> in <a href="03_task.md">Chapter 3: Task</a>):</p>
+
+<ol>
+  <li><strong>Waiting:</strong> The worker is connected to the broker, listening on the <code class="language-plaintext highlighter-rouge">celery</code> queue.</li>
+  <li><strong>Message Arrival:</strong> Your <code class="language-plaintext highlighter-rouge">add.delay(5, 7)</code> call sends a message to the <code class="language-plaintext highlighter-rouge">celery</code> queue on the broker. The broker notifies the worker.</li>
+  <li><strong>Receive &amp; Decode:</strong> The worker receives the raw message. It decodes it to find the task name (<code class="language-plaintext highlighter-rouge">tasks.add</code>), the arguments (<code class="language-plaintext highlighter-rouge">(5, 7)</code>), and other info (like a unique task ID).</li>
+  <li><strong>Find Task Code:</strong> The worker looks up the name <code class="language-plaintext highlighter-rouge">tasks.add</code> in its internal registry (populated when it started) to find the actual Python function <code class="language-plaintext highlighter-rouge">add</code> defined in <code class="language-plaintext highlighter-rouge">tasks.py</code>.</li>
+  <li><strong>Execute:</strong> The worker executes the function: <code class="language-plaintext highlighter-rouge">add(5, 7)</code>.
+    <ul>
+      <li>You will see the <code class="language-plaintext highlighter-rouge">print</code> statements from your task function appear in the <em>worker’s</em> terminal output:
+        <div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[2023-10-27 10:05:00,100: INFO/ForkPoolWorker-1] Task tasks.add[some-task-id] received
+Task 'add' starting with (5, 7)
+Task 'add' finished with result: 12
+[2023-10-27 10:05:05,150: INFO/ForkPoolWorker-1] Task tasks.add[some-task-id] succeeded in 5.05s: 12
+</code></pre></div>        </div>
+      </li>
+    </ul>
+  </li>
+  <li><strong>Store Result (Optional):</strong> If a <a href="06_result_backend.md">Result Backend</a> is configured, the worker takes the return value (<code class="language-plaintext highlighter-rouge">12</code>) and sends it to the backend, associating it with the task’s unique ID.</li>
+  <li><strong>Acknowledge:</strong> The worker sends an “acknowledgement” (ack) back to the broker. This tells the broker, “I finished processing this message successfully, you can delete it from the queue.” This ensures tasks aren’t lost if a worker crashes mid-execution (the message would remain on the queue for another worker to pick up).</li>
+  <li><strong>Wait Again:</strong> The worker goes back to waiting for the next message.</li>
+</ol>
+
+<h2 id="running-multiple-workers-and-concurrency">Running Multiple Workers and Concurrency</h2>
+
+<ul>
+  <li><strong>Multiple Workers:</strong> You can start multiple worker processes by running the <code class="language-plaintext highlighter-rouge">celery worker</code> command again, perhaps on different machines or in different terminals on the same machine. They will all connect to the same broker and pull tasks from the queue, allowing you to process tasks in parallel and scale your application.</li>
+  <li><strong>Concurrency within a Worker:</strong> A single worker process can often handle more than one task concurrently. Celery achieves this using <em>execution pools</em>.
+    <ul>
+      <li><strong>Prefork (Default):</strong> The worker starts several child <em>processes</em>. Each child process handles one task at a time. The <code class="language-plaintext highlighter-rouge">-c</code> (or <code class="language-plaintext highlighter-rouge">--concurrency</code>) flag controls the number of child processes (default is the number of CPU cores). This is good for CPU-bound tasks.</li>
+      <li><strong>Eventlet/Gevent:</strong> Uses <em>green threads</em> (lightweight concurrency managed by libraries like eventlet or gevent). A single worker process can handle potentially hundreds or thousands of tasks concurrently, especially if the tasks are I/O-bound (e.g., waiting for network requests). You select these using the <code class="language-plaintext highlighter-rouge">-P</code> flag: <code class="language-plaintext highlighter-rouge">celery -A celery_app worker -P eventlet -c 1000</code>. Requires installing the respective library (<code class="language-plaintext highlighter-rouge">pip install eventlet</code> or <code class="language-plaintext highlighter-rouge">pip install gevent</code>).</li>
+      <li><strong>Solo:</strong> Executes tasks one after another in the main worker process. Useful for debugging. <code class="language-plaintext highlighter-rouge">-P solo</code>.</li>
+      <li><strong>Threads:</strong> Uses regular OS threads. <code class="language-plaintext highlighter-rouge">-P threads</code>. Less common for Celery tasks due to Python’s Global Interpreter Lock (GIL) limitations for CPU-bound tasks, but can be useful for I/O-bound tasks.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>For beginners, sticking with the default <strong>prefork</strong> pool is usually fine. Just know that the worker can likely handle multiple tasks simultaneously.</p>
+
+<h2 id="how-it-works-internally-simplified">How It Works Internally (Simplified)</h2>
+
+<p>Let’s visualize the worker’s main job: processing a single task.</p>
+
+<ol>
+  <li><strong>Startup:</strong> The <code class="language-plaintext highlighter-rouge">celery worker</code> command starts the main worker process. It loads the <code class="language-plaintext highlighter-rouge">Celery App</code>, reads the configuration (<code class="language-plaintext highlighter-rouge">broker_url</code>, tasks to import, etc.).</li>
+  <li><strong>Connect &amp; Listen:</strong> The worker establishes a connection to the message broker and tells it, “I’m ready to consume messages from the ‘celery’ queue.”</li>
+  <li><strong>Message Delivery:</strong> The broker sees a message for the ‘celery’ queue (sent by <code class="language-plaintext highlighter-rouge">add.delay(5, 7)</code>) and delivers it to the connected worker.</li>
+  <li><strong>Consumer Receives:</strong> The worker’s internal “Consumer” component receives the message.</li>
+  <li><strong>Task Dispatch:</strong> The Consumer decodes the message, identifies the task (<code class="language-plaintext highlighter-rouge">tasks.add</code>), and finds the arguments (<code class="language-plaintext highlighter-rouge">(5, 7)</code>). It then hands this off to the configured execution pool (e.g., prefork).</li>
+  <li><strong>Pool Execution:</strong> The pool (e.g., a child process in the prefork pool) gets the task function and arguments and executes <code class="language-plaintext highlighter-rouge">add(5, 7)</code>.</li>
+  <li><strong>Result Return:</strong> The pool process finishes execution and returns the result (<code class="language-plaintext highlighter-rouge">12</code>) back to the main worker process.</li>
+  <li><strong>Result Handling (Optional):</strong> The main worker process, if a <a href="06_result_backend.md">Result Backend</a> is configured, sends the result (<code class="language-plaintext highlighter-rouge">12</code>) and task ID to the backend store.</li>
+  <li><strong>Acknowledgement:</strong> The main worker process sends an “ack” message back to the broker, confirming the task message was successfully processed. The broker then deletes the message.</li>
+</ol>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant CLI as Terminal (celery worker)
+    participant WorkerMain as Worker Main Process
+    participant App as Celery App Instance
+    participant Broker as Message Broker
+    participant Pool as Execution Pool (e.g., Prefork Child)
+    participant TaskCode as Your Task Function (add)
+
+    CLI-&gt;&gt;WorkerMain: Start celery -A celery_app worker
+    WorkerMain-&gt;&gt;App: Load App &amp; Config (broker_url, tasks)
+    WorkerMain-&gt;&gt;Broker: Connect &amp; Listen on 'celery' queue
+
+    Broker--&gt;&gt;WorkerMain: Deliver Message ('tasks.add', (5, 7), task_id)
+    WorkerMain-&gt;&gt;WorkerMain: Decode Message
+    WorkerMain-&gt;&gt;Pool: Request Execute add(5, 7) with task_id
+    Pool-&gt;&gt;TaskCode: Run add(5, 7)
+    TaskCode--&gt;&gt;Pool: Return 12
+    Pool--&gt;&gt;WorkerMain: Result=12 for task_id
+    Note over WorkerMain: (Optionally) Store 12 in Result Backend
+    WorkerMain-&gt;&gt;Broker: Acknowledge task_id is complete
+</code></pre>
+
+<h2 id="code-dive-where-worker-logic-lives">Code Dive: Where Worker Logic Lives</h2>
+
+<ul>
+  <li><strong>Command Line Entry Point (<code class="language-plaintext highlighter-rouge">celery/bin/worker.py</code>):</strong> This script handles parsing the command-line arguments (<code class="language-plaintext highlighter-rouge">-A</code>, <code class="language-plaintext highlighter-rouge">-l</code>, <code class="language-plaintext highlighter-rouge">-c</code>, <code class="language-plaintext highlighter-rouge">-P</code>, etc.) when you run <code class="language-plaintext highlighter-rouge">celery worker ...</code>. It ultimately creates and starts a <code class="language-plaintext highlighter-rouge">WorkController</code> instance. (See <code class="language-plaintext highlighter-rouge">worker()</code> function in the file).</li>
+  <li><strong>Main Worker Class (<code class="language-plaintext highlighter-rouge">celery/worker/worker.py</code>):</strong> The <code class="language-plaintext highlighter-rouge">WorkController</code> class is the heart of the worker. It manages all the different components (like the pool, consumer, timer, etc.) using a system called “bootsteps”. It handles the overall startup, shutdown, and coordination. (See <code class="language-plaintext highlighter-rouge">WorkController</code> class).</li>
+  <li><strong>Message Handling (<code class="language-plaintext highlighter-rouge">celery/worker/consumer/consumer.py</code>):</strong> The <code class="language-plaintext highlighter-rouge">Consumer</code> class (specifically its <code class="language-plaintext highlighter-rouge">Blueprint</code> and steps like <code class="language-plaintext highlighter-rouge">Tasks</code> and <code class="language-plaintext highlighter-rouge">Evloop</code>) is responsible for the core loop of fetching messages from the broker via the connection, decoding them, and dispatching them to the execution pool using task strategies. (See <code class="language-plaintext highlighter-rouge">Consumer.create_task_handler</code>).</li>
+  <li><strong>Execution Pools (<code class="language-plaintext highlighter-rouge">celery/concurrency/</code>):</strong> Modules like <code class="language-plaintext highlighter-rouge">prefork.py</code>, <code class="language-plaintext highlighter-rouge">solo.py</code>, <code class="language-plaintext highlighter-rouge">eventlet.py</code>, <code class="language-plaintext highlighter-rouge">gevent.py</code> implement the different concurrency models (<code class="language-plaintext highlighter-rouge">-P</code> flag). The <code class="language-plaintext highlighter-rouge">WorkController</code> selects and manages one of these pools.</li>
+</ul>
+
+<p>A highly simplified conceptual view of the core message processing logic within the <code class="language-plaintext highlighter-rouge">Consumer</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Conceptual loop inside the Consumer (highly simplified)
+</span>
+<span class="k">def</span> <span class="nf">message_handler</span><span class="p">(</span><span class="n">message</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># 1. Decode message (task name, args, kwargs, id, etc.)
+</span>        <span class="n">task_name</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">task_id</span> <span class="o">=</span> <span class="n">decode_message</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">body</span><span class="p">,</span> <span class="n">message</span><span class="p">.</span><span class="n">headers</span><span class="p">)</span>
+
+        <span class="c1"># 2. Find the registered task function
+</span>        <span class="n">task_func</span> <span class="o">=</span> <span class="n">app</span><span class="p">.</span><span class="n">tasks</span><span class="p">[</span><span class="n">task_name</span><span class="p">]</span>
+
+        <span class="c1"># 3. Prepare execution request for the pool
+</span>        <span class="n">request</span> <span class="o">=</span> <span class="n">TaskRequest</span><span class="p">(</span><span class="n">task_id</span><span class="p">,</span> <span class="n">task_name</span><span class="p">,</span> <span class="n">task_func</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># 4. Send request to the pool for execution
+</span>        <span class="c1">#    (Pool runs request.execute() which calls task_func(*args, **kwargs))
+</span>        <span class="n">pool</span><span class="p">.</span><span class="n">apply_async</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="n">execute</span><span class="p">,</span> <span class="n">accept_callback</span><span class="o">=</span><span class="n">task_succeeded</span><span class="p">,</span> <span class="p">...)</span>
+
+    <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="c1"># Handle errors (e.g., unknown task, decoding error)
+</span>        <span class="n">log_error</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="n">message</span><span class="p">.</span><span class="n">reject</span><span class="p">()</span> <span class="c1"># Tell broker it failed
+</span>
+<span class="k">def</span> <span class="nf">task_succeeded</span><span class="p">(</span><span class="n">task_id</span><span class="p">,</span> <span class="n">retval</span><span class="p">):</span>
+    <span class="c1"># Called by the pool when task finishes successfully
+</span>    <span class="c1"># 5. Store result (optional)
+</span>    <span class="k">if</span> <span class="n">app</span><span class="p">.</span><span class="n">backend</span><span class="p">:</span>
+        <span class="n">app</span><span class="p">.</span><span class="n">backend</span><span class="p">.</span><span class="n">store_result</span><span class="p">(</span><span class="n">task_id</span><span class="p">,</span> <span class="n">retval</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s">'SUCCESS'</span><span class="p">)</span>
+
+    <span class="c1"># 6. Acknowledge message to broker
+</span>    <span class="n">message</span><span class="p">.</span><span class="n">ack</span><span class="p">()</span>
+
+<span class="c1"># --- Setup ---
+# Worker connects to broker and registers message_handler
+# for incoming messages on the subscribed queue(s)
+</span><span class="n">connection</span><span class="p">.</span><span class="n">consume</span><span class="p">(</span><span class="n">queue_name</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="n">message_handler</span><span class="p">)</span>
+
+<span class="c1"># Start the event loop to wait for messages
+</span><span class="n">connection</span><span class="p">.</span><span class="n">drain_events</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>This illustrates the fundamental cycle: receive -&gt; decode -&gt; find task -&gt; execute via pool -&gt; handle result -&gt; acknowledge. The actual code involves much more detail regarding error handling, state management, different protocols, rate limiting, etc., managed through the bootstep system.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now met the <strong>Celery Worker</strong>, the essential component that actually <em>runs</em> your tasks.</p>
+
+<ul>
+  <li>It’s a <strong>separate process</strong> you start from the command line (<code class="language-plaintext highlighter-rouge">celery worker</code>).</li>
+  <li>It connects to the <strong>broker</strong> using the configuration from your <strong>Celery App</strong>.</li>
+  <li>It <strong>listens</strong> for task messages on queues.</li>
+  <li>It <strong>executes</strong> the corresponding task code when a message arrives.</li>
+  <li>It handles <strong>concurrency</strong> using execution pools (like prefork, eventlet, gevent).</li>
+  <li>It <strong>acknowledges</strong> messages to the broker upon successful completion.</li>
+</ul>
+
+<p>Without workers, Celery tasks would never get done. But what happens when a task finishes? What if it returns a value, like our <code class="language-plaintext highlighter-rouge">add</code> task returning <code class="language-plaintext highlighter-rouge">12</code>? How can your original application find out the result? That’s where the Result Backend comes in.</p>
+
+<p><strong>Next:</strong> <a href="06_result_backend.md">Chapter 6: Result Backend</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

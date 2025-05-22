@@ -1,0 +1,309 @@
+<h1 id="chapter-2-model-interface---your-agents-universal-translator">Chapter 2: Model Interface - Your Agent’s Universal Translator</h1>
+
+<p>Welcome back! In <a href="01_multistepagent.md">Chapter 1: The MultiStepAgent - Your Task Orchestrator</a>, we met the <code class="language-plaintext highlighter-rouge">MultiStepAgent</code>, our AI project manager. We learned that it follows a “Think -&gt; Act -&gt; Observe” cycle to solve tasks. A crucial part of the “Think” phase is consulting its “brain” – a Large Language Model (LLM).</p>
+
+<p>But wait… there are so many different LLMs out there! OpenAI’s GPT-4, Anthropic’s Claude, Google’s Gemini, open-source models you can run locally like Llama or Mistral… How can our agent talk to all of them without needing completely different code for each one?</p>
+
+<p>This is where the <strong>Model Interface</strong> comes in!</p>
+
+<h2 id="the-problem-too-many-remotes">The Problem: Too Many Remotes!</h2>
+
+<p>Imagine you have several TVs at home, each from a different brand (Sony, Samsung, LG). Each TV comes with its own specific remote control. To watch TV, you need to find the <em>right</em> remote and know <em>its specific buttons</em>. It’s a hassle!</p>
+
+<p><img src="https://img.icons8.com/cotton/64/000000/remote-control.png" alt="Different TV Remotes" /> <img src="https://img.icons8.com/fluency/48/000000/remote-control.png" alt="Different TV Remotes" /> <img src="https://img.icons8.com/color/48/000000/remote-control.png" alt="Different TV Remotes" /></p>
+
+<p>Different LLMs are like those different TVs. Each has its own way of being “controlled” – its own API (Application Programming Interface) or library with specific functions, required inputs, and ways of giving back answers. If our <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> had to learn the specific “remote control commands” for every possible LLM, our code would become very complicated very quickly!</p>
+
+<h2 id="the-solution-the-universal-remote-model-interface">The Solution: The Universal Remote (Model Interface)</h2>
+
+<p>Wouldn’t it be great if you had <em>one</em> universal remote that could control <em>all</em> your TVs? You’d just press “Power”, “Volume Up”, or “Channel Down”, and the universal remote would figure out how to send the correct signal to whichever TV you’re using.</p>
+
+<p><img src="https://img.icons8.com/office/80/000000/remote-control.png" alt="Universal Remote" />  -&gt; Controls -&gt; <img src="https://img.icons8.com/color/48/000000/tv.png" alt="Sony TV" /> <img src="https://img.icons8.com/color/48/000000/tv-on.png" alt="Samsung TV" /> <img src="https://img.icons8.com/emoji/48/000000/television.png" alt="LG TV" /></p>
+
+<p>The <strong>Model Interface</strong> in <code class="language-plaintext highlighter-rouge">SmolaAgents</code> is exactly like that universal remote.</p>
+
+<ul>
+  <li>It’s an <strong>abstraction layer</strong>: a way to hide the complicated details.</li>
+  <li>It provides a <strong>consistent way</strong> for the <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> to talk to <em>any</em> supported LLM.</li>
+  <li>It handles the “translation” behind the scenes:
+    <ul>
+      <li>Taking the agent’s request (like “What should I do next?”).</li>
+      <li>Formatting it correctly for the specific LLM being used.</li>
+      <li>Sending the request (making the API call or running the local model).</li>
+      <li>Receiving the LLM’s raw response.</li>
+      <li>Parsing that response back into a standard format the agent understands (including things like requests to use <a href="03_tool.md">Tools</a>).</li>
+    </ul>
+  </li>
+</ul>
+
+<p>So, the <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> only needs to learn how to use the <em>one</em> universal remote (the Model Interface), not the specific commands for every LLM “TV”.</p>
+
+<h2 id="how-it-works-the-standard-__call__">How It Works: The Standard <code class="language-plaintext highlighter-rouge">__call__</code></h2>
+
+<p>The magic of the Model Interface lies in its simplicity from the agent’s perspective. All Model Interfaces in <code class="language-plaintext highlighter-rouge">SmolaAgents</code> work the same way: you “call” them like a function, passing in the conversation history.</p>
+
+<p>Think of it like pressing the main button on our universal remote.</p>
+
+<ol>
+  <li><strong>Input:</strong> The agent gives the Model Interface a list of messages representing the conversation so far. This usually includes the system prompt (instructions for the LLM), the user’s task, and any previous “Think -&gt; Act -&gt; Observe” steps stored in <a href="04_agentmemory.md">AgentMemory</a>. Each message typically has a <code class="language-plaintext highlighter-rouge">role</code> (like <code class="language-plaintext highlighter-rouge">user</code>, <code class="language-plaintext highlighter-rouge">assistant</code>, or <code class="language-plaintext highlighter-rouge">system</code>) and <code class="language-plaintext highlighter-rouge">content</code>.</li>
+  <li><strong>Processing (Behind the Scenes):</strong> The <em>specific</em> Model Interface (e.g., one for OpenAI, one for local models) takes this standard list of messages and:
+    <ul>
+      <li>Connects to the correct LLM (using API keys, loading a local model, etc.).</li>
+      <li>Formats the messages exactly how that LLM expects them.</li>
+      <li>Sends the request.</li>
+      <li>Waits for the LLM to generate a response.</li>
+      <li>Gets the response back.</li>
+    </ul>
+  </li>
+  <li><strong>Output:</strong> It translates the LLM’s raw response back into a standard <code class="language-plaintext highlighter-rouge">ChatMessage</code> object. This object contains the LLM’s text response and, importantly, might include structured information if the LLM decided the agent should use a <a href="03_tool.md">Tool</a>. The agent knows exactly how to read this <code class="language-plaintext highlighter-rouge">ChatMessage</code>.</li>
+</ol>
+
+<h2 id="using-a-model-interface">Using a Model Interface</h2>
+
+<p>Let’s see how you’d actually <em>use</em> one. <code class="language-plaintext highlighter-rouge">SmolaAgents</code> comes with several built-in Model Interfaces. A very useful one is <code class="language-plaintext highlighter-rouge">LiteLLMModel</code>, which uses the <code class="language-plaintext highlighter-rouge">litellm</code> library to connect to hundreds of different LLM providers (OpenAI, Anthropic, Cohere, Azure, local models via Ollama, etc.) with minimal code changes!</p>
+
+<p><strong>Step 1: Choose and Initialize Your Model Interface</strong></p>
+
+<p>First, you decide which LLM you want your agent to use. Then, you create an instance of the corresponding Model Interface.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: choose_model.py ---
+# Import the model interface you want to use
+</span><span class="kn">from</span> <span class="nn">smolagents.models</span> <span class="kn">import</span> <span class="n">LiteLLMModel</span>
+<span class="c1"># (You might need to install litellm first: pip install smolagents[litellm])
+</span>
+<span class="c1"># Choose the specific LLM model ID that litellm supports
+# Example: OpenAI's GPT-3.5 Turbo
+# Requires setting the OPENAI_API_KEY environment variable!
+</span><span class="n">model_id</span> <span class="o">=</span> <span class="s">"gpt-3.5-turbo"</span>
+
+<span class="c1"># Create an instance of the Model Interface
+# This object is our "universal remote" configured for GPT-3.5
+</span><span class="n">llm</span> <span class="o">=</span> <span class="n">LiteLLMModel</span><span class="p">(</span><span class="n">model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Model Interface created for: </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Example Output: Model Interface created for: gpt-3.5-turbo
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+<ul>
+  <li>We import <code class="language-plaintext highlighter-rouge">LiteLLMModel</code>.</li>
+  <li>We specify the <code class="language-plaintext highlighter-rouge">model_id</code> we want to use (here, <code class="language-plaintext highlighter-rouge">"gpt-3.5-turbo"</code>). <code class="language-plaintext highlighter-rouge">litellm</code> knows how to talk to this model if the necessary API key (<code class="language-plaintext highlighter-rouge">OPENAI_API_KEY</code>) is available in your environment.</li>
+  <li>We create the <code class="language-plaintext highlighter-rouge">llm</code> object. This object now knows how to communicate with GPT-3.5 Turbo via the <code class="language-plaintext highlighter-rouge">litellm</code> library, but it presents a standard interface to the rest of our code.</li>
+</ul>
+
+<p><strong>Step 2: Give the Model to the Agent</strong></p>
+
+<p>Remember from Chapter 1 how we created the <code class="language-plaintext highlighter-rouge">MultiStepAgent</code>? We simply pass our <code class="language-plaintext highlighter-rouge">llm</code> object (the configured universal remote) to it.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Continued from choose_model.py ---
+# (Requires imports from Chapter 1: MultiStepAgent, SearchTool, etc.)
+</span><span class="kn">from</span> <span class="nn">smolagents</span> <span class="kn">import</span> <span class="n">MultiStepAgent</span>
+<span class="kn">from</span> <span class="nn">smolagents.tools</span> <span class="kn">import</span> <span class="n">SearchTool</span> <span class="c1"># Example Tool
+</span>
+<span class="c1"># Define some tools (details in Chapter 3)
+</span><span class="n">search_tool</span> <span class="o">=</span> <span class="n">SearchTool</span><span class="p">()</span>
+<span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">search_tool</span><span class="p">]</span>
+
+<span class="c1"># Create the agent, giving it the model interface instance
+</span><span class="n">agent</span> <span class="o">=</span> <span class="n">MultiStepAgent</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span>  <span class="c1"># &lt;= Here's where we plug in our "universal remote"!
+</span>    <span class="n">tools</span><span class="o">=</span><span class="n">tools</span>
+<span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"MultiStepAgent created and configured with the model!"</span><span class="p">)</span>
+<span class="c1"># Example Output: MultiStepAgent created and configured with the model!
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> doesn’t need to know it’s talking to GPT-3.5 Turbo specifically. It just knows it has a <code class="language-plaintext highlighter-rouge">model</code> object that it can call.</li>
+</ul>
+
+<p><strong>Step 3: How the Agent Uses the Model (Simplified)</strong></p>
+
+<p>Inside its “Think” phase, the agent prepares the conversation history and calls the model:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Simplified view of what happens inside the agent ---
+</span><span class="kn">from</span> <span class="nn">smolagents.models</span> <span class="kn">import</span> <span class="n">ChatMessage</span><span class="p">,</span> <span class="n">MessageRole</span>
+
+<span class="c1"># Agent prepares messages (example)
+</span><span class="n">messages_for_llm</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s">"role"</span><span class="p">:</span> <span class="n">MessageRole</span><span class="p">.</span><span class="n">SYSTEM</span><span class="p">,</span> <span class="s">"content"</span><span class="p">:</span> <span class="s">"You are a helpful agent. Decide the next step."</span><span class="p">},</span>
+    <span class="p">{</span><span class="s">"role"</span><span class="p">:</span> <span class="n">MessageRole</span><span class="p">.</span><span class="n">USER</span><span class="p">,</span> <span class="s">"content"</span><span class="p">:</span> <span class="s">"Task: What is the capital of France?"</span><span class="p">},</span>
+    <span class="c1"># ... potentially previous steps ...
+</span><span class="p">]</span>
+
+<span class="c1"># Agent calls the model using the standard interface
+# This is like pressing the main button on the universal remote
+</span><span class="k">print</span><span class="p">(</span><span class="s">"Agent asking model: What should I do next?"</span><span class="p">)</span>
+<span class="n">response</span><span class="p">:</span> <span class="n">ChatMessage</span> <span class="o">=</span> <span class="n">agent</span><span class="p">.</span><span class="n">model</span><span class="p">(</span><span class="n">messages_for_llm</span><span class="p">)</span> <span class="c1"># agent.model refers to our 'llm' instance
+</span>
+<span class="c1"># Agent gets a standard response back
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Model suggested action (simplified): </span><span class="si">{</span><span class="n">response</span><span class="p">.</span><span class="n">content</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Example Output (will vary):
+# Agent asking model: What should I do next?
+# Model suggested action (simplified): Thought: I need to find the capital of France. I can use the search tool.
+# Action:
+# ```json
+# {
+#  "action": "search",
+#  "action_input": "Capital of France"
+# }
+# ```
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+<ul>
+  <li>The agent prepares a list of <code class="language-plaintext highlighter-rouge">messages_for_llm</code>.</li>
+  <li>It simply calls <code class="language-plaintext highlighter-rouge">agent.model(...)</code> which executes <code class="language-plaintext highlighter-rouge">llm(messages_for_llm)</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">LiteLLMModel</code> (<code class="language-plaintext highlighter-rouge">llm</code>) handles talking to the actual OpenAI API.</li>
+  <li>The agent receives a <code class="language-plaintext highlighter-rouge">ChatMessage</code> object, which it knows how to parse to find the next action (like using the <code class="language-plaintext highlighter-rouge">search</code> tool, as suggested in the example output).</li>
+</ul>
+
+<h2 id="under-the-hood-how-the-universal-remote-works">Under the Hood: How the “Universal Remote” Works</h2>
+
+<p>Let’s peek behind the curtain. What happens when the agent calls <code class="language-plaintext highlighter-rouge">model(messages)</code>?</p>
+
+<p><strong>Conceptual Steps:</strong></p>
+
+<ol>
+  <li><strong>Receive Request:</strong> The specific Model Interface (e.g., <code class="language-plaintext highlighter-rouge">LiteLLMModel</code>) gets the standard list of messages from the agent.</li>
+  <li><strong>Prepare Backend Request:</strong> It looks at its own configuration (e.g., <code class="language-plaintext highlighter-rouge">model_id="gpt-3.5-turbo"</code>, API key) and translates the standard messages into the specific format the target LLM backend (e.g., the OpenAI API) requires. This might involve changing role names, structuring the data differently, etc.</li>
+  <li><strong>Send to Backend:</strong> It makes the actual network call to the LLM’s API endpoint or runs the command to invoke a local model.</li>
+  <li><strong>Receive Backend Response:</strong> It gets the raw response back from the LLM (often as JSON or plain text).</li>
+  <li><strong>Parse Response:</strong> It parses this raw response, extracting the generated text and any structured data (like tool calls).</li>
+  <li><strong>Return Standard Response:</strong> It packages this information into a standard <code class="language-plaintext highlighter-rouge">ChatMessage</code> object and returns it to the agent.</li>
+</ol>
+
+<p><strong>Diagram:</strong></p>
+
+<p>Here’s a simplified sequence diagram showing the flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Agent as MultiStepAgent
+    participant ModelI as Model Interface (e.g., LiteLLMModel)
+    participant Backend as Specific LLM API/Library (e.g., OpenAI)
+
+    Agent-&gt;&gt;ModelI: call(standard_messages)
+    ModelI-&gt;&gt;ModelI: Translate messages to backend format
+    ModelI-&gt;&gt;Backend: Send API Request (formatted messages, API key)
+    Backend--&gt;&gt;ModelI: Receive API Response (raw JSON/text)
+    ModelI-&gt;&gt;ModelI: Parse raw response into ChatMessage
+    ModelI--&gt;&gt;Agent: Return ChatMessage object
+</code></pre>
+
+<p><strong>Code Glimpse (Simplified):</strong></p>
+
+<p>Let’s look at <code class="language-plaintext highlighter-rouge">models.py</code> where these interfaces are defined.</p>
+
+<ul>
+  <li><strong>Base Class (<code class="language-plaintext highlighter-rouge">Model</code>):</strong> Defines the common structure, including the <code class="language-plaintext highlighter-rouge">__call__</code> method that all specific interfaces must implement.
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: models.py (Simplified Model base class) ---
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">from</span> <span class="nn">.tools</span> <span class="kn">import</span> <span class="n">Tool</span> <span class="c1"># Reference to Tool concept
+</span>
+<span class="o">@</span><span class="n">dataclass</span>
+<span class="k">class</span> <span class="nc">ChatMessage</span><span class="p">:</span> <span class="c1"># Simplified representation of the standard response
+</span>    <span class="n">role</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">content</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="n">tool_calls</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># For tool usage (Chapter 3)
+</span>    <span class="c1"># ... other fields ...
+</span>
+<span class="k">class</span> <span class="nc">Model</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">kwargs</span> <span class="o">=</span> <span class="n">kwargs</span> <span class="c1"># Stores model-specific settings
+</span>        <span class="c1"># ...
+</span>
+    <span class="c1"># The standard "button" our agent presses!
+</span>    <span class="k">def</span> <span class="nf">__call__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">messages</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span>
+        <span class="n">stop_sequences</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+        <span class="n">tools_to_call_from</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Tool</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ChatMessage</span><span class="p">:</span>
+        <span class="c1"># Each specific model interface implements this method
+</span>        <span class="k">raise</span> <span class="nb">NotImplementedError</span><span class="p">(</span><span class="s">"Subclasses must implement the __call__ method."</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_prepare_completion_kwargs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">messages</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+        <span class="c1"># Helper to format messages and parameters for the backend
+</span>        <span class="c1"># ... translation logic ...
+</span>        <span class="k">pass</span>
+</code></pre></div>    </div>
+  </li>
+  <li><strong>Specific Implementation (<code class="language-plaintext highlighter-rouge">LiteLLMModel</code>):</strong> Inherits from <code class="language-plaintext highlighter-rouge">Model</code> and implements <code class="language-plaintext highlighter-rouge">__call__</code> using the <code class="language-plaintext highlighter-rouge">litellm</code> library.
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: models.py (Simplified LiteLLMModel __call__) ---
+</span><span class="kn">import</span> <span class="nn">litellm</span> <span class="c1"># The library that talks to many LLMs
+</span>
+<span class="k">class</span> <span class="nc">LiteLLMModel</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
+        <span class="c1"># LiteLLM typically uses environment variables for API keys
+</span>
+    <span class="k">def</span> <span class="nf">__call__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">messages</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span>
+        <span class="n">stop_sequences</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+        <span class="n">tools_to_call_from</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Tool</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ChatMessage</span><span class="p">:</span>
+        <span class="c1"># 1. Prepare arguments using the helper
+</span>        <span class="n">completion_kwargs</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_prepare_completion_kwargs</span><span class="p">(</span>
+            <span class="n">messages</span><span class="o">=</span><span class="n">messages</span><span class="p">,</span>
+            <span class="n">stop_sequences</span><span class="o">=</span><span class="n">stop_sequences</span><span class="p">,</span>
+            <span class="n">tools_to_call_from</span><span class="o">=</span><span class="n">tools_to_call_from</span><span class="p">,</span>
+            <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">model_id</span><span class="p">,</span> <span class="c1"># Tell litellm which model
+</span>            <span class="c1"># ... other parameters ...
+</span>            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># 2. Call the actual backend via litellm
+</span>        <span class="c1"># This hides the complexity of different API calls!
+</span>        <span class="n">response</span> <span class="o">=</span> <span class="n">litellm</span><span class="p">.</span><span class="n">completion</span><span class="p">(</span><span class="o">**</span><span class="n">completion_kwargs</span><span class="p">)</span>
+
+        <span class="c1"># 3. Parse the response into our standard ChatMessage
+</span>        <span class="c1"># (Simplified - actual parsing involves more details)
+</span>        <span class="n">raw_message</span> <span class="o">=</span> <span class="n">response</span><span class="p">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">message</span>
+        <span class="n">chat_message</span> <span class="o">=</span> <span class="n">ChatMessage</span><span class="p">(</span>
+            <span class="n">role</span><span class="o">=</span><span class="n">raw_message</span><span class="p">.</span><span class="n">role</span><span class="p">,</span>
+            <span class="n">content</span><span class="o">=</span><span class="n">raw_message</span><span class="p">.</span><span class="n">content</span><span class="p">,</span>
+            <span class="n">tool_calls</span><span class="o">=</span><span class="n">raw_message</span><span class="p">.</span><span class="n">tool_calls</span> <span class="c1"># If the LLM requested a tool
+</span>        <span class="p">)</span>
+        <span class="c1"># ... store token counts, raw response etc. ...
+</span>        <span class="k">return</span> <span class="n">chat_message</span>
+</code></pre></div>    </div>
+  </li>
+</ul>
+
+<p><strong>Explanation:</strong></p>
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">Model</code> class defines the contract (the <code class="language-plaintext highlighter-rouge">__call__</code> method).</li>
+  <li><code class="language-plaintext highlighter-rouge">LiteLLMModel</code> fulfills this contract. Its <code class="language-plaintext highlighter-rouge">__call__</code> method uses <code class="language-plaintext highlighter-rouge">_prepare_completion_kwargs</code> to format the request suitable for <code class="language-plaintext highlighter-rouge">litellm</code>.</li>
+  <li>The core work happens in <code class="language-plaintext highlighter-rouge">litellm.completion(...)</code>, which connects to the actual LLM service (like OpenAI).</li>
+  <li>The result is then parsed back into the standard <code class="language-plaintext highlighter-rouge">ChatMessage</code> format.</li>
+</ul>
+
+<p>The beauty is that the <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> only ever interacts with the <code class="language-plaintext highlighter-rouge">__call__</code> method, regardless of whether it’s using <code class="language-plaintext highlighter-rouge">LiteLLMModel</code>, <code class="language-plaintext highlighter-rouge">TransformersModel</code> (for local models), or another interface.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The Model Interface is a vital piece of the <code class="language-plaintext highlighter-rouge">SmolaAgents</code> puzzle. It acts as a universal translator or remote control, allowing your <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> to seamlessly communicate with a wide variety of Large Language Models without getting bogged down in the specific details of each one.</p>
+
+<p>You’ve learned:</p>
+
+<ul>
+  <li>Why a Model Interface is needed to handle diverse LLMs.</li>
+  <li>The “universal remote” analogy.</li>
+  <li>How the standard <code class="language-plaintext highlighter-rouge">__call__</code> method provides a consistent way for the agent to interact with the model.</li>
+  <li>How to choose, initialize, and provide a Model Interface (<code class="language-plaintext highlighter-rouge">LiteLLMModel</code> example) to your <code class="language-plaintext highlighter-rouge">MultiStepAgent</code>.</li>
+  <li>A glimpse into the internal process: translating requests, calling the backend LLM, and parsing responses.</li>
+</ul>
+
+<p>Now that our agent has a brain (<code class="language-plaintext highlighter-rouge">MultiStepAgent</code>) and a way to talk to it (<code class="language-plaintext highlighter-rouge">Model Interface</code>), how does it actually <em>do</em> things based on the LLM’s suggestions? How does it search the web, run code, or perform other actions? That’s where our next component comes in!</p>
+
+<p><strong>Next Chapter:</strong> <a href="03_tool.md">Chapter 3: Tool</a> - Giving Your Agent Capabilities.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

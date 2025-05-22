@@ -1,0 +1,273 @@
+<h1 id="chapter-1-the-multistepagent---your-task-orchestrator">Chapter 1: The MultiStepAgent - Your Task Orchestrator</h1>
+
+<p>Welcome to the SmolaAgents library! If you’re looking to build smart AI agents that can tackle complex problems, you’re in the right place.</p>
+
+<p>Imagine you have a complex task, like “Research the pros and cons of electric cars and write a short summary.” A single request to a simple AI might not be enough. It needs to search the web, read different articles, synthesize the information, and then write the summary. How does an AI manage such a multi-step process?</p>
+
+<p>This is where the <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> comes in! Think of it as the <strong>project manager</strong> for your AI task. It doesn’t do all the work itself, but it directs the process, decides what needs to happen next, uses specialized helpers (called “Tools”), and keeps track of everything until the task is done.</p>
+
+<h2 id="the-core-idea-think-act-observe">The Core Idea: Think, Act, Observe</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> works by following a cycle, much like how humans solve problems. This cycle is often called <strong>ReAct</strong> (Reasoning and Acting):</p>
+
+<ol>
+  <li><strong>Think (Reason):</strong> The agent looks at the main goal (the task) and where it currently is in the process. Based on this, it thinks about what the <em>very next step</em> should be to get closer to the goal. Should it search for information? Should it perform a calculation? Should it write something down?</li>
+  <li><strong>Act:</strong> The agent performs the action it decided on. This usually involves using a specific <strong><a href="03_tool.md">Tool</a></strong> (like a web search tool, a calculator, or a code execution tool) or generating text/code.</li>
+  <li><strong>Observe:</strong> The agent looks at the result of its action. What did the web search return? What was the output of the code? This new information (“observation”) helps it decide what to do in the next “Think” phase.</li>
+</ol>
+
+<p>The agent repeats this <strong>Think -&gt; Act -&gt; Observe</strong> cycle over and over, step-by-step, until it believes it has fully completed the task and has a final answer.</p>
+
+<h2 id="how-it-works-coordinating-the-team">How It Works: Coordinating the Team</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> doesn’t work in isolation. It coordinates several key components:</p>
+
+<ol>
+  <li><strong>The Language Model (LLM):</strong> This is the “brain” of the operation. The agent consults the LLM during the “Think” phase. It sends the current task, the history of actions and observations, and asks the LLM, “What should I do next?”. We’ll explore this more in <a href="02_model_interface.md">Chapter 2: Model Interface</a>.</li>
+  <li><strong>Tools:</strong> These are specialized functions the agent can use to perform actions. Examples include searching the web, running Python code, fetching weather information, or even generating images. The agent chooses which tool to use (if any) during the “Act” phase based on the LLM’s suggestion. Learn all about them in <a href="03_tool.md">Chapter 3: Tool</a>.</li>
+  <li><strong>Memory:</strong> This is like the agent’s notepad. It keeps track of the original task, the plan (if any), every action taken, and every observation received. This history is crucial for the agent (and the LLM) to understand the progress and decide the next steps. We’ll dive into this in <a href="04_agentmemory.md">Chapter 4: AgentMemory</a>.</li>
+</ol>
+
+<h2 id="a-simple-example-getting-the-capital-and-weather">A Simple Example: Getting the Capital and Weather</h2>
+
+<p>Let’s revisit our simple task: <strong>“What is the capital of France, and what is its current weather?”</strong></p>
+
+<p>Here’s how a <code class="language-plaintext highlighter-rouge">MultiStepAgent</code>, equipped with a <code class="language-plaintext highlighter-rouge">search</code> tool and a <code class="language-plaintext highlighter-rouge">weather</code> tool, might handle it:</p>
+
+<ol>
+  <li><strong>Step 1 (Think):</strong> The agent sees the task. It realizes it needs two pieces of information: the capital and the weather <em>for</em> that capital. First, it needs the capital.</li>
+  <li><strong>Step 1 (Act):</strong> It decides to use the <code class="language-plaintext highlighter-rouge">search</code> tool with the query “Capital of France”.</li>
+  <li><strong>Step 1 (Observe):</strong> The <code class="language-plaintext highlighter-rouge">search</code> tool returns “Paris”. The agent stores “Capital is Paris” in its <a href="04_agentmemory.md">Memory</a>.</li>
+  <li><strong>Step 2 (Think):</strong> The agent checks its memory. It has the capital (Paris) but still needs the weather.</li>
+  <li><strong>Step 2 (Act):</strong> It decides to use the <code class="language-plaintext highlighter-rouge">weather</code> tool with the location “Paris”.</li>
+  <li><strong>Step 2 (Observe):</strong> The <code class="language-plaintext highlighter-rouge">weather</code> tool returns something like “Sunny, 25°C”. The agent stores this observation in its <a href="04_agentmemory.md">Memory</a>.</li>
+  <li><strong>Step 3 (Think):</strong> The agent reviews its memory. It now has both the capital (“Paris”) and the weather (“Sunny, 25°C”). It has all the information needed to answer the original task.</li>
+  <li><strong>Step 3 (Act):</strong> It decides it’s finished and uses a special built-in tool called <code class="language-plaintext highlighter-rouge">final_answer</code> to provide the complete result.</li>
+  <li><strong>Step 3 (Observe):</strong> The <code class="language-plaintext highlighter-rouge">final_answer</code> tool packages the result, like “The capital of France is Paris, and the current weather there is Sunny, 25°C.” The cycle ends.</li>
+</ol>
+
+<h2 id="lets-see-some-code-basic-setup">Let’s See Some Code (Basic Setup)</h2>
+
+<p>Okay, enough theory! How does this look in code? Setting up a basic <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> involves giving it its “brain” (the model) and its “helpers” (the tools).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: basic_agent.py ---
+# Import necessary components (we'll explain these more in later chapters!)
+</span><span class="kn">from</span> <span class="nn">smolagents</span> <span class="kn">import</span> <span class="n">MultiStepAgent</span>
+<span class="kn">from</span> <span class="nn">smolagents.models</span> <span class="kn">import</span> <span class="n">LiteLLMModel</span> <span class="c1"># A simple way to use various LLMs
+</span><span class="kn">from</span> <span class="nn">smolagents.tools</span> <span class="kn">import</span> <span class="n">SearchTool</span><span class="p">,</span> <span class="n">WeatherTool</span> <span class="c1"># Example Tools
+</span>
+<span class="c1"># 1. Define the tools the agent can use
+# These are like specialized workers the agent can call upon.
+</span><span class="n">search_tool</span> <span class="o">=</span> <span class="n">SearchTool</span><span class="p">()</span>   <span class="c1"># A tool to search the web (details in Chapter 3)
+</span><span class="n">weather_tool</span> <span class="o">=</span> <span class="n">WeatherTool</span><span class="p">()</span> <span class="c1"># A tool to get weather info (details in Chapter 3)
+# Note: Real tools might need API keys or setup!
+</span>
+<span class="c1"># 2. Choose a language model (the "brain")
+# We'll use LiteLLMModel here, connecting to a capable model.
+# Make sure you have 'litellm' installed: pip install litellm
+</span><span class="n">llm</span> <span class="o">=</span> <span class="n">LiteLLMModel</span><span class="p">(</span><span class="n">model_id</span><span class="o">=</span><span class="s">"gpt-3.5-turbo"</span><span class="p">)</span> <span class="c1"># Needs an API key set up
+# We'll cover models properly in Chapter 2
+</span>
+<span class="c1"># 3. Create the MultiStepAgent instance
+# We pass the brain (llm) and the helpers (tools)
+</span><span class="n">agent</span> <span class="o">=</span> <span class="n">MultiStepAgent</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">search_tool</span><span class="p">,</span> <span class="n">weather_tool</span><span class="p">]</span>
+    <span class="c1"># By default, a 'final_answer' tool is always added.
+</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">"Agent created!"</span><span class="p">)</span>
+
+<span class="c1"># 4. Give the agent a task!
+</span><span class="n">task</span> <span class="o">=</span> <span class="s">"What is the capital of France, and what is its current weather?"</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Running agent with task: '</span><span class="si">{</span><span class="n">task</span><span class="si">}</span><span class="s">'"</span><span class="p">)</span>
+
+<span class="c1"># The agent will now start its Think-Act-Observe cycle...
+</span><span class="n">final_answer</span> <span class="o">=</span> <span class="n">agent</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+
+<span class="c1"># ... and eventually return the final result.
+</span><span class="k">print</span><span class="p">(</span><span class="s">"-"</span> <span class="o">*</span> <span class="mi">20</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Final Answer received: </span><span class="si">{</span><span class="n">final_answer</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li><strong>Import:</strong> We bring in <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> and placeholders for a model and tools.</li>
+  <li><strong>Tools:</strong> We create instances of the tools our agent might need (<code class="language-plaintext highlighter-rouge">SearchTool</code>, <code class="language-plaintext highlighter-rouge">WeatherTool</code>). How tools work is covered in <a href="03_tool.md">Chapter 3: Tool</a>.</li>
+  <li><strong>Model:</strong> We set up the language model (<code class="language-plaintext highlighter-rouge">LiteLLMModel</code>) that will power the agent’s thinking. More on models in <a href="02_model_interface.md">Chapter 2: Model Interface</a>.</li>
+  <li><strong>Agent Creation:</strong> We initialize <code class="language-plaintext highlighter-rouge">MultiStepAgent</code>, telling it which <code class="language-plaintext highlighter-rouge">model</code> to use for thinking and which <code class="language-plaintext highlighter-rouge">tools</code> are available for acting.</li>
+  <li><strong>Run Task:</strong> We call the <code class="language-plaintext highlighter-rouge">agent.run()</code> method with our specific <code class="language-plaintext highlighter-rouge">task</code>. This kicks off the Think-Act-Observe cycle.</li>
+  <li><strong>Output:</strong> The <code class="language-plaintext highlighter-rouge">run</code> method continues executing steps until the <code class="language-plaintext highlighter-rouge">final_answer</code> tool is called or a limit is reached. It then returns the content provided to <code class="language-plaintext highlighter-rouge">final_answer</code>.</li>
+</ol>
+
+<p><em>(Note: Running the code above requires setting up API keys for the chosen LLM and potentially the tools).</em></p>
+
+<h2 id="under-the-hood-the-run-process">Under the Hood: The <code class="language-plaintext highlighter-rouge">run</code> Process</h2>
+
+<p>When you call <code class="language-plaintext highlighter-rouge">agent.run(task)</code>, a sequence of internal steps takes place:</p>
+
+<ol>
+  <li><strong>Initialization:</strong> The agent receives the <code class="language-plaintext highlighter-rouge">task</code> and stores it in its <a href="04_agentmemory.md">AgentMemory</a>. The step counter is reset.</li>
+  <li><strong>Loop:</strong> The agent enters the main Think-Act-Observe loop. This loop continues until a final answer is produced or the maximum number of steps (<code class="language-plaintext highlighter-rouge">max_steps</code>) is reached.</li>
+  <li><strong>Prepare Input:</strong> Inside the loop, the agent gathers its history (task, previous actions, observations) from <a href="04_agentmemory.md">AgentMemory</a> using <code class="language-plaintext highlighter-rouge">write_memory_to_messages</code>.</li>
+  <li><strong>Think (Call Model):</strong> It sends this history to the <a href="02_model_interface.md">Model</a> (e.g., <code class="language-plaintext highlighter-rouge">self.model(messages)</code>), asking for the next action (which tool to call and with what arguments, or if it should use <code class="language-plaintext highlighter-rouge">final_answer</code>).</li>
+  <li><strong>Store Thought:</strong> The model’s response (the thought process and the intended action) is recorded in the current step’s data within <a href="04_agentmemory.md">AgentMemory</a>.</li>
+  <li><strong>Act (Execute Tool/Code):</strong>
+    <ul>
+      <li>The agent parses the model’s response to identify the action (e.g., call <code class="language-plaintext highlighter-rouge">search</code> with “Capital of France”).</li>
+      <li>If it’s a <a href="03_tool.md">Tool</a> call, it executes the tool (e.g., <code class="language-plaintext highlighter-rouge">search_tool("Capital of France")</code>).</li>
+      <li>If it’s the <code class="language-plaintext highlighter-rouge">final_answer</code> tool, it prepares to exit the loop.</li>
+      <li><em>(Note: Different agent types handle this ‘Act’ phase differently. We’ll see this in <a href="07_agenttype.md">Chapter 7: AgentType</a>. For instance, a <code class="language-plaintext highlighter-rouge">CodeAgent</code> generates and runs code here.)</em></li>
+    </ul>
+  </li>
+  <li><strong>Observe (Get Result):</strong> The result from the tool execution (or code execution) is captured as the “observation”.</li>
+  <li><strong>Store Observation:</strong> This observation (e.g., “Paris”) is recorded in the current step’s data in <a href="04_agentmemory.md">AgentMemory</a>.</li>
+  <li><strong>Repeat:</strong> The loop goes back to step 3, using the new observation as part of the history for the next “Think” phase.</li>
+  <li><strong>Finish:</strong> Once the <code class="language-plaintext highlighter-rouge">final_answer</code> tool is called, the loop breaks, and the value passed to <code class="language-plaintext highlighter-rouge">final_answer</code> is returned by the <code class="language-plaintext highlighter-rouge">run</code> method. If <code class="language-plaintext highlighter-rouge">max_steps</code> is reached without a final answer, an error or a fallback answer might occur.</li>
+</ol>
+
+<p>Here’s a simplified diagram showing the flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant MSA as MultiStepAgent
+    participant Model as LLM Brain
+    participant Tools
+    participant Memory
+
+    User-&gt;&gt;MSA: run("Task: Capital &amp; Weather?")
+    MSA-&gt;&gt;Memory: Store Task
+    loop Think-Act-Observe Cycle
+        MSA-&gt;&gt;Memory: Get history (Task)
+        MSA-&gt;&gt;Model: What's next? (based on Task)
+        Model--&gt;&gt;MSA: Think: Need capital. Act: search("Capital of France")
+        MSA-&gt;&gt;Memory: Store Thought &amp; Action Plan
+        MSA-&gt;&gt;Tools: Execute search("Capital of France")
+        Tools--&gt;&gt;MSA: Observation: "Paris"
+        MSA-&gt;&gt;Memory: Store Observation ("Paris")
+
+        MSA-&gt;&gt;Memory: Get history (Task, search result "Paris")
+        MSA-&gt;&gt;Model: What's next? (based on Task &amp; "Paris")
+        Model--&gt;&gt;MSA: Think: Need weather for Paris. Act: weather("Paris")
+        MSA-&gt;&gt;Memory: Store Thought &amp; Action Plan
+        MSA-&gt;&gt;Tools: Execute weather("Paris")
+        Tools--&gt;&gt;MSA: Observation: "Sunny, 25°C"
+        MSA-&gt;&gt;Memory: Store Observation ("Sunny, 25°C")
+
+        MSA-&gt;&gt;Memory: Get history (Task, "Paris", "Sunny, 25°C")
+        MSA-&gt;&gt;Model: What's next? (based on Task &amp; results)
+        Model--&gt;&gt;MSA: Think: Have all info. Act: final_answer("Capital: Paris, Weather: Sunny, 25°C")
+        MSA-&gt;&gt;Memory: Store Thought &amp; Action Plan (Final Answer)
+        MSA--&gt;&gt;User: Return "Capital: Paris, Weather: Sunny, 25°C"
+        Note right of MSA: Loop completes when final answer is ready
+    end
+</code></pre>
+
+<h2 id="diving-deeper-code-references">Diving Deeper (Code References)</h2>
+
+<p>Let’s peek at some relevant code snippets from <code class="language-plaintext highlighter-rouge">agents.py</code> to see how this is implemented (simplified for clarity):</p>
+
+<ul>
+  <li><strong>Initialization (<code class="language-plaintext highlighter-rouge">__init__</code>)</strong>: Stores the essential components.
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agents.py (Simplified __init__) ---
+</span><span class="k">class</span> <span class="nc">MultiStepAgent</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">tools</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tool</span><span class="p">],</span> <span class="c1"># List of available tools
+</span>        <span class="n">model</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span>    <span class="c1"># The language model function
+</span>        <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">,</span> <span class="c1"># Max cycles allowed
+</span>        <span class="c1"># ... other parameters like memory, prompts, etc.
+</span>    <span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">tools</span> <span class="o">=</span> <span class="p">{</span><span class="n">tool</span><span class="p">.</span><span class="n">name</span><span class="p">:</span> <span class="n">tool</span> <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="n">tools</span><span class="p">}</span>
+        <span class="c1"># Add the essential final_answer tool
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">tools</span><span class="p">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">"final_answer"</span><span class="p">,</span> <span class="n">FinalAnswerTool</span><span class="p">())</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">max_steps</span> <span class="o">=</span> <span class="n">max_steps</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">memory</span> <span class="o">=</span> <span class="n">AgentMemory</span><span class="p">(...)</span> <span class="c1"># Initialize memory
+</span>        <span class="c1"># ... setup logging, etc.
+</span></code></pre></div>    </div>
+  </li>
+  <li><strong>Starting the process (<code class="language-plaintext highlighter-rouge">run</code>)</strong>: Sets up the task and calls the internal loop.
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agents.py (Simplified run) ---
+</span><span class="k">class</span> <span class="nc">MultiStepAgent</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="p">...):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">task</span> <span class="o">=</span> <span class="n">task</span>
+        <span class="c1"># ... maybe handle additional arguments ...
+</span>
+        <span class="c1"># Reset memory if needed
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">memory</span><span class="p">.</span><span class="n">reset</span><span class="p">()</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">memory</span><span class="p">.</span><span class="n">steps</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">TaskStep</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">task</span><span class="p">))</span> <span class="c1"># Record the task
+</span>
+        <span class="c1"># Start the internal execution loop
+</span>        <span class="c1"># The deque gets the *last* item yielded, which is the final answer
+</span>        <span class="k">return</span> <span class="n">deque</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">_run</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">task</span><span class="p">,</span> <span class="n">max_steps</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">max_steps</span><span class="p">),</span> <span class="n">maxlen</span><span class="o">=</span><span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">].</span><span class="n">final_answer</span>
+</code></pre></div>    </div>
+  </li>
+  <li><strong>The Core Loop (<code class="language-plaintext highlighter-rouge">_run</code>)</strong>: Implements the Think-Act-Observe cycle.
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agents.py (Simplified _run) ---
+</span><span class="k">class</span> <span class="nc">MultiStepAgent</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="n">Generator</span><span class="p">:</span>
+        <span class="n">final_answer</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">step_number</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">while</span> <span class="n">final_answer</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="p">.</span><span class="n">step_number</span> <span class="o">&lt;=</span> <span class="n">max_steps</span><span class="p">:</span>
+            <span class="n">action_step</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_create_action_step</span><span class="p">(...)</span> <span class="c1"># Prepare memory for this step
+</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># This is where the agent type decides how to act
+</span>                <span class="c1"># (e.g., call LLM, parse, execute tool/code)
+</span>                <span class="n">final_answer</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_execute_step</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">action_step</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">AgentError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">action_step</span><span class="p">.</span><span class="n">error</span> <span class="o">=</span> <span class="n">e</span> <span class="c1"># Record errors
+</span>            <span class="k">finally</span><span class="p">:</span>
+                <span class="bp">self</span><span class="p">.</span><span class="n">_finalize_step</span><span class="p">(</span><span class="n">action_step</span><span class="p">,</span> <span class="p">...)</span> <span class="c1"># Record timing, etc.
+</span>                <span class="bp">self</span><span class="p">.</span><span class="n">memory</span><span class="p">.</span><span class="n">steps</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">action_step</span><span class="p">)</span> <span class="c1"># Save step to memory
+</span>                <span class="k">yield</span> <span class="n">action_step</span> <span class="c1"># Yield step details (for streaming)
+</span>                <span class="bp">self</span><span class="p">.</span><span class="n">step_number</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="n">final_answer</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c1"># Handle reaching max steps
+</span>            <span class="p">...</span>
+        <span class="k">yield</span> <span class="n">FinalAnswerStep</span><span class="p">(</span><span class="n">handle_agent_output_types</span><span class="p">(</span><span class="n">final_answer</span><span class="p">))</span> <span class="c1"># Yield final answer
+</span></code></pre></div>    </div>
+  </li>
+  <li><strong>Executing a Step (<code class="language-plaintext highlighter-rouge">_execute_step</code>)</strong>: This calls the <code class="language-plaintext highlighter-rouge">step</code> method which specific agent types (like <code class="language-plaintext highlighter-rouge">CodeAgent</code> or <code class="language-plaintext highlighter-rouge">ToolCallingAgent</code>) implement differently.
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- File: agents.py (Simplified _execute_step) ---
+</span><span class="k">class</span> <span class="nc">MultiStepAgent</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">_execute_step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">memory_step</span><span class="p">:</span> <span class="n">ActionStep</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="bp">None</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="c1"># Calls the specific logic for the agent type
+</span>        <span class="c1"># This method will interact with the model, tools, memory
+</span>        <span class="n">final_answer</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">step</span><span class="p">(</span><span class="n">memory_step</span><span class="p">)</span>
+        <span class="c1"># ... (optional checks on final answer) ...
+</span>        <span class="k">return</span> <span class="n">final_answer</span>
+
+    <span class="c1"># step() is implemented by subclasses like CodeAgent or ToolCallingAgent
+</span>    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">memory_step</span><span class="p">:</span> <span class="n">ActionStep</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="bp">None</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="nb">NotImplementedError</span><span class="p">(</span><span class="s">"Subclasses must implement the step method."</span><span class="p">)</span>
+</code></pre></div>    </div>
+  </li>
+</ul>
+
+<p>These snippets show how <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> orchestrates the process, relying on its <code class="language-plaintext highlighter-rouge">model</code>, <code class="language-plaintext highlighter-rouge">tools</code>, and <code class="language-plaintext highlighter-rouge">memory</code>, and delegating the specific “how-to-act” logic to subclasses via the <code class="language-plaintext highlighter-rouge">step</code> method (more on this in <a href="07_agenttype.md">Chapter 7: AgentType</a>).</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> is the heart of the SmolaAgents library. It provides the framework for agents to tackle complex tasks by breaking them down into a <strong>Think -&gt; Act -&gt; Observe</strong> cycle. It acts as the central coordinator, managing interactions between the language model (the brain), the tools (the specialized helpers), and the memory (the notepad).</p>
+
+<p>You’ve learned:</p>
+
+<ul>
+  <li>Why <code class="language-plaintext highlighter-rouge">MultiStepAgent</code> is needed for tasks requiring multiple steps.</li>
+  <li>The core ReAct cycle: Think, Act, Observe.</li>
+  <li>How it coordinates the Model, Tools, and Memory.</li>
+  <li>Seen a basic code example of setting up and running an agent.</li>
+  <li>Gotten a glimpse into the internal <code class="language-plaintext highlighter-rouge">run</code> process.</li>
+</ul>
+
+<p>Now that we understand the orchestrator, let’s move on to understand the “brain” it relies on.</p>
+
+<p><strong>Next Chapter:</strong> <a href="02_model_interface.md">Chapter 2: Model Interface</a> - Connecting Your Agent to an LLM Brain.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

@@ -1,0 +1,340 @@
+<h1 id="chapter-9-communication-transports-stdio-sse-websocket-memory">Chapter 9: Communication Transports (Stdio, SSE, WebSocket, Memory)</h1>
+
+<p>Welcome to the final chapter of our introductory journey into the <code class="language-plaintext highlighter-rouge">MCP Python SDK</code>! In <a href="08_client_server_sessions___clientsession____serversession__.md">Chapter 8: Client/Server Sessions (<code class="language-plaintext highlighter-rouge">ClientSession</code>, <code class="language-plaintext highlighter-rouge">ServerSession</code>)</a>, we learned how <code class="language-plaintext highlighter-rouge">Session</code> objects manage the ongoing conversation and state for a single connection between a client and a server, like dedicated phone operators handling a call.</p>
+
+<p>But how do the messages actually <em>travel</em> over that phone line? If the client and server are different programs, possibly on different computers, what’s the physical wire or digital equivalent carrying the signals?</p>
+
+<p>Imagine our standardized MCP messages (<a href="07_mcp_protocol_types.md">Chapter 7: MCP Protocol Types</a>) are like perfectly formatted letters. We need a delivery service to actually move these letters between the sender and receiver. This is where <strong>Communication Transports</strong> come in.</p>
+
+<h2 id="what-are-communication-transports-the-delivery-service">What are Communication Transports? The Delivery Service</h2>
+
+<p>Communication Transports define the <strong>actual mechanisms</strong> used to send the serialized MCP messages (those structured JSON strings) back and forth between the client and server processes.</p>
+
+<p>Think of them as different <strong>delivery services</strong> you can choose from:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">stdio</code> (Standard Input/Output): Postal Mail for Processes</strong>
+    <ul>
+      <li><strong>Mechanism:</strong> Uses the standard input (<code class="language-plaintext highlighter-rouge">stdin</code>) and standard output (<code class="language-plaintext highlighter-rouge">stdout</code>) streams of the processes. One process writes messages (as lines of text) to its <code class="language-plaintext highlighter-rouge">stdout</code>, and the other reads them from its <code class="language-plaintext highlighter-rouge">stdin</code>.</li>
+      <li><strong>Use Case:</strong> Very common for command-line tools or when one process directly starts another (like when <code class="language-plaintext highlighter-rouge">mcp run</code> executes your server script). It’s simple and works well when the client and server are running on the same machine and have a parent-child relationship.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">sse</code> (Server-Sent Events): One-Way Radio Broadcast (Server -&gt; Client)</strong>
+    <ul>
+      <li><strong>Mechanism:</strong> Uses standard web protocols (HTTP). The client makes an initial HTTP request, and the server keeps the connection open, sending messages (events) <em>to</em> the client whenever it wants. Client-to-server communication usually happens via separate HTTP POST requests.</li>
+      <li><strong>Use Case:</strong> Good for web applications where the server needs to push updates (like notifications, progress) to the client (a web browser) efficiently.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">websocket</code>: Dedicated Two-Way Phone Line (Web)</strong>
+    <ul>
+      <li><strong>Mechanism:</strong> Uses the WebSocket protocol, which provides a persistent, full-duplex (two-way) communication channel over a single TCP connection, typically initiated via an HTTP handshake.</li>
+      <li><strong>Use Case:</strong> Ideal for highly interactive web applications (like chat apps, real-time dashboards, or the MCP Inspector) where both the client and server need to send messages to each other at any time with low latency.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">memory</code>: Internal Office Courier</strong>
+    <ul>
+      <li><strong>Mechanism:</strong> Uses in-memory queues within a <em>single</em> Python process. Messages are passed directly between the client and server components without going through external pipes or network connections.</li>
+      <li><strong>Use Case:</strong> Primarily used for <strong>testing</strong>. It allows you to run both the client and server parts of your code in the same test script and have them communicate directly, making tests faster and self-contained.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>These transports are the concrete implementations that bridge the gap between the abstract <code class="language-plaintext highlighter-rouge">Session</code> objects (which manage the <em>conversation</em>) and the physical reality of sending bytes (the <em>delivery</em>).</p>
+
+<h2 id="how-transports-are-used-often-indirectly">How Transports are Used (Often Indirectly)</h2>
+
+<p>The good news is that if you’re using <code class="language-plaintext highlighter-rouge">FastMCP</code> (<a href="02_fastmcp_server___fastmcp__.md">Chapter 2</a>) and the <code class="language-plaintext highlighter-rouge">mcp</code> command-line tool (<a href="01_cli___mcp__command_.md">Chapter 1</a>), you often <strong>don’t need to worry about explicitly choosing or configuring the transport</strong>. The tools handle it for common scenarios:</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">mcp run your_server.py</code></strong>: By default, this command uses the <strong><code class="language-plaintext highlighter-rouge">stdio</code></strong> transport. It starts your Python script as a child process and communicates with it using <code class="language-plaintext highlighter-rouge">stdin</code> and <code class="language-plaintext highlighter-rouge">stdout</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">mcp dev your_server.py</code></strong>: This command also typically runs your server using <strong><code class="language-plaintext highlighter-rouge">stdio</code></strong>. The <em>MCP Inspector</em> web application it launches then connects to your server (potentially via a WebSocket proxy managed by the dev tool) to monitor the <code class="language-plaintext highlighter-rouge">stdio</code> communication.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">mcp install ...</code> (for Claude Desktop)</strong>: This usually configures Claude to launch your server using <code class="language-plaintext highlighter-rouge">uv run ... mcp run your_server.py</code>, again defaulting to <strong><code class="language-plaintext highlighter-rouge">stdio</code></strong> communication between Claude and your server process.</li>
+</ul>
+
+<p>So, for many typical development and integration tasks, <code class="language-plaintext highlighter-rouge">stdio</code> is the default and works behind the scenes.</p>
+
+<h2 id="using-transports-programmatically-a-glimpse">Using Transports Programmatically (A Glimpse)</h2>
+
+<p>While <code class="language-plaintext highlighter-rouge">mcp run</code> handles <code class="language-plaintext highlighter-rouge">stdio</code> automatically, what if you wanted to build a <em>custom</em> server application that listens over WebSockets? Or write tests using the <code class="language-plaintext highlighter-rouge">memory</code> transport? The SDK provides tools for this.</p>
+
+<p>You typically use an <code class="language-plaintext highlighter-rouge">async context manager</code> provided by the SDK for the specific transport. These managers handle setting up the communication channel and yield a pair of streams (<code class="language-plaintext highlighter-rouge">read_stream</code>, <code class="language-plaintext highlighter-rouge">write_stream</code>) that the <code class="language-plaintext highlighter-rouge">ClientSession</code> or <code class="language-plaintext highlighter-rouge">ServerSession</code> can use.</p>
+
+<p><strong>Conceptual Server using Stdio (like <code class="language-plaintext highlighter-rouge">mcp run</code>)</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Conceptual code showing how stdio_server might be used
+</span><span class="kn">import</span> <span class="nn">anyio</span>
+<span class="kn">from</span> <span class="nn">mcp.server.stdio</span> <span class="kn">import</span> <span class="n">stdio_server</span> <span class="c1"># Import the stdio transport
+</span><span class="kn">from</span> <span class="nn">mcp.server.mcp_server</span> <span class="kn">import</span> <span class="n">MCPServer</span> <span class="c1"># Low-level server
+</span>
+<span class="c1"># Assume 'my_actual_server' is your MCPServer instance
+</span><span class="n">my_actual_server</span> <span class="o">=</span> <span class="n">MCPServer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"MyStdioServer"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Server: Waiting for client over stdio..."</span><span class="p">)</span>
+    <span class="c1"># 1. Use the stdio_server context manager
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">stdio_server</span><span class="p">()</span> <span class="k">as</span> <span class="p">(</span><span class="n">read_stream</span><span class="p">,</span> <span class="n">write_stream</span><span class="p">):</span>
+        <span class="c1"># 2. It yields streams connected to stdin/stdout
+</span>        <span class="k">print</span><span class="p">(</span><span class="s">"Server: Stdio streams acquired. Running server logic."</span><span class="p">)</span>
+        <span class="c1"># 3. Pass streams to the server's run method
+</span>        <span class="k">await</span> <span class="n">my_actual_server</span><span class="p">.</span><span class="n">run</span><span class="p">(</span>
+            <span class="n">read_stream</span><span class="p">,</span>
+            <span class="n">write_stream</span><span class="p">,</span>
+            <span class="n">my_actual_server</span><span class="p">.</span><span class="n">create_initialization_options</span><span class="p">()</span>
+        <span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Server: Stdio streams closed."</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">anyio</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">)</span>
+    <span class="k">except</span> <span class="nb">KeyboardInterrupt</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"Server: Exiting."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong>
+The <code class="language-plaintext highlighter-rouge">stdio_server()</code> context manager handles wrapping the process’s standard input and output. It provides the <code class="language-plaintext highlighter-rouge">read_stream</code> (to get messages <em>from</em> stdin) and <code class="language-plaintext highlighter-rouge">write_stream</code> (to send messages <em>to</em> stdout) that the underlying <code class="language-plaintext highlighter-rouge">MCPServer</code> (and thus <code class="language-plaintext highlighter-rouge">FastMCP</code>) needs to communicate.</p>
+
+<p><strong>Conceptual Server using WebSocket (within a web framework)</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Conceptual code using Starlette web framework
+</span><span class="kn">from</span> <span class="nn">starlette.applications</span> <span class="kn">import</span> <span class="n">Starlette</span>
+<span class="kn">from</span> <span class="nn">starlette.routing</span> <span class="kn">import</span> <span class="n">WebSocketRoute</span>
+<span class="kn">from</span> <span class="nn">starlette.websockets</span> <span class="kn">import</span> <span class="n">WebSocket</span>
+<span class="kn">from</span> <span class="nn">mcp.server.websocket</span> <span class="kn">import</span> <span class="n">websocket_server</span> <span class="c1"># Import WS transport
+</span><span class="kn">from</span> <span class="nn">mcp.server.mcp_server</span> <span class="kn">import</span> <span class="n">MCPServer</span> <span class="c1"># Low-level server
+</span>
+<span class="n">my_actual_server</span> <span class="o">=</span> <span class="n">MCPServer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"MyWebSocketServer"</span><span class="p">)</span>
+
+<span class="c1"># Define the WebSocket endpoint handler
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">websocket_endpoint</span><span class="p">(</span><span class="n">websocket</span><span class="p">:</span> <span class="n">WebSocket</span><span class="p">):</span>
+    <span class="c1"># 1. Use the websocket_server context manager
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">websocket_server</span><span class="p">(</span>
+        <span class="n">websocket</span><span class="p">.</span><span class="n">scope</span><span class="p">,</span> <span class="n">websocket</span><span class="p">.</span><span class="n">receive</span><span class="p">,</span> <span class="n">websocket</span><span class="p">.</span><span class="n">send</span>
+    <span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">read_stream</span><span class="p">,</span> <span class="n">write_stream</span><span class="p">):</span>
+        <span class="c1"># 2. It yields streams connected to this specific WebSocket
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Server: WebSocket client connected. Running server logic."</span><span class="p">)</span>
+        <span class="c1"># 3. Pass streams to the server's run method
+</span>        <span class="k">await</span> <span class="n">my_actual_server</span><span class="p">.</span><span class="n">run</span><span class="p">(</span>
+            <span class="n">read_stream</span><span class="p">,</span>
+            <span class="n">write_stream</span><span class="p">,</span>
+            <span class="n">my_actual_server</span><span class="p">.</span><span class="n">create_initialization_options</span><span class="p">()</span>
+        <span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"Server: WebSocket client disconnected."</span><span class="p">)</span>
+
+<span class="c1"># Set up the web application routes
+</span><span class="n">routes</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">WebSocketRoute</span><span class="p">(</span><span class="s">"/mcp"</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="n">websocket_endpoint</span><span class="p">)</span>
+<span class="p">]</span>
+<span class="n">app</span> <span class="o">=</span> <span class="n">Starlette</span><span class="p">(</span><span class="n">routes</span><span class="o">=</span><span class="n">routes</span><span class="p">)</span>
+
+<span class="c1"># To run this, you'd use an ASGI server like uvicorn:
+# uvicorn your_module:app --host 0.0.0.0 --port 8000
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong>
+Here, <code class="language-plaintext highlighter-rouge">websocket_server()</code> adapts the WebSocket connection provided by the web framework (Starlette) into the <code class="language-plaintext highlighter-rouge">read_stream</code> and <code class="language-plaintext highlighter-rouge">write_stream</code> expected by the MCP server. Each connecting client gets its own session handled through this endpoint.</p>
+
+<p><strong>Conceptual Test using Memory Transport</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">anyio</span>
+<span class="kn">import</span> <span class="nn">pytest</span> <span class="c1"># Using pytest testing framework
+</span><span class="kn">from</span> <span class="nn">mcp.client.session</span> <span class="kn">import</span> <span class="n">ClientSession</span>
+<span class="kn">from</span> <span class="nn">mcp.server.fastmcp</span> <span class="kn">import</span> <span class="n">FastMCP</span> <span class="c1"># Using FastMCP for the server part
+</span><span class="kn">from</span> <span class="nn">mcp.shared.memory</span> <span class="kn">import</span> <span class="n">create_client_server_memory_streams</span>
+
+<span class="c1"># Define a simple FastMCP server for the test
+</span><span class="n">test_server</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"TestServer"</span><span class="p">)</span>
+<span class="o">@</span><span class="n">test_server</span><span class="p">.</span><span class="n">tool</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">ping</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="s">"pong"</span>
+
+<span class="o">@</span><span class="n">pytest</span><span class="p">.</span><span class="n">mark</span><span class="p">.</span><span class="n">anyio</span> <span class="c1"># Mark test to be run with anyio
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">test_memory_transport</span><span class="p">():</span>
+    <span class="c1"># 1. Use the memory stream generator
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">create_client_server_memory_streams</span><span class="p">()</span> <span class="k">as</span> <span class="p">(</span>
+        <span class="p">(</span><span class="n">client_read</span><span class="p">,</span> <span class="n">client_write</span><span class="p">),</span> <span class="c1"># Client perspective
+</span>        <span class="p">(</span><span class="n">server_read</span><span class="p">,</span> <span class="n">server_write</span><span class="p">)</span>  <span class="c1"># Server perspective
+</span>    <span class="p">):</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"Test: Memory streams created."</span><span class="p">)</span>
+        <span class="c1"># Run server and client concurrently
+</span>        <span class="k">async</span> <span class="k">with</span> <span class="n">anyio</span><span class="p">.</span><span class="n">create_task_group</span><span class="p">()</span> <span class="k">as</span> <span class="n">tg</span><span class="p">:</span>
+            <span class="c1"># 2. Start the server using its streams
+</span>            <span class="n">tg</span><span class="p">.</span><span class="n">start_soon</span><span class="p">(</span>
+                <span class="n">test_server</span><span class="p">.</span><span class="n">run</span><span class="p">,</span> <span class="n">server_read</span><span class="p">,</span> <span class="n">server_write</span><span class="p">,</span>
+                <span class="n">test_server</span><span class="p">.</span><span class="n">create_initialization_options</span><span class="p">()</span>
+            <span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">"Test: Server started in background task."</span><span class="p">)</span>
+
+            <span class="c1"># 3. Create and run client using its streams
+</span>            <span class="k">async</span> <span class="k">with</span> <span class="n">ClientSession</span><span class="p">(</span><span class="n">client_read</span><span class="p">,</span> <span class="n">client_write</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">"Test: Client session created. Initializing..."</span><span class="p">)</span>
+                <span class="k">await</span> <span class="n">client</span><span class="p">.</span><span class="n">initialize</span><span class="p">()</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">"Test: Client initialized. Calling 'ping' tool..."</span><span class="p">)</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="p">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s">"ping"</span><span class="p">)</span>
+                <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Test: Client received result: </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+                <span class="c1"># Assert the result is correct
+</span>                <span class="k">assert</span> <span class="n">result</span><span class="p">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">text</span> <span class="o">==</span> <span class="s">"pong"</span>
+
+            <span class="c1"># Cancel server task when client is done (optional)
+</span>            <span class="n">tg</span><span class="p">.</span><span class="n">cancel_scope</span><span class="p">.</span><span class="n">cancel</span><span class="p">()</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"Test: Finished."</span><span class="p">)</span>
+
+</code></pre></div></div>
+
+<p><strong>Explanation:</strong>
+<code class="language-plaintext highlighter-rouge">create_client_server_memory_streams()</code> creates pairs of connected in-memory queues. The server writes to <code class="language-plaintext highlighter-rouge">server_write</code>, which sends messages to <code class="language-plaintext highlighter-rouge">client_read</code>. The client writes to <code class="language-plaintext highlighter-rouge">client_write</code>, which sends messages to <code class="language-plaintext highlighter-rouge">server_read</code>. This allows direct, in-process communication for testing without actual pipes or network sockets.</p>
+
+<h2 id="how-transports-work-under-the-hood-stdio-example">How Transports Work Under the Hood (Stdio Example)</h2>
+
+<p>Let’s focus on the simplest case: <code class="language-plaintext highlighter-rouge">stdio</code>. How does the <code class="language-plaintext highlighter-rouge">stdio_server</code> context manager actually work?</p>
+
+<ol>
+  <li><strong>Process Startup:</strong> When you run <code class="language-plaintext highlighter-rouge">mcp run your_server.py</code>, the <code class="language-plaintext highlighter-rouge">mcp</code> command starts your <code class="language-plaintext highlighter-rouge">your_server.py</code> script as a new process. The operating system connects the <code class="language-plaintext highlighter-rouge">stdout</code> of your server process to the <code class="language-plaintext highlighter-rouge">stdin</code> of the <code class="language-plaintext highlighter-rouge">mcp</code> process (or vice versa, depending on perspective, but essentially creating pipes between them).</li>
+  <li><strong>Context Manager:</strong> Inside your server script (when it calls <code class="language-plaintext highlighter-rouge">stdio_server()</code>), the context manager gets asynchronous wrappers around the process’s standard input (<code class="language-plaintext highlighter-rouge">sys.stdin.buffer</code>) and standard output (<code class="language-plaintext highlighter-rouge">sys.stdout.buffer</code>), ensuring they handle text encoding (like UTF-8) correctly.</li>
+  <li><strong>Internal Streams:</strong> The context manager also creates internal <code class="language-plaintext highlighter-rouge">anyio</code> memory streams: <code class="language-plaintext highlighter-rouge">read_stream_writer</code> / <code class="language-plaintext highlighter-rouge">read_stream</code> and <code class="language-plaintext highlighter-rouge">write_stream_reader</code> / <code class="language-plaintext highlighter-rouge">write_stream</code>. It yields <code class="language-plaintext highlighter-rouge">read_stream</code> and <code class="language-plaintext highlighter-rouge">write_stream</code> to your server code.</li>
+  <li><strong>Reader Task (<code class="language-plaintext highlighter-rouge">stdin_reader</code>)</strong>: The context manager starts a background task that continuously reads lines from the process’s actual <code class="language-plaintext highlighter-rouge">stdin</code>.
+    <ul>
+      <li>For each line received:
+        <ul>
+          <li>It tries to parse the line as a JSON string.</li>
+          <li>It validates the JSON against the <code class="language-plaintext highlighter-rouge">JSONRPCMessage</code> Pydantic model (<a href="07_mcp_protocol_types.md">Chapter 7</a>).</li>
+          <li>If valid, it puts the <code class="language-plaintext highlighter-rouge">JSONRPCMessage</code> object onto the <code class="language-plaintext highlighter-rouge">read_stream_writer</code> (which sends it to the <code class="language-plaintext highlighter-rouge">read_stream</code> your server is listening on).</li>
+          <li>If invalid, it might send an <code class="language-plaintext highlighter-rouge">Exception</code> object instead.</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><strong>Writer Task (<code class="language-plaintext highlighter-rouge">stdout_writer</code>)</strong>: It starts another background task that continuously reads <code class="language-plaintext highlighter-rouge">JSONRPCMessage</code> objects from the <code class="language-plaintext highlighter-rouge">write_stream_reader</code> (which receives messages your server sends to the <code class="language-plaintext highlighter-rouge">write_stream</code>).
+    <ul>
+      <li>For each message received:
+        <ul>
+          <li>It serializes the <code class="language-plaintext highlighter-rouge">JSONRPCMessage</code> object back into a JSON string.</li>
+          <li>It adds a newline character (<code class="language-plaintext highlighter-rouge">\n</code>) because <code class="language-plaintext highlighter-rouge">stdio</code> communication is typically line-based.</li>
+          <li>It writes the resulting string to the process’s actual <code class="language-plaintext highlighter-rouge">stdout</code>.</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><strong>Server Interaction:</strong> Your <code class="language-plaintext highlighter-rouge">MCPServer</code> (or <code class="language-plaintext highlighter-rouge">FastMCP</code>) interacts <em>only</em> with the yielded <code class="language-plaintext highlighter-rouge">read_stream</code> and <code class="language-plaintext highlighter-rouge">write_stream</code>. It doesn’t know about <code class="language-plaintext highlighter-rouge">stdin</code> or <code class="language-plaintext highlighter-rouge">stdout</code> directly. The transport handles the translation between these memory streams and the actual process I/O.</li>
+  <li><strong>Cleanup:</strong> When the <code class="language-plaintext highlighter-rouge">async with stdio_server()...</code> block finishes, the background reader/writer tasks are stopped, and the streams are closed.</li>
+</ol>
+
+<p><strong>Simplified Sequence Diagram (Stdio Transport during <code class="language-plaintext highlighter-rouge">callTool</code>)</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant ClientProc as Client Process (e.g., mcp CLI)
+    participant ClientStdio as Stdio Client Transport
+    participant ClientSess as ClientSession
+    participant ServerSess as ServerSession
+    participant ServerStdio as Stdio Server Transport
+    participant ServerProc as Server Process (your_server.py)
+
+    Note over ClientProc, ServerProc: OS connects pipes (stdout -&gt; stdin)
+
+    ClientSess-&gt;&gt;+ClientStdio: Send CallToolRequest via write_stream
+    ClientStdio-&gt;&gt;ClientStdio: Writer task reads from write_stream
+    ClientStdio-&gt;&gt;+ClientProc: Serialize &amp; write JSON line to stdout pipe
+    ServerProc-&gt;&gt;+ServerStdio: Reader task reads JSON line from stdin pipe
+    ServerStdio-&gt;&gt;ServerStdio: Parse &amp; validate JSONRPCMessage
+    ServerStdio-&gt;&gt;-ServerSess: Send message via read_stream_writer
+
+    Note over ServerSess: Server processes request...
+
+    ServerSess-&gt;&gt;+ServerStdio: Send CallToolResult via write_stream
+    ServerStdio-&gt;&gt;ServerStdio: Writer task reads from write_stream
+    ServerStdio-&gt;&gt;+ServerProc: Serialize &amp; write JSON line to stdout pipe
+    ClientProc-&gt;&gt;+ClientStdio: Reader task reads JSON line from stdin pipe
+    ClientStdio-&gt;&gt;ClientStdio: Parse &amp; validate JSONRPCMessage
+    ClientStdio-&gt;&gt;-ClientSess: Send message via read_stream_writer
+</code></pre>
+
+<p>This shows how the transport layers (<code class="language-plaintext highlighter-rouge">ClientStdio</code>, <code class="language-plaintext highlighter-rouge">ServerStdio</code>) act as intermediaries, translating between the Session’s memory streams and the actual process I/O pipes (<code class="language-plaintext highlighter-rouge">stdin</code>/<code class="language-plaintext highlighter-rouge">stdout</code>). The other transports (SSE, WebSocket, Memory) perform analogous translation tasks for their respective communication mechanisms.</p>
+
+<h2 id="diving-into-the-code-briefly">Diving into the Code (Briefly!)</h2>
+
+<p>Let’s look at the structure inside the transport files.</p>
+
+<p><strong><code class="language-plaintext highlighter-rouge">server/stdio.py</code> (Simplified <code class="language-plaintext highlighter-rouge">stdio_server</code>)</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">@</span><span class="n">asynccontextmanager</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">stdio_server</span><span class="p">(</span><span class="n">stdin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="c1"># ... (wrap sys.stdin/stdout if needed) ...
+</span>
+    <span class="c1"># Create the internal memory streams
+</span>    <span class="n">read_stream_writer</span><span class="p">,</span> <span class="n">read_stream</span> <span class="o">=</span> <span class="n">anyio</span><span class="p">.</span><span class="n">create_memory_object_stream</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">write_stream</span><span class="p">,</span> <span class="n">write_stream_reader</span> <span class="o">=</span> <span class="n">anyio</span><span class="p">.</span><span class="n">create_memory_object_stream</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">stdin_reader</span><span class="p">():</span> <span class="c1"># Reads from actual stdin
+</span>        <span class="k">try</span><span class="p">:</span>
+            <span class="k">async</span> <span class="k">with</span> <span class="n">read_stream_writer</span><span class="p">:</span>
+                <span class="k">async</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">stdin</span><span class="p">:</span> <span class="c1"># Read line from process stdin
+</span>                    <span class="k">try</span><span class="p">:</span>
+                        <span class="c1"># Validate and parse
+</span>                        <span class="n">message</span> <span class="o">=</span> <span class="n">types</span><span class="p">.</span><span class="n">JSONRPCMessage</span><span class="p">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                        <span class="k">await</span> <span class="n">read_stream_writer</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span> <span class="c1"># Send error upstream
+</span>                        <span class="k">continue</span>
+                    <span class="c1"># Send valid message to the session via internal stream
+</span>                    <span class="k">await</span> <span class="n">read_stream_writer</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="c1"># ... (error/close handling) ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">stdout_writer</span><span class="p">():</span> <span class="c1"># Writes to actual stdout
+</span>        <span class="k">try</span><span class="p">:</span>
+            <span class="k">async</span> <span class="k">with</span> <span class="n">write_stream_reader</span><span class="p">:</span>
+                <span class="c1"># Read message from the session via internal stream
+</span>                <span class="k">async</span> <span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">write_stream_reader</span><span class="p">:</span>
+                    <span class="c1"># Serialize to JSON string
+</span>                    <span class="n">json_str</span> <span class="o">=</span> <span class="n">message</span><span class="p">.</span><span class="n">model_dump_json</span><span class="p">(...)</span>
+                    <span class="c1"># Write line to process stdout
+</span>                    <span class="k">await</span> <span class="n">stdout</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="n">json_str</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+                    <span class="k">await</span> <span class="n">stdout</span><span class="p">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="c1"># ... (error/close handling) ...
+</span>
+    <span class="c1"># Start reader/writer tasks in the background
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">anyio</span><span class="p">.</span><span class="n">create_task_group</span><span class="p">()</span> <span class="k">as</span> <span class="n">tg</span><span class="p">:</span>
+        <span class="n">tg</span><span class="p">.</span><span class="n">start_soon</span><span class="p">(</span><span class="n">stdin_reader</span><span class="p">)</span>
+        <span class="n">tg</span><span class="p">.</span><span class="n">start_soon</span><span class="p">(</span><span class="n">stdout_writer</span><span class="p">)</span>
+        <span class="c1"># Yield the streams the session will use
+</span>        <span class="k">yield</span> <span class="n">read_stream</span><span class="p">,</span> <span class="n">write_stream</span>
+        <span class="c1"># Context manager exit cleans up tasks
+</span></code></pre></div></div>
+
+<p><strong><code class="language-plaintext highlighter-rouge">shared/memory.py</code> (Simplified <code class="language-plaintext highlighter-rouge">create_client_server_memory_streams</code>)</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">@</span><span class="n">asynccontextmanager</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">create_client_server_memory_streams</span><span class="p">():</span>
+    <span class="c1"># Create two pairs of connected memory streams
+</span>    <span class="n">server_to_client_send</span><span class="p">,</span> <span class="n">server_to_client_receive</span> <span class="o">=</span> <span class="n">anyio</span><span class="p">.</span><span class="n">create_memory_object_stream</span><span class="p">(...)</span>
+    <span class="n">client_to_server_send</span><span class="p">,</span> <span class="n">client_to_server_receive</span> <span class="o">=</span> <span class="n">anyio</span><span class="p">.</span><span class="n">create_memory_object_stream</span><span class="p">(...)</span>
+
+    <span class="c1"># Define the streams from each perspective
+</span>    <span class="n">client_streams</span> <span class="o">=</span> <span class="p">(</span><span class="n">server_to_client_receive</span><span class="p">,</span> <span class="n">client_to_server_send</span><span class="p">)</span>
+    <span class="n">server_streams</span> <span class="o">=</span> <span class="p">(</span><span class="n">client_to_server_receive</span><span class="p">,</span> <span class="n">server_to_client_send</span><span class="p">)</span>
+
+    <span class="c1"># Use async context manager to ensure streams are closed properly
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">server_to_client_receive</span><span class="p">,</span> <span class="n">client_to_server_send</span><span class="p">,</span> \
+               <span class="n">client_to_server_receive</span><span class="p">,</span> <span class="n">server_to_client_send</span><span class="p">:</span>
+        <span class="c1"># Yield the pairs of streams
+</span>        <span class="k">yield</span> <span class="n">client_streams</span><span class="p">,</span> <span class="n">server_streams</span>
+    <span class="c1"># Streams are automatically closed on exit
+</span></code></pre></div></div>
+
+<p>These snippets illustrate the pattern: set up the external communication (or fake it with memory streams), create internal memory streams for the Session, start background tasks to bridge the two, and yield the internal streams.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Congratulations on reaching the end of this introductory series! You’ve learned about Communication Transports – the crucial delivery services that move MCP messages between clients and servers.</p>
+
+<ul>
+  <li>Transports are the <strong>mechanisms</strong> for sending/receiving serialized messages (e.g., <code class="language-plaintext highlighter-rouge">stdio</code>, <code class="language-plaintext highlighter-rouge">sse</code>, <code class="language-plaintext highlighter-rouge">websocket</code>, <code class="language-plaintext highlighter-rouge">memory</code>).</li>
+  <li>Each transport suits different scenarios (command-line, web, testing).</li>
+  <li>Frameworks like <code class="language-plaintext highlighter-rouge">FastMCP</code> and tools like <code class="language-plaintext highlighter-rouge">mcp run</code> often handle the <strong>default transport (<code class="language-plaintext highlighter-rouge">stdio</code>) automatically</strong>.</li>
+  <li>Transports work by <strong>bridging</strong> the gap between the <code class="language-plaintext highlighter-rouge">Session</code>’s internal communication streams and the actual external I/O (pipes, sockets, queues).</li>
+</ul>
+
+<p>Understanding transports completes the picture of how MCP components fit together, from high-level abstractions like <code class="language-plaintext highlighter-rouge">FastMCP</code> down to the way messages are physically exchanged.</p>
+
+<p>You now have a solid foundation in the core concepts of the <code class="language-plaintext highlighter-rouge">MCP Python SDK</code>. From here, you can delve deeper into specific features, explore more complex examples, or start building your own powerful AI tools and integrations! Good luck!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

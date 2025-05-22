@@ -1,0 +1,336 @@
+<h1 id="chapter-8-clientserver-sessions-clientsession-serversession">Chapter 8: Client/Server Sessions (<code class="language-plaintext highlighter-rouge">ClientSession</code>, <code class="language-plaintext highlighter-rouge">ServerSession</code>)</h1>
+
+<p>Welcome back! In <a href="07_mcp_protocol_types.md">Chapter 7: MCP Protocol Types</a>, we learned about the standardized “digital forms” – the Pydantic models – that define the structure of messages exchanged between an MCP client and server. We saw examples like <code class="language-plaintext highlighter-rouge">CallToolRequest</code> and <code class="language-plaintext highlighter-rouge">ProgressNotification</code>.</p>
+
+<p>But knowing the <em>format</em> of a letter isn’t enough. How does a specific conversation between one client and one server actually happen over time? How does the server know which incoming response belongs to which outgoing request it sent earlier? How is the initial connection “hello” handled?</p>
+
+<p>Imagine you call a large company’s support line. You don’t just shout into the void; you get connected to a specific operator who handles <em>your</em> call from start to finish. This operator keeps track of your requests, finds the answers, and manages the connection until you hang up.</p>
+
+<p>In the <code class="language-plaintext highlighter-rouge">MCP Python SDK</code>, this “phone line operator” role is played by <strong>Session</strong> objects: <code class="language-plaintext highlighter-rouge">ClientSession</code> and <code class="language-plaintext highlighter-rouge">ServerSession</code>.</p>
+
+<h2 id="whats-a-session-the-dedicated-conversation-line">What’s a Session? The Dedicated Conversation Line</h2>
+
+<p>A <strong>Session</strong> object (<code class="language-plaintext highlighter-rouge">ClientSession</code> or <code class="language-plaintext highlighter-rouge">ServerSession</code>) manages the state and lifecycle of a <strong>single, ongoing connection</strong> between one MCP client and one MCP server. Think of it as establishing a dedicated phone line for one specific conversation.</p>
+
+<p>This “operator” handles several crucial tasks for that single connection:</p>
+
+<ol>
+  <li><strong>Initialization:</strong> Manages the initial “handshake” where the client and server introduce themselves, agree on the protocol version, and share their capabilities (like saying “Hello, I can do X, Y, and Z”).</li>
+  <li><strong>Sending &amp; Receiving:</strong> Handles the low-level details of sending outgoing messages (requests, notifications) and receiving incoming messages over the communication channel (like Stdio, WebSockets, etc., which we’ll cover in <a href="09_communication_transports__stdio__sse__websocket__memory_.md">Chapter 9: Communication Transports</a>).</li>
+  <li><strong>Request/Response Matching:</strong> When you send a request, it gets a unique ID. When a response comes back later with that same ID, the Session makes sure it’s delivered to the part of the code that’s waiting for <em>that specific</em> answer. It’s like the operator remembering who asked which question.</li>
+  <li><strong>State Management:</strong> Keeps track of whether the connection is initializing, active, or closed.</li>
+  <li><strong>Lifecycle:</strong> Manages the setup and eventual teardown (hang-up) of the connection.</li>
+</ol>
+
+<h2 id="two-sides-of-the-coin-clientsession-vs-serversession">Two Sides of the Coin: <code class="language-plaintext highlighter-rouge">ClientSession</code> vs. <code class="language-plaintext highlighter-rouge">ServerSession</code></h2>
+
+<p>Why are there two types of sessions? Because the client and server have different roles in the conversation:</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">ClientSession</code></strong>: Represents the <em>client’s</em> end of the connection. It’s primarily responsible for:
+    <ul>
+      <li><em>Initiating</em> the connection and the handshake (<code class="language-plaintext highlighter-rouge">initialize</code> request).</li>
+      <li><em>Sending</em> requests to the server (like <code class="language-plaintext highlighter-rouge">callTool</code>, <code class="language-plaintext highlighter-rouge">readResource</code>, <code class="language-plaintext highlighter-rouge">getPrompt</code>).</li>
+      <li><em>Receiving</em> responses and notifications <em>from</em> the server.</li>
+      <li>Handling server-initiated requests (like asking the client to generate text if the client has that capability).</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">ServerSession</code></strong>: Represents the <em>server’s</em> end of the connection. It’s primarily responsible for:
+    <ul>
+      <li><em>Responding</em> to the client’s <code class="language-plaintext highlighter-rouge">initialize</code> request.</li>
+      <li><em>Receiving</em> requests <em>from</em> the client.</li>
+      <li><em>Sending</em> responses and notifications <em>back</em> to the client (like tool results, resource content, log messages, progress updates).</li>
+      <li>Handling client-initiated notifications (like <code class="language-plaintext highlighter-rouge">initialized</code>).</li>
+    </ul>
+  </li>
+</ul>
+
+<p>They use the same underlying mechanisms but have different methods tailored to their role (e.g., <code class="language-plaintext highlighter-rouge">ClientSession</code> has <code class="language-plaintext highlighter-rouge">call_tool</code>, <code class="language-plaintext highlighter-rouge">ServerSession</code> has <code class="language-plaintext highlighter-rouge">send_log_message</code>).</p>
+
+<h2 id="how-fastmcp-uses-serversession-behind-the-scenes">How <code class="language-plaintext highlighter-rouge">FastMCP</code> Uses <code class="language-plaintext highlighter-rouge">ServerSession</code> (Behind the Scenes)</h2>
+
+<p>If you’re building a server using <code class="language-plaintext highlighter-rouge">FastMCP</code> (as we did in chapters <a href="02_fastmcp_server___fastmcp__.md">2</a> through <a href="06_fastmcp_context___context__.md">6</a>), you generally <strong>don’t interact with <code class="language-plaintext highlighter-rouge">ServerSession</code> directly</strong>.</p>
+
+<p>When a client connects to your <code class="language-plaintext highlighter-rouge">FastMCP</code> server:</p>
+<ol>
+  <li>The underlying transport layer (e.g., Stdio handler) accepts the connection.</li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> (or its underlying <code class="language-plaintext highlighter-rouge">MCPServer</code>) automatically creates a <code class="language-plaintext highlighter-rouge">ServerSession</code> object specifically for that new client connection.</li>
+  <li>This <code class="language-plaintext highlighter-rouge">ServerSession</code> handles the initialization handshake with the client.</li>
+  <li>When the client sends a request (like <code class="language-plaintext highlighter-rouge">callTool</code>), the <code class="language-plaintext highlighter-rouge">ServerSession</code> receives it, identifies it, and passes it to the appropriate <code class="language-plaintext highlighter-rouge">FastMCP</code> handler (which might involve the <code class="language-plaintext highlighter-rouge">ToolManager</code>).</li>
+  <li>When your tool function uses <code class="language-plaintext highlighter-rouge">ctx.info()</code> or <code class="language-plaintext highlighter-rouge">ctx.report_progress()</code> (<a href="06_fastmcp_context___context__.md">Chapter 6: FastMCP Context (<code class="language-plaintext highlighter-rouge">Context</code>)</a>), the <code class="language-plaintext highlighter-rouge">Context</code> object talks to its associated <code class="language-plaintext highlighter-rouge">ServerSession</code> to actually send the <code class="language-plaintext highlighter-rouge">LoggingMessageNotification</code> or <code class="language-plaintext highlighter-rouge">ProgressNotification</code> back to the client.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">ServerSession</code> manages this connection until the client disconnects.</li>
+</ol>
+
+<p>So, <code class="language-plaintext highlighter-rouge">ServerSession</code> is the hidden engine powering the communication for each connected client in a <code class="language-plaintext highlighter-rouge">FastMCP</code> server. You benefit from its work without needing to manage it manually.</p>
+
+<h2 id="when-might-you-use-clientsession">When Might You Use <code class="language-plaintext highlighter-rouge">ClientSession</code>?</h2>
+
+<p>You would typically use <code class="language-plaintext highlighter-rouge">ClientSession</code> if you were writing a standalone Python application that needs to <em>connect to</em> and <em>interact with</em> an existing MCP server (which might be one you built with <code class="language-plaintext highlighter-rouge">FastMCP</code> or someone else’s).</p>
+
+<p><strong>Example Scenario: A Simple Client</strong></p>
+
+<p><em>(This is conceptual; we won’t build a full client here.)</em></p>
+
+<p>Imagine you write a script that needs to ask our <code class="language-plaintext highlighter-rouge">CalculatorServer</code> (<a href="04_fastmcp_tools___tool____toolmanager__.md">Chapter 4</a>) to add two numbers.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># --- Conceptual Client Code ---
+</span><span class="kn">import</span> <span class="nn">anyio</span>
+<span class="kn">from</span> <span class="nn">mcp.client.session</span> <span class="kn">import</span> <span class="n">ClientSession</span>
+<span class="c1"># Assume we have transport streams (read_stream, write_stream)
+# connected to the CalculatorServer (more in Chapter 9)
+</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">run_client</span><span class="p">():</span>
+    <span class="c1"># 1. Create a ClientSession using the transport streams
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">ClientSession</span><span class="p">(</span><span class="n">read_stream</span><span class="p">,</span> <span class="n">write_stream</span><span class="p">)</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># 2. Perform the initialization handshake
+</span>            <span class="n">init_result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="p">.</span><span class="n">initialize</span><span class="p">()</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Connected to: </span><span class="si">{</span><span class="n">init_result</span><span class="p">.</span><span class="n">serverInfo</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+            <span class="c1"># 3. Send a 'callTool' request using the session
+</span>            <span class="n">tool_result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="p">.</span><span class="n">call_tool</span><span class="p">(</span>
+                <span class="n">name</span><span class="o">=</span><span class="s">"add"</span><span class="p">,</span>
+                <span class="n">arguments</span><span class="o">=</span><span class="p">{</span><span class="s">"num1"</span><span class="p">:</span> <span class="mi">15</span><span class="p">,</span> <span class="s">"num2"</span><span class="p">:</span> <span class="mi">27</span><span class="p">}</span>
+            <span class="p">)</span>
+
+            <span class="c1"># 4. Process the result (session handled matching response)
+</span>            <span class="c1"># Assuming the result is simple text content
+</span>            <span class="k">if</span> <span class="n">tool_result</span><span class="p">.</span><span class="n">content</span> <span class="ow">and</span> <span class="n">tool_result</span><span class="p">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nb">type</span> <span class="o">==</span> <span class="s">'text'</span><span class="p">:</span>
+               <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Server calculated: </span><span class="si">{</span><span class="n">tool_result</span><span class="p">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">text</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># Expected: 42
+</span>
+        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"An error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c1"># In a real script, you'd set up the transport and run this async function
+# anyio.run(run_client)
+</span></code></pre></div></div>
+
+<p>In this scenario:</p>
+<ol>
+  <li>We create the <code class="language-plaintext highlighter-rouge">ClientSession</code>.</li>
+  <li>We explicitly call <code class="language-plaintext highlighter-rouge">session.initialize()</code> to start the conversation.</li>
+  <li>We use <code class="language-plaintext highlighter-rouge">session.call_tool()</code> to send the request. The <code class="language-plaintext highlighter-rouge">ClientSession</code> assigns an ID, sends the message, and waits for the specific response with that ID.</li>
+  <li>The result comes back directly from the <code class="language-plaintext highlighter-rouge">call_tool</code> method.</li>
+</ol>
+
+<h2 id="how-sessions-work-under-the-hood-the-operators-workflow">How Sessions Work Under the Hood: The Operator’s Workflow</h2>
+
+<p>Let’s trace the lifecycle and the request/response matching managed by a session. We’ll use our phone operator analogy.</p>
+
+<ol>
+  <li><strong>Connection Established:</strong> A communication channel (like Stdio or WebSocket, see <a href="09_communication_transports__stdio__sse__websocket__memory_.md">Chapter 9</a>) is opened between the client and server.</li>
+  <li><strong>Session Creation:</strong> A <code class="language-plaintext highlighter-rouge">ClientSession</code> is created on the client side, and a <code class="language-plaintext highlighter-rouge">ServerSession</code> on the server side, both linked to this channel.</li>
+  <li><strong>Initialization (Handshake):</strong>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">ClientSession</code> sends an <code class="language-plaintext highlighter-rouge">InitializeRequest</code> (like calling and saying “Hi, I’m ClientApp v1.0, I support MCP v0.3, can we talk?”). It assigns this request ID 0.</li>
+      <li><code class="language-plaintext highlighter-rouge">ServerSession</code> receives ID 0. It knows this is the <code class="language-plaintext highlighter-rouge">initialize</code> method. It checks the protocol version, stores the client’s capabilities, and prepares its own info.</li>
+      <li><code class="language-plaintext highlighter-rouge">ServerSession</code> sends back an <code class="language-plaintext highlighter-rouge">InitializeResult</code> linked to ID 0 (like “Yes, I’m CalculatorServer v1.1, I also support v0.3, here are my capabilities…”).</li>
+      <li><code class="language-plaintext highlighter-rouge">ClientSession</code> receives the response for ID 0. It checks the server’s info and considers the handshake successful.</li>
+      <li><code class="language-plaintext highlighter-rouge">ClientSession</code> sends an <code class="language-plaintext highlighter-rouge">InitializedNotification</code> (just saying “Okay, great!”).</li>
+      <li><code class="language-plaintext highlighter-rouge">ServerSession</code> receives this notification and marks the session as fully initialized. The line is now open for regular business.</li>
+    </ul>
+  </li>
+  <li><strong>Client Sends Request:</strong>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">ClientSession</code> wants to call the <code class="language-plaintext highlighter-rouge">add</code> tool. It calls <code class="language-plaintext highlighter-rouge">session.call_tool("add", {...})</code>.</li>
+      <li>The <code class="language-plaintext highlighter-rouge">ClientSession</code> assigns a <em>new</em> unique ID (e.g., ID 1) to this request.</li>
+      <li>It stores a “waiting placeholder” (an <code class="language-plaintext highlighter-rouge">anyio</code> event or future) associated with ID 1.</li>
+      <li>It sends the <code class="language-plaintext highlighter-rouge">CallToolRequest</code> message with ID 1 over the channel.</li>
+    </ul>
+  </li>
+  <li><strong>Server Processes Request:</strong>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">ServerSession</code> receives the message with ID 1.</li>
+      <li>It sees it’s a <code class="language-plaintext highlighter-rouge">callTool</code> request for <code class="language-plaintext highlighter-rouge">add</code>.</li>
+      <li>It passes the request details to the <code class="language-plaintext highlighter-rouge">FastMCP</code> handler (which uses the <code class="language-plaintext highlighter-rouge">ToolManager</code>).</li>
+      <li>The tool function <code class="language-plaintext highlighter-rouge">add_numbers(15, 27)</code> runs and returns <code class="language-plaintext highlighter-rouge">42</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">FastMCP</code> gets the result.</li>
+    </ul>
+  </li>
+  <li><strong>Server Sends Response:</strong>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">ServerSession</code> constructs a <code class="language-plaintext highlighter-rouge">CallToolResult</code> containing <code class="language-plaintext highlighter-rouge">42</code>.</li>
+      <li>It sends this result back over the channel, making sure to include the <em>original</em> request ID (ID 1).</li>
+    </ul>
+  </li>
+  <li><strong>Client Receives Response:</strong>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">ClientSession</code> receives the message with ID 1.</li>
+      <li>It looks up ID 1 in its “waiting placeholders”.</li>
+      <li>It finds the placeholder created in step 4 and delivers the received <code class="language-plaintext highlighter-rouge">CallToolResult</code> to it.</li>
+      <li>The code that was waiting on <code class="language-plaintext highlighter-rouge">session.call_tool(...)</code> now receives the result (<code class="language-plaintext highlighter-rouge">42</code>) and continues execution.</li>
+    </ul>
+  </li>
+  <li><strong>Notifications (Example: Progress):</strong>
+    <ul>
+      <li>If the server tool called <code class="language-plaintext highlighter-rouge">ctx.report_progress(...)</code>, the <code class="language-plaintext highlighter-rouge">Context</code> tells the <code class="language-plaintext highlighter-rouge">ServerSession</code>.</li>
+      <li><code class="language-plaintext highlighter-rouge">ServerSession</code> constructs a <code class="language-plaintext highlighter-rouge">ProgressNotification</code> (which doesn’t have a request ID, as it’s not a response).</li>
+      <li><code class="language-plaintext highlighter-rouge">ServerSession</code> sends the notification.</li>
+      <li><code class="language-plaintext highlighter-rouge">ClientSession</code> receives the notification. It sees it’s not a response to a specific request. It might trigger a callback or event handler registered in the client application to update a progress bar.</li>
+    </ul>
+  </li>
+  <li><strong>Hang-up:</strong> When the connection closes (client exits, server shuts down, network error), the sessions clean up their resources.</li>
+</ol>
+
+<p><strong>Simplified Sequence Diagram (Client Calls Tool):</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant ClientApp
+    participant ClientSess as ClientSession
+    participant ServerSess as ServerSession
+    participant ServerTool as Tool Function (e.g., add_numbers)
+
+    ClientApp-&gt;&gt;+ClientSess: call_tool("add", {num1: 15, num2: 27})
+    ClientSess-&gt;&gt;ClientSess: Assign Request ID (e.g., 1)
+    ClientSess-&gt;&gt;ClientSess: Store 'waiter' for ID 1
+    ClientSess-&gt;&gt;+ServerSess: Send CallToolRequest (ID=1, method="tools/call", params={...})
+    ServerSess-&gt;&gt;ServerSess: Receive request ID=1
+    ServerSess-&gt;&gt;+ServerTool: Dispatch request to tool handler
+    ServerTool--&gt;&gt;-ServerSess: Return result (e.g., 42)
+    ServerSess-&gt;&gt;-ClientSess: Send CallToolResult (ID=1, result={content: [{"type": "text", "text": "42"}]})
+    ClientSess-&gt;&gt;ClientSess: Receive response ID=1
+    ClientSess-&gt;&gt;ClientSess: Match ID=1 to 'waiter'
+    ClientSess--&gt;&gt;-ClientApp: Return result (CallToolResult object)
+</code></pre>
+
+<p>This flow highlights how the session objects act as intermediaries, managing IDs and matching responses back to their original requests.</p>
+
+<h2 id="diving-into-the-code-briefly">Diving into the Code (Briefly!)</h2>
+
+<p>You typically won’t call these methods directly when using <code class="language-plaintext highlighter-rouge">FastMCP</code> for servers, but seeing the structure helps understand the session’s role. These snippets are heavily simplified.</p>
+
+<p><strong>Base Class (<code class="language-plaintext highlighter-rouge">shared/session.py</code>):</strong></p>
+
+<p>Both <code class="language-plaintext highlighter-rouge">ClientSession</code> and <code class="language-plaintext highlighter-rouge">ServerSession</code> inherit from <code class="language-plaintext highlighter-rouge">BaseSession</code>, which contains the core logic for sending/receiving and request/response matching.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from shared/session.py
+</span><span class="kn">import</span> <span class="nn">anyio</span>
+<span class="kn">from</span> <span class="nn">mcp.types</span> <span class="kn">import</span> <span class="n">JSONRPCRequest</span><span class="p">,</span> <span class="n">JSONRPCResponse</span><span class="p">,</span> <span class="n">JSONRPCError</span><span class="p">,</span> <span class="n">ErrorData</span>
+
+<span class="k">class</span> <span class="nc">BaseSession</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">read_stream</span><span class="p">,</span> <span class="n">write_stream</span><span class="p">,</span> <span class="p">...):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_read_stream</span> <span class="o">=</span> <span class="n">read_stream</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_write_stream</span> <span class="o">=</span> <span class="n">write_stream</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_response_streams</span> <span class="o">=</span> <span class="p">{}</span> <span class="c1"># Stores 'waiters' for responses, keyed by request ID
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_request_id_counter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># ... other setup ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">send_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">result_type</span><span class="p">):</span>
+        <span class="c1"># 1. Get a new unique ID
+</span>        <span class="n">request_id</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_request_id_counter</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_request_id_counter</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="c1"># 2. Create a 'waiter' (memory stream) to receive the response
+</span>        <span class="n">response_receiver</span><span class="p">,</span> <span class="n">response_sender</span> <span class="o">=</span> <span class="n">anyio</span><span class="p">.</span><span class="n">create_memory_object_stream</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_response_streams</span><span class="p">[</span><span class="n">request_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">response_sender</span>
+
+        <span class="c1"># 3. Format the request with the ID
+</span>        <span class="n">jsonrpc_request</span> <span class="o">=</span> <span class="n">JSONRPCRequest</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="n">request_id</span><span class="p">,</span> <span class="o">**</span><span class="n">request</span><span class="p">.</span><span class="n">model_dump</span><span class="p">())</span>
+
+        <span class="c1"># 4. Send it over the write stream
+</span>        <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_write_stream</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">JSONRPCMessage</span><span class="p">(</span><span class="n">jsonrpc_request</span><span class="p">))</span>
+
+        <span class="c1"># 5. Wait for the response to arrive on the 'waiter' stream
+</span>        <span class="n">response_or_error</span> <span class="o">=</span> <span class="k">await</span> <span class="n">response_receiver</span><span class="p">.</span><span class="n">receive</span><span class="p">()</span> <span class="c1"># Timeout logic omitted
+</span>
+        <span class="c1"># 6. Process response/error and return result
+</span>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">response_or_error</span><span class="p">,</span> <span class="n">JSONRPCError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">McpError</span><span class="p">(</span><span class="n">response_or_error</span><span class="p">.</span><span class="n">error</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">result_type</span><span class="p">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">response_or_error</span><span class="p">.</span><span class="n">result</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_receive_loop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Runs in the background, reading from the read_stream
+</span>        <span class="k">async</span> <span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">_read_stream</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">root</span><span class="p">,</span> <span class="p">(</span><span class="n">JSONRPCResponse</span><span class="p">,</span> <span class="n">JSONRPCError</span><span class="p">)):</span>
+                <span class="c1"># It's a response or error for a request we sent
+</span>                <span class="n">request_id</span> <span class="o">=</span> <span class="n">message</span><span class="p">.</span><span class="n">root</span><span class="p">.</span><span class="nb">id</span>
+                <span class="c1"># Find the matching 'waiter' stream
+</span>                <span class="n">response_sender</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_response_streams</span><span class="p">.</span><span class="n">pop</span><span class="p">(</span><span class="n">request_id</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">response_sender</span><span class="p">:</span>
+                    <span class="c1"># Send the response back to the waiting send_request call
+</span>                    <span class="k">await</span> <span class="n">response_sender</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">root</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Warning: Received response for unknown request ID </span><span class="si">{</span><span class="n">request_id</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">root</span><span class="p">,</span> <span class="n">JSONRPCRequest</span><span class="p">):</span>
+                <span class="c1"># It's a new request *from* the other side
+</span>                <span class="c1"># Subclasses (Client/ServerSession) handle this differently
+</span>                <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_handle_incoming_request</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">root</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">root</span><span class="p">,</span> <span class="n">JSONRPCNotification</span><span class="p">):</span>
+                 <span class="c1"># It's a notification *from* the other side
+</span>                 <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_handle_incoming_notification</span><span class="p">(</span><span class="n">message</span><span class="p">.</span><span class="n">root</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This shows the core <code class="language-plaintext highlighter-rouge">send_request</code> logic (assign ID, store waiter, send, wait) and the <code class="language-plaintext highlighter-rouge">_receive_loop</code> logic (read message, if response -&gt; find waiter, if request/notification -&gt; handle).</p>
+
+<p><strong>Server Session (<code class="language-plaintext highlighter-rouge">server/session.py</code>):</strong></p>
+
+<p>Adds server-specific logic, like handling the <code class="language-plaintext highlighter-rouge">initialize</code> request and sending server-to-client notifications.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from server/session.py
+</span><span class="kn">from</span> <span class="nn">mcp.types</span> <span class="kn">import</span> <span class="n">InitializeRequest</span><span class="p">,</span> <span class="n">InitializeResult</span><span class="p">,</span> <span class="n">InitializedNotification</span>
+
+<span class="k">class</span> <span class="nc">ServerSession</span><span class="p">(</span><span class="n">BaseSession</span><span class="p">):</span>
+    <span class="c1"># ... (init with server info, capabilities) ...
+</span>    <span class="n">_initialization_state</span> <span class="o">=</span> <span class="n">InitializationState</span><span class="p">.</span><span class="n">NotInitialized</span>
+    <span class="n">_client_params</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># Stores client info after initialization
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_handle_incoming_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">JSONRPCRequest</span><span class="p">):</span>
+        <span class="c1"># Server specifically handles 'initialize' request first
+</span>        <span class="k">if</span> <span class="n">request</span><span class="p">.</span><span class="n">method</span> <span class="o">==</span> <span class="s">"initialize"</span><span class="p">:</span>
+            <span class="c1"># ... (validate request, store client capabilities in self._client_params) ...
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">_initialization_state</span> <span class="o">=</span> <span class="n">InitializationState</span><span class="p">.</span><span class="n">Initializing</span>
+            <span class="n">init_result</span> <span class="o">=</span> <span class="n">InitializeResult</span><span class="p">(...)</span> <span class="c1"># Build result with server info
+</span>            <span class="c1"># Respond directly using the base class's internal send method
+</span>            <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_send_response</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="nb">id</span><span class="p">,</span> <span class="n">ServerResult</span><span class="p">(</span><span class="n">init_result</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="p">.</span><span class="n">_initialization_state</span> <span class="o">==</span> <span class="n">InitializationState</span><span class="p">.</span><span class="n">Initialized</span><span class="p">:</span>
+            <span class="c1"># For other requests, pass them to the main server logic
+</span>            <span class="c1"># (e.g., to FastMCP's request router) via an internal queue
+</span>            <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_pass_request_to_server_handler</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Error: Request received before initialization complete
+</span>            <span class="n">error</span> <span class="o">=</span> <span class="n">ErrorData</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="p">...,</span> <span class="n">message</span><span class="o">=</span><span class="s">"Server not initialized"</span><span class="p">)</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">_send_response</span><span class="p">(</span><span class="n">request</span><span class="p">.</span><span class="nb">id</span><span class="p">,</span> <span class="n">error</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_handle_incoming_notification</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">notification</span><span class="p">:</span> <span class="n">JSONRPCNotification</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">notification</span><span class="p">.</span><span class="n">method</span> <span class="o">==</span> <span class="s">"initialized"</span><span class="p">:</span>
+             <span class="bp">self</span><span class="p">.</span><span class="n">_initialization_state</span> <span class="o">=</span> <span class="n">InitializationState</span><span class="p">.</span><span class="n">Initialized</span>
+             <span class="k">print</span><span class="p">(</span><span class="s">"ServerSession: Client initialization complete."</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="p">.</span><span class="n">_initialization_state</span> <span class="o">==</span> <span class="n">InitializationState</span><span class="p">.</span><span class="n">Initialized</span><span class="p">:</span>
+            <span class="c1"># Pass other notifications to server logic if needed
+</span>            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+             <span class="c1"># Ignore notifications before initialized, or log warning
+</span>             <span class="k">pass</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">send_log_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c1"># Helper method to send a specific notification type
+</span>        <span class="n">log_notification</span> <span class="o">=</span> <span class="n">LoggingMessageNotification</span><span class="p">(...)</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">send_notification</span><span class="p">(</span><span class="n">ServerNotification</span><span class="p">(</span><span class="n">log_notification</span><span class="p">))</span>
+
+    <span class="c1"># ... other methods like send_progress_notification, send_resource_updated ...
+</span></code></pre></div></div>
+
+<p>This highlights how <code class="language-plaintext highlighter-rouge">ServerSession</code> intercepts the <code class="language-plaintext highlighter-rouge">initialize</code> request and the <code class="language-plaintext highlighter-rouge">initialized</code> notification to manage the connection state before passing other messages to the main server logic.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now explored <code class="language-plaintext highlighter-rouge">ClientSession</code> and <code class="language-plaintext highlighter-rouge">ServerSession</code>, the dedicated operators managing individual communication lines between MCP clients and servers.</p>
+
+<ul>
+  <li>A <strong>Session</strong> handles the lifecycle of a single connection.</li>
+  <li>It manages the <strong>initialization handshake</strong>.</li>
+  <li>It reliably <strong>sends and receives</strong> messages (requests, responses, notifications).</li>
+  <li>Crucially, it <strong>matches incoming responses to outgoing requests</strong> using unique IDs.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">ClientSession</code></strong> is used by clients to initiate connections and send requests <em>to</em> servers.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">ServerSession</code></strong> is used by servers to handle connections and respond <em>to</em> clients.</li>
+  <li>Frameworks like <strong><code class="language-plaintext highlighter-rouge">FastMCP</code> manage <code class="language-plaintext highlighter-rouge">ServerSession</code> automatically</strong> for you; interaction often happens indirectly via the <code class="language-plaintext highlighter-rouge">Context</code> object.</li>
+</ul>
+
+<p>Sessions provide the robust foundation for the request-response patterns and asynchronous notifications that make MCP communication work.</p>
+
+<p>In the final chapter of this foundational series, we’ll look at the different ways these sessions can actually transmit their messages back and forth: the various <a href="09_communication_transports__stdio__sse__websocket__memory_.md">Chapter 9: Communication Transports (Stdio, SSE, WebSocket, Memory)</a>.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

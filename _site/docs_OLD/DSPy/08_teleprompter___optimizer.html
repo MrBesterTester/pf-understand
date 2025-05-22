@@ -1,0 +1,332 @@
+<h1 id="chapter-8-teleprompter--optimizer---your-programs-coach">Chapter 8: Teleprompter / Optimizer - Your Program’s Coach</h1>
+
+<p>Welcome to Chapter 8! In <a href="07_evaluate.md">Chapter 7: Evaluate</a>, we learned how to grade our DSPy programs using metrics and datasets to see how well they perform. That’s great for knowing our score, but what if the score isn’t high enough?</p>
+
+<p>Think about building our <code class="language-plaintext highlighter-rouge">BasicQA</code> program from the last chapter. Maybe we tried running it and found it only got 75% accuracy. How do we improve it?</p>
+
+<p>Traditionally, we might start <strong>manually tweaking prompts</strong>:</p>
+<ul>
+  <li>“Maybe I should rephrase the instructions?”</li>
+  <li>“Should I add some examples (few-shot demonstrations)?”</li>
+  <li>“Which examples work best?”</li>
+</ul>
+
+<p>This manual process, often called “prompt engineering,” can be slow, tedious, and requires a lot of guesswork. Wouldn’t it be amazing if DSPy could <strong>automatically figure out the best prompts and examples</strong> for us?</p>
+
+<p>That’s exactly what <strong>Teleprompters</strong> (also called Optimizers) do! They are DSPy’s built-in automated prompt engineers and program tuners.</p>
+
+<p>Think of a Teleprompter as a <strong>coach</strong> for your DSPy program (the ‘student’):</p>
+<ul>
+  <li>The coach observes how the student performs on practice drills (a dataset).</li>
+  <li>It uses feedback (a metric) to figure out weaknesses.</li>
+  <li>It suggests new strategies (better instructions, better examples) to improve performance.</li>
+  <li>It repeats this until the student performs much better!</li>
+</ul>
+
+<p>In this chapter, we’ll learn:</p>
+
+<ul>
+  <li>What a Teleprompter is and the problem it solves.</li>
+  <li>The key ingredients needed to use a Teleprompter.</li>
+  <li>How to use a simple Teleprompter (<code class="language-plaintext highlighter-rouge">BootstrapFewShot</code>) to automatically find good few-shot examples.</li>
+  <li>The basic idea behind how Teleprompters optimize programs.</li>
+</ul>
+
+<p>Let’s automate the improvement process!</p>
+
+<h2 id="what-is-a-teleprompter--optimizer">What is a Teleprompter / Optimizer?</h2>
+
+<p>A <code class="language-plaintext highlighter-rouge">Teleprompter</code> in DSPy is an algorithm that takes your DSPy <a href="01_module___program.md">Program</a> (the ‘student’) and automatically tunes its internal parameters to maximize performance on a given task. These parameters are most often:</p>
+
+<ol>
+  <li><strong>Instructions:</strong> The natural language guidance given to the Language Models (<a href="05_lm__language_model_client_.md">LM</a>) within your program’s modules (like <code class="language-plaintext highlighter-rouge">dspy.Predict</code>).</li>
+  <li><strong>Few-Shot Examples (Demos):</strong> The <code class="language-plaintext highlighter-rouge">dspy.Example</code> objects provided in prompts to show the LM how to perform the task.</li>
+</ol>
+
+<p>Some advanced Teleprompters can even fine-tune the weights of the LM itself!</p>
+
+<p>To work its magic, a Teleprompter needs three things (sound familiar? They’re similar to evaluation!):</p>
+
+<ol>
+  <li><strong>The Student Program:</strong> The DSPy program you want to improve.</li>
+  <li><strong>A Training Dataset (<code class="language-plaintext highlighter-rouge">trainset</code>):</strong> A list of <code class="language-plaintext highlighter-rouge">dspy.Example</code> objects (<a href="03_example.md">Chapter 3: Example</a>) representing the task. The Teleprompter will use this data to practice and learn.</li>
+  <li><strong>A Metric Function (<code class="language-plaintext highlighter-rouge">metric</code>):</strong> The same kind of function we used in <a href="07_evaluate.md">Chapter 7: Evaluate</a>. It tells the Teleprompter how well the student program is doing on each example in the <code class="language-plaintext highlighter-rouge">trainset</code>.</li>
+</ol>
+
+<p>The Teleprompter uses the <code class="language-plaintext highlighter-rouge">metric</code> to guide its search for better instructions or demos, trying different combinations and keeping the ones that yield the highest score on the <code class="language-plaintext highlighter-rouge">trainset</code>. The output is an <strong>optimized version of your student program</strong>.</p>
+
+<h2 id="use-case-automatically-finding-good-few-shot-examples-with-bootstrapfewshot">Use Case: Automatically Finding Good Few-Shot Examples with <code class="language-plaintext highlighter-rouge">BootstrapFewShot</code></h2>
+
+<p>Let’s revisit our <code class="language-plaintext highlighter-rouge">BasicQA</code> program and the evaluation setup from Chapter 7.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">dspy</span>
+<span class="kn">from</span> <span class="nn">dspy.evaluate</span> <span class="kn">import</span> <span class="n">Evaluate</span>
+<span class="c1"># Assume LM is configured (e.g., dspy.settings.configure(lm=...))
+</span>
+<span class="c1"># Our simple program
+</span><span class="k">class</span> <span class="nc">BasicQA</span><span class="p">(</span><span class="n">dspy</span><span class="p">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">().</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">predictor</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Predict</span><span class="p">(</span><span class="s">'question -&gt; answer'</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">question</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">predictor</span><span class="p">(</span><span class="n">question</span><span class="o">=</span><span class="n">question</span><span class="p">)</span>
+
+<span class="c1"># Our metric from Chapter 7
+</span><span class="k">def</span> <span class="nf">simple_exact_match_metric</span><span class="p">(</span><span class="n">gold</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">prediction</span><span class="p">.</span><span class="n">answer</span><span class="p">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="n">gold</span><span class="p">.</span><span class="n">answer</span><span class="p">.</span><span class="n">lower</span><span class="p">()</span>
+
+<span class="c1"># Our dataset from Chapter 7 (let's use it as a trainset now)
+</span><span class="n">dev_example1</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Example</span><span class="p">(</span><span class="n">question</span><span class="o">=</span><span class="s">"What color is the sky?"</span><span class="p">,</span> <span class="n">answer</span><span class="o">=</span><span class="s">"blue"</span><span class="p">)</span>
+<span class="n">dev_example2</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Example</span><span class="p">(</span><span class="n">question</span><span class="o">=</span><span class="s">"What is 2 + 2?"</span><span class="p">,</span> <span class="n">answer</span><span class="o">=</span><span class="s">"4"</span><span class="p">)</span>
+<span class="n">dev_example3</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Example</span><span class="p">(</span><span class="n">question</span><span class="o">=</span><span class="s">"What is the capital of France?"</span><span class="p">,</span> <span class="n">answer</span><span class="o">=</span><span class="s">"Paris"</span><span class="p">)</span>
+<span class="c1"># Example our program might struggle with initially
+</span><span class="n">dev_example_hard</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Example</span><span class="p">(</span><span class="n">question</span><span class="o">=</span><span class="s">"Who painted the Mona Lisa?"</span><span class="p">,</span> <span class="n">answer</span><span class="o">=</span><span class="s">"Leonardo da Vinci"</span><span class="p">)</span>
+
+<span class="n">trainset</span> <span class="o">=</span> <span class="p">[</span><span class="n">dev_example1</span><span class="p">,</span> <span class="n">dev_example2</span><span class="p">,</span> <span class="n">dev_example3</span><span class="p">,</span> <span class="n">dev_example_hard</span><span class="p">]</span>
+<span class="n">trainset</span> <span class="o">=</span> <span class="p">[</span><span class="n">d</span><span class="p">.</span><span class="n">with_inputs</span><span class="p">(</span><span class="s">'question'</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">trainset</span><span class="p">]</span>
+
+<span class="c1"># Let's evaluate the initial program (likely imperfect)
+</span><span class="n">initial_program</span> <span class="o">=</span> <span class="n">BasicQA</span><span class="p">()</span>
+<span class="n">evaluator</span> <span class="o">=</span> <span class="n">Evaluate</span><span class="p">(</span><span class="n">devset</span><span class="o">=</span><span class="n">trainset</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="n">simple_exact_match_metric</span><span class="p">,</span> <span class="n">display_progress</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="n">initial_score</span> <span class="o">=</span> <span class="n">evaluator</span><span class="p">(</span><span class="n">initial_program</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Initial Score (on trainset): </span><span class="si">{</span><span class="n">initial_score</span><span class="si">}</span><span class="s">%"</span><span class="p">)</span>
+<span class="c1"># Might output: Initial Score (on trainset): 75.0% (assuming it fails the last one)
+</span></code></pre></div></div>
+
+<p>Our initial program gets 75%. We could try adding few-shot examples manually, but which ones? And how many?</p>
+
+<p>Let’s use <code class="language-plaintext highlighter-rouge">dspy.teleprompt.BootstrapFewShot</code>. This Teleprompter automatically creates and selects few-shot demonstrations for the predictors in your program.</p>
+
+<p><strong>1. Import the Teleprompter:</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">dspy.teleprompt</span> <span class="kn">import</span> <span class="n">BootstrapFewShot</span>
+</code></pre></div></div>
+
+<p><strong>2. Instantiate the Teleprompter:</strong>
+We need to give it the <code class="language-plaintext highlighter-rouge">metric</code> function it should use to judge success. We can also specify how many candidate demos (<code class="language-plaintext highlighter-rouge">max_bootstrapped_demos</code>) it should try to find for each predictor.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Configure the BootstrapFewShot optimizer
+# It will use the metric to find successful demonstrations
+# max_bootstrapped_demos=4 means it will try to find up to 4 good examples for EACH predictor
+</span><span class="n">config</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">max_bootstrapped_demos</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="n">simple_exact_match_metric</span><span class="p">)</span>
+<span class="n">teleprompter</span> <span class="o">=</span> <span class="n">BootstrapFewShot</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>3. Compile the Program:</strong>
+This is the main step. We call the Teleprompter’s <code class="language-plaintext highlighter-rouge">compile</code> method, giving it our initial <code class="language-plaintext highlighter-rouge">student</code> program and the <code class="language-plaintext highlighter-rouge">trainset</code>. It returns a <em>new</em>, optimized program.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Compile the program!
+# This runs the optimization process using the trainset.
+# It uses a 'teacher' model (often the student itself or a copy)
+# to generate traces, finds successful ones via the metric,
+# and adds them as demos to the student's predictors.
+</span><span class="n">compiled_program</span> <span class="o">=</span> <span class="n">teleprompter</span><span class="p">.</span><span class="nb">compile</span><span class="p">(</span><span class="n">student</span><span class="o">=</span><span class="n">initial_program</span><span class="p">,</span> <span class="n">trainset</span><span class="o">=</span><span class="n">trainset</span><span class="p">)</span>
+
+<span class="c1"># The 'compiled_program' is a new instance of BasicQA,
+# but its internal predictor now has few-shot examples added!
+</span></code></pre></div></div>
+
+<p><strong>What just happened?</strong></p>
+
+<p>Behind the scenes, <code class="language-plaintext highlighter-rouge">BootstrapFewShot</code> (conceptually):</p>
+<ul>
+  <li>Used a “teacher” program (often a copy of the student or another specified LM configuration) to run each example in the <code class="language-plaintext highlighter-rouge">trainset</code>.</li>
+  <li>For each example, it checked if the teacher’s output was correct using our <code class="language-plaintext highlighter-rouge">simple_exact_match_metric</code>.</li>
+  <li>If an example was processed correctly, the Teleprompter saved the input/output pair as a potential “demonstration” (a good example).</li>
+  <li>It collected these successful demonstrations.</li>
+  <li>It assigned a selection of these good demonstrations (<code class="language-plaintext highlighter-rouge">max_bootstrapped_demos</code>) to the <code class="language-plaintext highlighter-rouge">demos</code> attribute of the corresponding predictor inside our <code class="language-plaintext highlighter-rouge">compiled_program</code>.</li>
+</ul>
+
+<p><strong>4. Evaluate the Compiled Program:</strong>
+Now, let’s see if the optimized program performs better on the same <code class="language-plaintext highlighter-rouge">trainset</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Evaluate the compiled program
+</span><span class="n">compiled_score</span> <span class="o">=</span> <span class="n">evaluator</span><span class="p">(</span><span class="n">compiled_program</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Compiled Score (on trainset): </span><span class="si">{</span><span class="n">compiled_score</span><span class="si">}</span><span class="s">%"</span><span class="p">)</span>
+
+<span class="c1"># If the optimization worked, the score should be higher!
+# Might output: Compiled Score (on trainset): 100.0%
+</span></code></pre></div></div>
+
+<p>If <code class="language-plaintext highlighter-rouge">BootstrapFewShot</code> found good examples (like the “Mona Lisa” one after the teacher model successfully answered it), the <code class="language-plaintext highlighter-rouge">compiled_program</code> now has these examples embedded in its prompts, helping the LM perform better on similar questions. We automated the process of finding effective few-shot examples!</p>
+
+<h2 id="how-optimization-works-conceptual">How Optimization Works (Conceptual)</h2>
+
+<p>Different Teleprompters use different strategies, but the core idea is usually:</p>
+
+<ol>
+  <li><strong>Goal:</strong> Find program parameters (instructions, demos) that maximize the <code class="language-plaintext highlighter-rouge">metric</code> score on the <code class="language-plaintext highlighter-rouge">trainset</code>.</li>
+  <li><strong>Search Space:</strong> The “space” of all possible instructions or combinations of demos.</li>
+  <li><strong>Search Strategy:</strong> How the Teleprompter explores this space.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">BootstrapFewShot</code>: Generates candidate demos based on successful teacher executions.</li>
+      <li>Other optimizers (like <code class="language-plaintext highlighter-rouge">COPRO</code> or <code class="language-plaintext highlighter-rouge">MIPROv2</code> mentioned in the code snippets) might use an LM to <em>propose</em> new instructions, evaluate them, and iterate. Some use sophisticated search algorithms like Bayesian Optimization or random search.</li>
+    </ul>
+  </li>
+  <li><strong>Evaluation:</strong> Use the <code class="language-plaintext highlighter-rouge">metric</code> and <code class="language-plaintext highlighter-rouge">trainset</code> to score each candidate configuration (e.g., a program with specific demos or instructions).</li>
+  <li><strong>Selection:</strong> Keep the configuration that resulted in the best score.</li>
+</ol>
+
+<p><strong>Analogy Revisited:</strong></p>
+
+<ul>
+  <li><strong>Coach:</strong> The Teleprompter algorithm (<code class="language-plaintext highlighter-rouge">BootstrapFewShot</code>).</li>
+  <li><strong>Student:</strong> Your DSPy <code class="language-plaintext highlighter-rouge">Program</code> (<code class="language-plaintext highlighter-rouge">initial_program</code>).</li>
+  <li><strong>Practice Drills:</strong> The <code class="language-plaintext highlighter-rouge">trainset</code>.</li>
+  <li><strong>Scoring:</strong> The <code class="language-plaintext highlighter-rouge">metric</code> function (<code class="language-plaintext highlighter-rouge">simple_exact_match_metric</code>).</li>
+  <li><strong>Trying Techniques:</strong> Generating/selecting different demos or instructions.</li>
+  <li><strong>Adopting Best Techniques:</strong> Creating the <code class="language-plaintext highlighter-rouge">compiled_program</code> with the highest-scoring demos/instructions found.</li>
+</ul>
+
+<h2 id="how-it-works-under-the-hood-bootstrapfewshot-peek">How It Works Under the Hood (<code class="language-plaintext highlighter-rouge">BootstrapFewShot</code> Peek)</h2>
+
+<p>Let’s briefly look at the internal flow for <code class="language-plaintext highlighter-rouge">BootstrapFewShot.compile()</code>:</p>
+
+<ol>
+  <li><strong>Prepare Teacher:</strong> It sets up a ‘teacher’ program. This is often a copy of the student program, sometimes configured with specific settings (like a higher temperature for more exploration) or potentially using labeled examples if provided (<code class="language-plaintext highlighter-rouge">LabeledFewShot</code> within <code class="language-plaintext highlighter-rouge">BootstrapFewShot</code>).</li>
+  <li><strong>Iterate Trainset:</strong> It goes through each <code class="language-plaintext highlighter-rouge">example</code> in the <code class="language-plaintext highlighter-rouge">trainset</code>.</li>
+  <li><strong>Teacher Execution:</strong> For each <code class="language-plaintext highlighter-rouge">example</code>, it runs the <code class="language-plaintext highlighter-rouge">teacher</code> program (<code class="language-plaintext highlighter-rouge">teacher(**example.inputs())</code>). This happens within a <code class="language-plaintext highlighter-rouge">dspy.settings.context</code> block to capture the execution <code class="language-plaintext highlighter-rouge">trace</code>.</li>
+  <li><strong>Metric Check:</strong> It uses the provided <code class="language-plaintext highlighter-rouge">metric</code> to compare the <code class="language-plaintext highlighter-rouge">teacher</code>’s prediction against the <code class="language-plaintext highlighter-rouge">example</code>’s gold label (<code class="language-plaintext highlighter-rouge">metric(example, prediction, trace)</code>).</li>
+  <li><strong>Collect Demos:</strong> If the <code class="language-plaintext highlighter-rouge">metric</code> returns success (e.g., <code class="language-plaintext highlighter-rouge">True</code> or a score above a threshold), the Teleprompter extracts the input/output steps from the execution <code class="language-plaintext highlighter-rouge">trace</code>. Each successful trace step can become a candidate <code class="language-plaintext highlighter-rouge">dspy.Example</code> demonstration.</li>
+  <li><strong>Assign Demos:</strong> After iterating through the <code class="language-plaintext highlighter-rouge">trainset</code>, it takes the collected successful demonstrations (up to <code class="language-plaintext highlighter-rouge">max_bootstrapped_demos</code>) and assigns them to the <code class="language-plaintext highlighter-rouge">demos</code> attribute of the corresponding predictors in the <code class="language-plaintext highlighter-rouge">student</code> program instance.</li>
+  <li><strong>Return Compiled Student:</strong> It returns the modified <code class="language-plaintext highlighter-rouge">student</code> program, which now contains the bootstrapped few-shot examples.</li>
+</ol>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant Teleprompter as BootstrapFewShot
+    participant StudentProgram as Student Program
+    participant TeacherProgram as Teacher Program
+    participant LM as Language Model
+    participant Metric as Metric Function
+    participant CompiledProgram as Compiled Program (Student with Demos)
+
+    User-&gt;&gt;Teleprompter: compile(student=StudentProgram, trainset=...)
+    Teleprompter-&gt;&gt;TeacherProgram: Set up (copy of student, potentially modified)
+    loop For each example in trainset
+        Teleprompter-&gt;&gt;TeacherProgram: Run example.inputs()
+        TeacherProgram-&gt;&gt;LM: Make calls (via Predictors)
+        LM--&gt;&gt;TeacherProgram: Return predictions
+        TeacherProgram--&gt;&gt;Teleprompter: Return final prediction &amp; trace
+        Teleprompter-&gt;&gt;Metric: Evaluate(example, prediction, trace)
+        Metric--&gt;&gt;Teleprompter: Return score (success/fail)
+        alt Metric returns success
+            Teleprompter-&gt;&gt;Teleprompter: Extract demo from trace
+        end
+    end
+    Teleprompter-&gt;&gt;StudentProgram: Assign selected demos to predictors
+    StudentProgram--&gt;&gt;CompiledProgram: Create compiled version
+    Teleprompter--&gt;&gt;User: Return CompiledProgram
+</code></pre>
+
+<p><strong>Relevant Code Files:</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">dspy/teleprompt/teleprompt.py</code>: Defines the base <code class="language-plaintext highlighter-rouge">Teleprompter</code> class.</li>
+  <li><code class="language-plaintext highlighter-rouge">dspy/teleprompt/bootstrap.py</code>: Contains the implementation for <code class="language-plaintext highlighter-rouge">BootstrapFewShot</code>. Key methods include <code class="language-plaintext highlighter-rouge">compile</code> (orchestrates the process) and <code class="language-plaintext highlighter-rouge">_bootstrap_one_example</code> (handles running the teacher and checking the metric for a single training example).</li>
+</ul>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from dspy/teleprompt/bootstrap.py
+</span>
+<span class="c1"># ... imports ...
+</span><span class="kn">from</span> <span class="nn">.teleprompt</span> <span class="kn">import</span> <span class="n">Teleprompter</span>
+<span class="kn">from</span> <span class="nn">.vanilla</span> <span class="kn">import</span> <span class="n">LabeledFewShot</span> <span class="c1"># Used for teacher setup if labeled demos are needed
+</span><span class="kn">import</span> <span class="nn">dspy</span>
+
+<span class="k">class</span> <span class="nc">BootstrapFewShot</span><span class="p">(</span><span class="n">Teleprompter</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">max_bootstrapped_demos</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="p">...):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">metric</span> <span class="o">=</span> <span class="n">metric</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">max_bootstrapped_demos</span> <span class="o">=</span> <span class="n">max_bootstrapped_demos</span>
+        <span class="c1"># ... other initializations ...
+</span>
+    <span class="k">def</span> <span class="nf">compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">student</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">teacher</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">trainset</span><span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">trainset</span> <span class="o">=</span> <span class="n">trainset</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_prepare_student_and_teacher</span><span class="p">(</span><span class="n">student</span><span class="p">,</span> <span class="n">teacher</span><span class="p">)</span> <span class="c1"># Sets up self.student and self.teacher
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_prepare_predictor_mappings</span><span class="p">()</span> <span class="c1"># Links student predictors to teacher predictors
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">_bootstrap</span><span class="p">()</span> <span class="c1"># Runs the core bootstrapping logic
+</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">student</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_train</span><span class="p">()</span> <span class="c1"># Assigns collected demos to the student
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">student</span><span class="p">.</span><span class="n">_compiled</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">student</span>
+
+    <span class="k">def</span> <span class="nf">_bootstrap</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># ... setup ...
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">name2traces</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="p">[]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">name2predictor</span><span class="p">}</span> <span class="c1"># Store successful traces per predictor
+</span>
+        <span class="k">for</span> <span class="n">example_idx</span><span class="p">,</span> <span class="n">example</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tqdm</span><span class="p">.</span><span class="n">tqdm</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">trainset</span><span class="p">)):</span>
+            <span class="c1"># ... logic to stop early if enough demos found ...
+</span>            <span class="n">success</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_bootstrap_one_example</span><span class="p">(</span><span class="n">example</span><span class="p">,</span> <span class="n">round_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="c1"># Try to get a demo from this example
+</span>            <span class="c1"># ... potentially multiple rounds ...
+</span>
+        <span class="c1"># ... logging ...
+</span>
+    <span class="k">def</span> <span class="nf">_bootstrap_one_example</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">round_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="c1"># ... setup teacher context (e.g., temperature) ...
+</span>        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">dspy</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">context</span><span class="p">(</span><span class="n">trace</span><span class="o">=</span><span class="p">[],</span> <span class="o">**</span><span class="bp">self</span><span class="p">.</span><span class="n">teacher_settings</span><span class="p">):</span>
+                <span class="c1"># Optionally modify teacher LM settings for exploration
+</span>                <span class="c1"># ...
+</span>                <span class="c1"># Run the teacher program
+</span>                <span class="n">prediction</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">teacher</span><span class="p">(</span><span class="o">**</span><span class="n">example</span><span class="p">.</span><span class="n">inputs</span><span class="p">())</span>
+                <span class="n">trace</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">settings</span><span class="p">.</span><span class="n">trace</span> <span class="c1"># Get the execution trace
+</span>
+                <span class="c1"># Evaluate the prediction using the metric
+</span>                <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">metric</span><span class="p">:</span>
+                    <span class="n">metric_val</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">metric</span><span class="p">(</span><span class="n">example</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="n">trace</span><span class="p">)</span>
+                    <span class="c1"># Determine success based on metric value/threshold
+</span>                    <span class="n">success</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">metric_val</span><span class="p">)</span> <span class="c1"># Simplified
+</span>                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">success</span> <span class="o">=</span> <span class="bp">True</span> <span class="c1"># Assume success if no metric provided
+</span>        <span class="k">except</span> <span class="nb">Exception</span><span class="p">:</span>
+            <span class="n">success</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="c1"># ... error handling ...
+</span>
+        <span class="k">if</span> <span class="n">success</span><span class="p">:</span>
+            <span class="c1"># If successful, extract demos from the trace
+</span>            <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="n">trace</span><span class="p">:</span>
+                <span class="n">predictor</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">outputs</span> <span class="o">=</span> <span class="n">step</span>
+                <span class="n">demo</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Example</span><span class="p">(</span><span class="n">augmented</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="o">**</span><span class="n">inputs</span><span class="p">,</span> <span class="o">**</span><span class="n">outputs</span><span class="p">)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">predictor_name</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">predictor2name</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">predictor</span><span class="p">)]</span>
+                    <span class="c1"># Store the successful demo example
+</span>                    <span class="bp">self</span><span class="p">.</span><span class="n">name2traces</span><span class="p">[</span><span class="n">predictor_name</span><span class="p">].</span><span class="n">append</span><span class="p">(</span><span class="n">demo</span><span class="p">)</span>
+                <span class="k">except</span> <span class="nb">KeyError</span><span class="p">:</span>
+                    <span class="k">continue</span> <span class="c1"># Handle potential issues finding the predictor
+</span>
+        <span class="k">return</span> <span class="n">success</span>
+
+    <span class="k">def</span> <span class="nf">_train</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Assign the collected demos to the student's predictors
+</span>        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">predictor</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">student</span><span class="p">.</span><span class="n">named_predictors</span><span class="p">():</span>
+            <span class="n">demos_for_predictor</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">name2traces</span><span class="p">[</span><span class="n">name</span><span class="p">][:</span><span class="bp">self</span><span class="p">.</span><span class="n">max_bootstrapped_demos</span><span class="p">]</span>
+            <span class="c1"># Potentially mix with labeled demos if configured
+</span>            <span class="c1"># ...
+</span>            <span class="n">predictor</span><span class="p">.</span><span class="n">demos</span> <span class="o">=</span> <span class="n">demos_for_predictor</span> <span class="c1"># Assign the demos!
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">student</span>
+
+</code></pre></div></div>
+
+<p>This simplified view shows the core loop: run the teacher, check the metric, collect successful traces as demos, and finally assign those demos to the student program.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now learned about DSPy’s <strong>Teleprompters / Optimizers</strong>, the powerful tools for automating prompt engineering!</p>
+
+<ul>
+  <li>Teleprompters act like <strong>coaches</strong>, automatically tuning your DSPy programs (students).</li>
+  <li>They optimize parameters like <strong>instructions</strong> and <strong>few-shot examples (demos)</strong>.</li>
+  <li>They require a <strong>student program</strong>, a <strong>training dataset</strong>, and a <strong>metric</strong> function.</li>
+  <li>We saw how <code class="language-plaintext highlighter-rouge">BootstrapFewShot</code> automatically finds effective few-shot examples by running a teacher model and collecting successful execution traces.</li>
+  <li>The result of <code class="language-plaintext highlighter-rouge">teleprompter.compile()</code> is an <strong>optimized program</strong> instance, ready to be used or evaluated further.</li>
+</ul>
+
+<p>Teleprompters save you from the tedious process of manual tuning, allowing you to build high-performing LM-based programs more efficiently.</p>
+
+<p>Now that we understand how to build, evaluate, and automatically optimize DSPy programs, how can we make them interact smoothly with different data formats or models, especially when integrating with other systems? That’s where <strong>Adapters</strong> come in.</p>
+
+<p><strong>Next:</strong> <a href="09_adapter.md">Chapter 9: Adapter</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

@@ -1,0 +1,320 @@
+<h1 id="chapter-5-process---orchestrating-the-workflow">Chapter 5: Process - Orchestrating the Workflow</h1>
+
+<p>In <a href="04_tool.md">Chapter 4: Tool</a>, we learned how to give our <a href="02_agent.md">Agent</a>s special abilities using <code class="language-plaintext highlighter-rouge">Tool</code>s, like searching the web. Now we have specialized agents, defined tasks, and equipped agents. But how do they actually <em>work together</em>? Does Agent 1 finish its work before Agent 2 starts? Or is there a manager overseeing everything?</p>
+
+<p>This coordination is handled by the <strong><code class="language-plaintext highlighter-rouge">Process</code></strong>.</p>
+
+<h2 id="why-do-we-need-a-process">Why Do We Need a Process?</h2>
+
+<p>Think back to our trip planning <a href="01_crew.md">Crew</a>. We have a ‘Travel Researcher’ agent and an ‘Activity Planner’ agent.</p>
+
+<ul>
+  <li><strong>Scenario 1:</strong> Maybe the Researcher needs to find the city <em>first</em>, and <em>then</em> the Planner creates the itinerary for that specific city. The work happens in a specific order.</li>
+  <li><strong>Scenario 2:</strong> Maybe we have a more complex project with many agents (Researcher, Planner, Booker, Budgeter). Perhaps we want a ‘Project Manager’ agent to receive the main goal, decide which agent needs to do what first, review their work, and then assign the next step.</li>
+</ul>
+
+<p>The way the agents collaborate and the order in which <a href="03_task.md">Task</a>s are executed is crucial for success. A well-defined <code class="language-plaintext highlighter-rouge">Process</code> ensures work flows smoothly and efficiently.</p>
+
+<p><strong>Problem Solved:</strong> <code class="language-plaintext highlighter-rouge">Process</code> defines the strategy or workflow the <a href="01_crew.md">Crew</a> uses to execute its <a href="03_task.md">Task</a>s. It dictates how <a href="02_agent.md">Agent</a>s collaborate and how information moves between them.</p>
+
+<h2 id="what-is-a-process">What is a Process?</h2>
+
+<p>Think of the <code class="language-plaintext highlighter-rouge">Process</code> as the <strong>project management style</strong> for your <a href="01_crew.md">Crew</a>. It determines the overall flow of work. CrewAI primarily supports two types of processes:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">Process.sequential</code></strong>:
+    <ul>
+      <li><strong>Analogy:</strong> Like following a recipe or a checklist.</li>
+      <li><strong>How it works:</strong> Tasks are executed one after another, in the exact order you list them in the <code class="language-plaintext highlighter-rouge">Crew</code> definition. The output of the first task automatically becomes available as context for the second task, the output of the second for the third, and so on.</li>
+      <li><strong>Best for:</strong> Simple, linear workflows where each step clearly follows the previous one.</li>
+    </ul>
+  </li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Process.hierarchical</code></strong>:
+    <ul>
+      <li><strong>Analogy:</strong> Like a traditional company structure with a manager.</li>
+      <li><strong>How it works:</strong> You designate a “manager” <a href="02_agent.md">Agent</a> (usually by providing a specific <code class="language-plaintext highlighter-rouge">manager_llm</code> or a custom <code class="language-plaintext highlighter-rouge">manager_agent</code> to the <code class="language-plaintext highlighter-rouge">Crew</code>). This manager receives the overall goal and the list of tasks. It then analyzes the tasks and decides which <em>worker</em> agent should perform which task, potentially breaking them down or reordering them. The manager delegates work, reviews results, and coordinates the team until the goal is achieved.</li>
+      <li><strong>Best for:</strong> More complex projects where task order might change, delegation is needed, or a central coordinator can optimize the workflow.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Choosing the right <code class="language-plaintext highlighter-rouge">Process</code> is key to structuring how your agents interact.</p>
+
+<h2 id="how-to-use-process">How to Use Process</h2>
+
+<p>You define the process when you create your <code class="language-plaintext highlighter-rouge">Crew</code>, using the <code class="language-plaintext highlighter-rouge">process</code> parameter.</p>
+
+<h3 id="sequential-process">Sequential Process</h3>
+
+<p>This is the default and simplest process. We already used it in <a href="01_crew.md">Chapter 1</a>!</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Assuming 'researcher' and 'planner' agents are defined (from Chapter 2)
+# Assuming 'task1' (find cities) and 'task2' (create itinerary) are defined (from Chapter 3)
+# task1 assigned to researcher, task2 assigned to planner
+</span>
+<span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Crew</span><span class="p">,</span> <span class="n">Process</span>
+
+<span class="c1"># Define the crew with a sequential process
+</span><span class="n">trip_crew</span> <span class="o">=</span> <span class="n">Crew</span><span class="p">(</span>
+  <span class="n">agents</span><span class="o">=</span><span class="p">[</span><span class="n">researcher</span><span class="p">,</span> <span class="n">planner</span><span class="p">],</span>
+  <span class="n">tasks</span><span class="o">=</span><span class="p">[</span><span class="n">task1</span><span class="p">,</span> <span class="n">task2</span><span class="p">],</span>
+  <span class="n">process</span><span class="o">=</span><span class="n">Process</span><span class="p">.</span><span class="n">sequential</span> <span class="c1"># Explicitly setting the sequential process
+</span>  <span class="c1"># verbose=2 # Optional verbosity
+</span><span class="p">)</span>
+
+<span class="c1"># Start the work
+# result = trip_crew.kickoff()
+# print(result)
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We import <code class="language-plaintext highlighter-rouge">Crew</code> and <code class="language-plaintext highlighter-rouge">Process</code>.</li>
+  <li>When creating the <code class="language-plaintext highlighter-rouge">trip_crew</code>, we pass our list of <code class="language-plaintext highlighter-rouge">agents</code> and <code class="language-plaintext highlighter-rouge">tasks</code>.</li>
+  <li>We set <code class="language-plaintext highlighter-rouge">process=Process.sequential</code>.</li>
+  <li>When <code class="language-plaintext highlighter-rouge">kickoff()</code> is called:
+    <ol>
+      <li><code class="language-plaintext highlighter-rouge">task1</code> (Find Cities) is executed by the <code class="language-plaintext highlighter-rouge">researcher</code>.</li>
+      <li>The output of <code class="language-plaintext highlighter-rouge">task1</code> (the list of cities) is automatically passed as context.</li>
+      <li><code class="language-plaintext highlighter-rouge">task2</code> (Create Itinerary) is executed by the <code class="language-plaintext highlighter-rouge">planner</code>, using the cities list from <code class="language-plaintext highlighter-rouge">task1</code>.</li>
+      <li>The final output of <code class="language-plaintext highlighter-rouge">task2</code> is returned.</li>
+    </ol>
+  </li>
+</ul>
+
+<p>It’s simple and predictable: Task 1 -&gt; Task 2 -&gt; Done.</p>
+
+<h3 id="hierarchical-process">Hierarchical Process</h3>
+
+<p>For this process, the <code class="language-plaintext highlighter-rouge">Crew</code> needs a manager. You usually specify the language model the manager should use (<code class="language-plaintext highlighter-rouge">manager_llm</code>). The manager agent is created internally by CrewAI using this LLM.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Assuming 'researcher' and 'planner' agents are defined
+# Assuming 'task1' and 'task2' are defined (WITHOUT necessarily assigning agents initially)
+# You need an LLM configured (e.g., from OpenAI, Ollama - see Chapter 6)
+# from langchain_openai import ChatOpenAI # Example LLM
+</span>
+<span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Crew</span><span class="p">,</span> <span class="n">Process</span><span class="p">,</span> <span class="n">Task</span>
+
+<span class="c1"># Example tasks (agent assignment might be handled by the manager)
+</span><span class="n">task1</span> <span class="o">=</span> <span class="n">Task</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">'Find top 3 European cities for a sunny May birthday trip.'</span><span class="p">,</span> <span class="n">expected_output</span><span class="o">=</span><span class="s">'List of 3 cities with justifications.'</span><span class="p">)</span>
+<span class="n">task2</span> <span class="o">=</span> <span class="n">Task</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">'Create a 3-day itinerary for the best city found.'</span><span class="p">,</span> <span class="n">expected_output</span><span class="o">=</span><span class="s">'Detailed 3-day plan.'</span><span class="p">)</span>
+
+<span class="c1"># Define the crew with a hierarchical process and a manager LLM
+</span><span class="n">hierarchical_crew</span> <span class="o">=</span> <span class="n">Crew</span><span class="p">(</span>
+  <span class="n">agents</span><span class="o">=</span><span class="p">[</span><span class="n">researcher</span><span class="p">,</span> <span class="n">planner</span><span class="p">],</span> <span class="c1"># The worker agents
+</span>  <span class="n">tasks</span><span class="o">=</span><span class="p">[</span><span class="n">task1</span><span class="p">,</span> <span class="n">task2</span><span class="p">],</span> <span class="c1"># The tasks to be managed
+</span>  <span class="n">process</span><span class="o">=</span><span class="n">Process</span><span class="p">.</span><span class="n">hierarchical</span><span class="p">,</span> <span class="c1"># Set the process to hierarchical
+</span>  <span class="n">manager_llm</span><span class="o">=</span><span class="n">ChatOpenAI</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s">"gpt-4"</span><span class="p">)</span> <span class="c1"># Specify the LLM for the manager agent
+</span>  <span class="c1"># You could also provide a pre-configured manager_agent instance instead of manager_llm
+</span><span class="p">)</span>
+
+<span class="c1"># Start the work
+# result = hierarchical_crew.kickoff()
+# print(result)
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ul>
+  <li>We set <code class="language-plaintext highlighter-rouge">process=Process.hierarchical</code>.</li>
+  <li>We provide a list of worker <code class="language-plaintext highlighter-rouge">agents</code> (<code class="language-plaintext highlighter-rouge">researcher</code>, <code class="language-plaintext highlighter-rouge">planner</code>).</li>
+  <li>We provide the <code class="language-plaintext highlighter-rouge">tasks</code> that need to be accomplished. Note that for the hierarchical process, you <em>might</em> not need to assign agents directly to tasks, as the manager can decide who is best suited. However, assigning them can still provide hints to the manager.</li>
+  <li>Crucially, we provide <code class="language-plaintext highlighter-rouge">manager_llm</code>. CrewAI will use this LLM to create an internal ‘Manager Agent’. This agent’s implicit goal is to orchestrate the <code class="language-plaintext highlighter-rouge">agents</code> to complete the <code class="language-plaintext highlighter-rouge">tasks</code>.</li>
+  <li>When <code class="language-plaintext highlighter-rouge">kickoff()</code> is called:
+    <ol>
+      <li>The internal Manager Agent analyzes <code class="language-plaintext highlighter-rouge">task1</code> and <code class="language-plaintext highlighter-rouge">task2</code> and the available agents (<code class="language-plaintext highlighter-rouge">researcher</code>, <code class="language-plaintext highlighter-rouge">planner</code>).</li>
+      <li>It decides which agent should do <code class="language-plaintext highlighter-rouge">task1</code> (likely the <code class="language-plaintext highlighter-rouge">researcher</code>). It delegates the task using internal tools (like <code class="language-plaintext highlighter-rouge">AgentTools</code>).</li>
+      <li>It receives the result from the <code class="language-plaintext highlighter-rouge">researcher</code>.</li>
+      <li>It analyzes the result and decides the next step – likely delegating <code class="language-plaintext highlighter-rouge">task2</code> to the <code class="language-plaintext highlighter-rouge">planner</code>, providing the context from <code class="language-plaintext highlighter-rouge">task1</code>.</li>
+      <li>It receives the result from the <code class="language-plaintext highlighter-rouge">planner</code>.</li>
+      <li>Once all tasks are deemed complete by the manager, it compiles and returns the final result.</li>
+    </ol>
+  </li>
+</ul>
+
+<p>This process is more dynamic, allowing the manager to adapt the workflow.</p>
+
+<h2 id="how-process-works-under-the-hood">How Process Works “Under the Hood”</h2>
+
+<p>When you call <code class="language-plaintext highlighter-rouge">crew.kickoff()</code>, the first thing the <code class="language-plaintext highlighter-rouge">Crew</code> does is check its <code class="language-plaintext highlighter-rouge">process</code> attribute to determine the execution strategy.</p>
+
+<ol>
+  <li><strong>Input &amp; Setup:</strong> <code class="language-plaintext highlighter-rouge">kickoff()</code> prepares the agents and tasks, interpolating any initial inputs.</li>
+  <li><strong>Process Check:</strong> It looks at <code class="language-plaintext highlighter-rouge">crew.process</code>.</li>
+  <li><strong>Execution Path:</strong>
+    <ul>
+      <li>If <code class="language-plaintext highlighter-rouge">Process.sequential</code>, it calls an internal method like <code class="language-plaintext highlighter-rouge">_run_sequential_process()</code>.</li>
+      <li>If <code class="language-plaintext highlighter-rouge">Process.hierarchical</code>, it first ensures a manager agent exists (creating one if <code class="language-plaintext highlighter-rouge">manager_llm</code> was provided) and then calls a method like <code class="language-plaintext highlighter-rouge">_run_hierarchical_process()</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Task Loop (Sequential):</strong> <code class="language-plaintext highlighter-rouge">_run_sequential_process()</code> iterates through the <code class="language-plaintext highlighter-rouge">tasks</code> list in order. For each task, it finds the assigned agent, gathers context from the <em>previous</em> task’s output, and asks the agent to execute the task.</li>
+  <li><strong>Managed Execution (Hierarchical):</strong> <code class="language-plaintext highlighter-rouge">_run_hierarchical_process()</code> delegates control to the manager agent. The manager agent, using its LLM and specialized delegation tools (like <code class="language-plaintext highlighter-rouge">AgentTools</code>), decides which task to tackle next and which worker agent to assign it to. It manages the flow until all tasks are completed.</li>
+  <li><strong>Output:</strong> The final result (usually the output of the last task) is packaged and returned.</li>
+</ol>
+
+<h3 id="visualization">Visualization</h3>
+
+<p>Let’s visualize the difference:</p>
+
+<p><strong>Sequential Process:</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant MyCrew as Crew (Sequential)
+    participant ResearcherAgent as Researcher
+    participant PlannerAgent as Planner
+
+    User-&gt;&gt;MyCrew: kickoff()
+    MyCrew-&gt;&gt;ResearcherAgent: Execute Task 1 ("Find cities")
+    ResearcherAgent--&gt;&gt;MyCrew: Task 1 Output (Cities List)
+    MyCrew-&gt;&gt;PlannerAgent: Execute Task 2 ("Create itinerary")\nwith Task 1 Output context
+    PlannerAgent--&gt;&gt;MyCrew: Task 2 Output (Itinerary)
+    MyCrew--&gt;&gt;User: Final Result (Task 2 Output)
+</code></pre>
+
+<p><strong>Hierarchical Process:</strong></p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant MyCrew as Crew (Hierarchical)
+    participant ManagerAgent as Manager
+    participant ResearcherAgent as Researcher
+    participant PlannerAgent as Planner
+
+    User-&gt;&gt;MyCrew: kickoff()
+    MyCrew-&gt;&gt;ManagerAgent: Goal: Plan Trip (Tasks: Find Cities, Create Itinerary)
+    ManagerAgent-&gt;&gt;ManagerAgent: Decide: Researcher should do Task 1
+    ManagerAgent-&gt;&gt;ResearcherAgent: Delegate: Execute Task 1 ("Find cities")
+    ResearcherAgent--&gt;&gt;ManagerAgent: Task 1 Output (Cities List)
+    ManagerAgent-&gt;&gt;ManagerAgent: Decide: Planner should do Task 2 with context
+    ManagerAgent-&gt;&gt;PlannerAgent: Delegate: Execute Task 2 ("Create itinerary", Cities List)
+    PlannerAgent--&gt;&gt;ManagerAgent: Task 2 Output (Itinerary)
+    ManagerAgent-&gt;&gt;MyCrew: Report Final Result (Itinerary)
+    MyCrew--&gt;&gt;User: Final Result (Itinerary)
+</code></pre>
+
+<h3 id="diving-into-the-code-crewpy">Diving into the Code (<code class="language-plaintext highlighter-rouge">crew.py</code>)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">Crew</code> class in <code class="language-plaintext highlighter-rouge">crewai/crew.py</code> holds the logic.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from crewai/crew.py
+</span><span class="kn">from</span> <span class="nn">crewai.process</span> <span class="kn">import</span> <span class="n">Process</span>
+<span class="kn">from</span> <span class="nn">crewai.task</span> <span class="kn">import</span> <span class="n">Task</span>
+<span class="kn">from</span> <span class="nn">crewai.agents.agent_builder.base_agent</span> <span class="kn">import</span> <span class="n">BaseAgent</span>
+<span class="c1"># ... other imports
+</span>
+<span class="k">class</span> <span class="nc">Crew</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="c1"># ... other fields like agents, tasks ...
+</span>    <span class="n">process</span><span class="p">:</span> <span class="n">Process</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">Process</span><span class="p">.</span><span class="n">sequential</span><span class="p">)</span>
+    <span class="n">manager_llm</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+    <span class="n">manager_agent</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BaseAgent</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+    <span class="c1"># ... other fields ...
+</span>
+    <span class="o">@</span><span class="n">model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s">"after"</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">check_manager_llm</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Ensures manager_llm or manager_agent is set for hierarchical process
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">Process</span><span class="p">.</span><span class="n">hierarchical</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="p">.</span><span class="n">manager_llm</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="p">.</span><span class="n">manager_agent</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">PydanticCustomError</span><span class="p">(</span>
+                    <span class="s">"missing_manager_llm_or_manager_agent"</span><span class="p">,</span>
+                    <span class="s">"Attribute `manager_llm` or `manager_agent` is required when using hierarchical process."</span><span class="p">,</span>
+                    <span class="p">{},</span>
+                <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span> <span class="nf">kickoff</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CrewOutput</span><span class="p">:</span>
+        <span class="c1"># ... setup, input interpolation, callback setup ...
+</span>
+        <span class="c1"># THE CORE DECISION BASED ON PROCESS:
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">Process</span><span class="p">.</span><span class="n">sequential</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_run_sequential_process</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="p">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">Process</span><span class="p">.</span><span class="n">hierarchical</span><span class="p">:</span>
+            <span class="c1"># Ensure manager is ready before running
+</span>            <span class="bp">self</span><span class="p">.</span><span class="n">_create_manager_agent</span><span class="p">()</span> <span class="c1"># Creates manager if needed
+</span>            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_run_hierarchical_process</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="nb">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s">"Process '</span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">process</span><span class="si">}</span><span class="s">' not implemented."</span><span class="p">)</span>
+
+        <span class="c1"># ... calculate usage metrics, final formatting ...
+</span>        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="k">def</span> <span class="nf">_run_sequential_process</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CrewOutput</span><span class="p">:</span>
+        <span class="n">task_outputs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">task_index</span><span class="p">,</span> <span class="n">task</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">tasks</span><span class="p">):</span>
+            <span class="n">agent</span> <span class="o">=</span> <span class="n">task</span><span class="p">.</span><span class="n">agent</span> <span class="c1"># Get assigned agent
+</span>            <span class="c1"># ... handle conditional tasks, async tasks ...
+</span>            <span class="n">context</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_get_context</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">task_outputs</span><span class="p">)</span> <span class="c1"># Get previous output
+</span>            <span class="n">output</span> <span class="o">=</span> <span class="n">task</span><span class="p">.</span><span class="n">execute_sync</span><span class="p">(</span><span class="n">agent</span><span class="o">=</span><span class="n">agent</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">)</span> <span class="c1"># Run task
+</span>            <span class="n">task_outputs</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+            <span class="c1"># ... logging/callbacks ...
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_create_crew_output</span><span class="p">(</span><span class="n">task_outputs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_run_hierarchical_process</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CrewOutput</span><span class="p">:</span>
+        <span class="c1"># This actually delegates the orchestration to the manager agent.
+</span>        <span class="c1"># The manager agent uses its LLM and tools (AgentTools)
+</span>        <span class="c1"># to call the worker agents sequentially or in parallel as it sees fit.
+</span>        <span class="n">manager</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">manager_agent</span>
+        <span class="c1"># Simplified concept: Manager executes a "meta-task"
+</span>        <span class="c1"># whose goal is to complete the crew's tasks using available agents.
+</span>        <span class="c1"># The actual implementation involves the manager agent's execution loop.
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="p">.</span><span class="n">_execute_tasks</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">tasks</span><span class="p">)</span> <span class="c1"># The manager guides this execution internally
+</span>
+    <span class="k">def</span> <span class="nf">_create_manager_agent</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Logic to setup the self.manager_agent instance, either using
+</span>        <span class="c1"># the provided self.manager_agent or creating a default one
+</span>        <span class="c1"># using self.manager_llm and AgentTools(agents=self.agents).
+</span>        <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">manager_agent</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="p">.</span><span class="n">manager_llm</span><span class="p">:</span>
+             <span class="c1"># Simplified: Create a default manager agent here
+</span>             <span class="c1"># It gets tools to delegate work to self.agents
+</span>             <span class="bp">self</span><span class="p">.</span><span class="n">manager_agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+                <span class="n">role</span><span class="o">=</span><span class="s">"Crew Manager"</span><span class="p">,</span>
+                <span class="n">goal</span><span class="o">=</span><span class="s">"Coordinate the crew to achieve their goals."</span><span class="p">,</span>
+                <span class="n">backstory</span><span class="o">=</span><span class="s">"An expert project manager."</span><span class="p">,</span>
+                <span class="n">llm</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">manager_llm</span><span class="p">,</span>
+                <span class="n">tools</span><span class="o">=</span><span class="n">AgentTools</span><span class="p">(</span><span class="n">agents</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">agents</span><span class="p">).</span><span class="n">tools</span><span class="p">(),</span> <span class="c1"># Gives it delegation capability
+</span>                <span class="n">allow_delegation</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="c1"># Must be true for manager
+</span>                <span class="n">verbose</span><span class="o">=</span><span class="bp">self</span><span class="p">.</span><span class="n">verbose</span>
+             <span class="p">)</span>
+             <span class="bp">self</span><span class="p">.</span><span class="n">manager_agent</span><span class="p">.</span><span class="n">crew</span> <span class="o">=</span> <span class="bp">self</span> <span class="c1"># Link back to crew
+</span>        <span class="c1"># Ensure manager has necessary setup...
+</span>        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">_execute_tasks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tasks</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Task</span><span class="p">],</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="n">CrewOutput</span><span class="p">:</span>
+      <span class="s">"""Internal method used by both sequential and hierarchical processes
+         to iterate through tasks. In hierarchical, the manager agent influences
+         which agent runs which task via delegation tools."""</span>
+      <span class="c1"># ... loops through tasks, gets agent (directly for seq, via manager for hier), executes ...
+</span>      <span class="k">pass</span>
+    <span class="c1"># ... other helper methods like _get_context, _create_crew_output ...
+</span>
+</code></pre></div></div>
+
+<p>Key takeaways from the code:</p>
+
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">Crew</code> stores the <code class="language-plaintext highlighter-rouge">process</code> type (<code class="language-plaintext highlighter-rouge">sequential</code> or <code class="language-plaintext highlighter-rouge">hierarchical</code>).</li>
+  <li>A validation (<code class="language-plaintext highlighter-rouge">check_manager_llm</code>) ensures a manager (<code class="language-plaintext highlighter-rouge">manager_llm</code> or <code class="language-plaintext highlighter-rouge">manager_agent</code>) is provided if <code class="language-plaintext highlighter-rouge">process</code> is <code class="language-plaintext highlighter-rouge">hierarchical</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">kickoff</code> method explicitly checks <code class="language-plaintext highlighter-rouge">self.process</code> to decide which internal execution method (<code class="language-plaintext highlighter-rouge">_run_sequential_process</code> or <code class="language-plaintext highlighter-rouge">_run_hierarchical_process</code>) to call.</li>
+  <li><code class="language-plaintext highlighter-rouge">_run_sequential_process</code> iterates through tasks in order.</li>
+  <li><code class="language-plaintext highlighter-rouge">_run_hierarchical_process</code> relies on the <code class="language-plaintext highlighter-rouge">manager_agent</code> (created by <code class="language-plaintext highlighter-rouge">_create_manager_agent</code> if needed) to manage the task execution flow, often using delegation tools.</li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now learned about the <code class="language-plaintext highlighter-rouge">Process</code> - the crucial setting that defines <em>how</em> your <a href="01_crew.md">Crew</a> collaborates.</p>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">Sequential</code></strong> is like a checklist: tasks run one by one, in order, with outputs flowing directly to the next task. Simple and predictable.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">Hierarchical</code></strong> is like having a manager: a dedicated manager <a href="02_agent.md">Agent</a> coordinates the worker agents, deciding who does what and when. More flexible for complex workflows.</li>
+</ul>
+
+<p>Choosing the right process helps structure your agent interactions effectively.</p>
+
+<p>So far, we’ve built the team (<a href="02_agent.md">Agent</a>), defined the work (<a href="03_task.md">Task</a>), given them abilities (<a href="04_tool.md">Tool</a>), and decided on the workflow (<a href="05_process.md">Process</a>). But what powers the “thinking” part of each agent? What is the “brain” that understands roles, goals, backstories, and uses tools? That’s the Large Language Model, or <a href="06_llm.md">LLM</a>. Let’s dive into that next!</p>
+
+<p><strong>Next:</strong> <a href="06_llm.md">Chapter 6: LLM - The Agent’s Brain</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

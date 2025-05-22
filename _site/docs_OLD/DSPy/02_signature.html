@@ -1,0 +1,216 @@
+<h1 id="chapter-2-signatures---defining-the-task">Chapter 2: Signatures - Defining the Task</h1>
+
+<p>In <a href="01_module___program.md">Chapter 1: Modules and Programs</a>, we learned that <code class="language-plaintext highlighter-rouge">Module</code>s are like Lego bricks that perform specific tasks, often using Language Models (<a href="05_lm__language_model_client_.md">LM</a>). We saw how <code class="language-plaintext highlighter-rouge">Program</code>s combine these modules.</p>
+
+<p>But how does a <code class="language-plaintext highlighter-rouge">Module</code>, especially one using an LM like <code class="language-plaintext highlighter-rouge">dspy.Predict</code>, know <em>exactly</em> what job to do?</p>
+
+<p>Imagine you ask a chef (our LM) to cook something. Just saying “cook” isn’t enough! You need to tell them:</p>
+<ol>
+  <li><strong>What ingredients to use</strong> (the inputs).</li>
+  <li><strong>What dish to make</strong> (the outputs).</li>
+  <li><strong>The recipe or instructions</strong> (how to make it).</li>
+</ol>
+
+<p>This is precisely what a <strong><code class="language-plaintext highlighter-rouge">Signature</code></strong> does in DSPy!</p>
+
+<p>A <code class="language-plaintext highlighter-rouge">Signature</code> acts like a clear recipe or contract for a DSPy <code class="language-plaintext highlighter-rouge">Module</code>. It defines:</p>
+
+<ul>
+  <li><strong>Input Fields:</strong> What information the module needs to start its work.</li>
+  <li><strong>Output Fields:</strong> What information the module is expected to produce.</li>
+  <li><strong>Instructions:</strong> Natural language guidance (like a recipe!) telling the underlying LM <em>how</em> to transform the inputs into the outputs.</li>
+</ul>
+
+<p>Think of it as specifying the ‘shape’ and ‘purpose’ of a module, making sure everyone (you, DSPy, and the LM) understands the task.</p>
+
+<h2 id="why-do-we-need-signatures">Why Do We Need Signatures?</h2>
+
+<p>Without a clear definition, how would a module like <code class="language-plaintext highlighter-rouge">dspy.Predict</code> know what to ask the LM?</p>
+
+<p>Let’s say we want a module to translate English text to French. We need to tell it:</p>
+<ul>
+  <li>It needs an <code class="language-plaintext highlighter-rouge">english_sentence</code> as input.</li>
+  <li>It should produce a <code class="language-plaintext highlighter-rouge">french_sentence</code> as output.</li>
+  <li>The <em>task</em> is to translate the input sentence into French.</li>
+</ul>
+
+<p>A <code class="language-plaintext highlighter-rouge">Signature</code> bundles all this information together neatly.</p>
+
+<h2 id="defining-a-signature-the-recipe-card">Defining a Signature: The Recipe Card</h2>
+
+<p>The most common way to define a Signature is by creating a Python class that inherits from <code class="language-plaintext highlighter-rouge">dspy.Signature</code>.</p>
+
+<p>Let’s create our English-to-French translation signature:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">dspy</span>
+<span class="kn">from</span> <span class="nn">dspy.signatures.field</span> <span class="kn">import</span> <span class="n">InputField</span><span class="p">,</span> <span class="n">OutputField</span>
+
+<span class="k">class</span> <span class="nc">TranslateToFrench</span><span class="p">(</span><span class="n">dspy</span><span class="p">.</span><span class="n">Signature</span><span class="p">):</span>
+    <span class="s">"""Translates English text to French."""</span> <span class="c1"># &lt;-- These are the Instructions!
+</span>
+    <span class="c1"># Define the Input Field the module expects
+</span>    <span class="n">english_sentence</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">InputField</span><span class="p">(</span><span class="n">desc</span><span class="o">=</span><span class="s">"The original sentence in English"</span><span class="p">)</span>
+
+    <span class="c1"># Define the Output Field the module should produce
+</span>    <span class="n">french_sentence</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">OutputField</span><span class="p">(</span><span class="n">desc</span><span class="o">=</span><span class="s">"The translated sentence in French"</span><span class="p">)</span>
+
+</code></pre></div></div>
+
+<p>Let’s break this down:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">class TranslateToFrench(dspy.Signature):</code></strong>: We declare a new class named <code class="language-plaintext highlighter-rouge">TranslateToFrench</code> that inherits from <code class="language-plaintext highlighter-rouge">dspy.Signature</code>. This tells DSPy it’s a signature definition.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">"""Translates English text to French."""</code></strong>: This is the <strong>docstring</strong>. It’s crucial! DSPy uses this docstring as the natural language <strong>Instructions</strong> for the LM. It tells the LM the <em>goal</em> of the task.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">english_sentence = dspy.InputField(...)</code></strong>: We define an input field named <code class="language-plaintext highlighter-rouge">english_sentence</code>. <code class="language-plaintext highlighter-rouge">dspy.InputField</code> marks this as required input. The <code class="language-plaintext highlighter-rouge">desc</code> provides a helpful description (good for documentation and potentially useful for the LM later).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">french_sentence = dspy.OutputField(...)</code></strong>: We define an output field named <code class="language-plaintext highlighter-rouge">french_sentence</code>. <code class="language-plaintext highlighter-rouge">dspy.OutputField</code> marks this as the expected output. The <code class="language-plaintext highlighter-rouge">desc</code> describes what this field should contain.</li>
+</ol>
+
+<p>That’s it! We’ve created a reusable “recipe card” that clearly defines our translation task.</p>
+
+<h2 id="how-modules-use-signatures">How Modules Use Signatures</h2>
+
+<p>Now, how does a <code class="language-plaintext highlighter-rouge">Module</code> like <code class="language-plaintext highlighter-rouge">dspy.Predict</code> use this <code class="language-plaintext highlighter-rouge">TranslateToFrench</code> signature?</p>
+
+<p><code class="language-plaintext highlighter-rouge">dspy.Predict</code> is a pre-built module designed to take a signature and use an LM to generate the output fields based on the input fields and instructions.</p>
+
+<p>Here’s how you might use our signature with <code class="language-plaintext highlighter-rouge">dspy.Predict</code> (we’ll cover <code class="language-plaintext highlighter-rouge">dspy.Predict</code> in detail in <a href="04_predict.md">Chapter 4</a>):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Assume 'lm' is a configured Language Model client (more in Chapter 5)
+# lm = dspy.OpenAI(model='gpt-3.5-turbo')
+# dspy.settings.configure(lm=lm)
+</span>
+<span class="c1"># Create an instance of dspy.Predict, giving it our Signature
+</span><span class="n">translator</span> <span class="o">=</span> <span class="n">dspy</span><span class="p">.</span><span class="n">Predict</span><span class="p">(</span><span class="n">TranslateToFrench</span><span class="p">)</span>
+
+<span class="c1"># Call the predictor with the required input field
+</span><span class="n">english</span> <span class="o">=</span> <span class="s">"Hello, how are you?"</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">translator</span><span class="p">(</span><span class="n">english_sentence</span><span class="o">=</span><span class="n">english</span><span class="p">)</span>
+
+<span class="c1"># The result object will contain the output field defined in the signature
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"English: </span><span class="si">{</span><span class="n">english</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+<span class="c1"># Assuming the LM works correctly, it might print:
+# print(f"French: {result.french_sentence}") # =&gt; French: Bonjour, comment ça va?
+</span></code></pre></div></div>
+
+<p>In this (slightly simplified) example:</p>
+
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">translator = dspy.Predict(TranslateToFrench)</code>: We create a <code class="language-plaintext highlighter-rouge">Predict</code> module. Crucially, we pass our <code class="language-plaintext highlighter-rouge">TranslateToFrench</code> <strong>class</strong> itself to it. <code class="language-plaintext highlighter-rouge">dspy.Predict</code> now knows the input/output fields and the instructions from the signature.</li>
+  <li><code class="language-plaintext highlighter-rouge">result = translator(english_sentence=english)</code>: When we call the <code class="language-plaintext highlighter-rouge">translator</code>, we provide the input data using the exact name defined in our signature (<code class="language-plaintext highlighter-rouge">english_sentence</code>).</li>
+  <li><code class="language-plaintext highlighter-rouge">result.french_sentence</code>: <code class="language-plaintext highlighter-rouge">dspy.Predict</code> uses the LM, guided by the signature’s instructions and fields, to generate the output. It then returns an object where you can access the generated French text using the output field name (<code class="language-plaintext highlighter-rouge">french_sentence</code>).</li>
+</ol>
+
+<p>The <code class="language-plaintext highlighter-rouge">Signature</code> acts as the bridge, ensuring the <code class="language-plaintext highlighter-rouge">Predict</code> module knows its job specification.</p>
+
+<h2 id="how-it-works-under-the-hood-a-peek">How It Works Under the Hood (A Peek)</h2>
+
+<p>You don’t need to memorize this, but understanding the flow helps! When a module like <code class="language-plaintext highlighter-rouge">dspy.Predict</code> uses a <code class="language-plaintext highlighter-rouge">Signature</code>:</p>
+
+<ol>
+  <li><strong>Inspection:</strong> The module looks at the <code class="language-plaintext highlighter-rouge">Signature</code> class (<code class="language-plaintext highlighter-rouge">TranslateToFrench</code> in our case).</li>
+  <li><strong>Extract Info:</strong> It identifies the <code class="language-plaintext highlighter-rouge">InputField</code>s (<code class="language-plaintext highlighter-rouge">english_sentence</code>), <code class="language-plaintext highlighter-rouge">OutputField</code>s (<code class="language-plaintext highlighter-rouge">french_sentence</code>), and the <code class="language-plaintext highlighter-rouge">Instructions</code> (the docstring: <code class="language-plaintext highlighter-rouge">"Translates English text to French."</code>).</li>
+  <li><strong>Prompt Formatting:</strong> When you call the module (e.g., <code class="language-plaintext highlighter-rouge">translator(english_sentence="Hello")</code>), it uses this information to build a prompt for the <a href="05_lm__language_model_client_.md">LM</a>. This prompt typically includes:
+    <ul>
+      <li>The <strong>Instructions</strong>.</li>
+      <li>Clearly labeled <strong>Input Fields</strong> and their values.</li>
+      <li>Clearly labeled <strong>Output Fields</strong> (often just the names, indicating what the LM should generate).</li>
+    </ul>
+  </li>
+  <li><strong>LM Call:</strong> The formatted prompt is sent to the configured LM.</li>
+  <li><strong>Parsing Output:</strong> The LM’s response is received. DSPy tries to parse this response to extract the values for the defined <code class="language-plaintext highlighter-rouge">OutputField</code>s (like <code class="language-plaintext highlighter-rouge">french_sentence</code>).</li>
+  <li><strong>Return Result:</strong> A structured result object containing the parsed outputs is returned.</li>
+</ol>
+
+<p>Let’s visualize this flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant PredictModule as dspy.Predict(TranslateToFrench)
+    participant Signature as TranslateToFrench
+    participant LM as Language Model
+
+    User-&gt;&gt;PredictModule: Call with english_sentence="Hello"
+    PredictModule-&gt;&gt;Signature: Get Instructions, Input/Output Fields
+    Signature--&gt;&gt;PredictModule: Return structure ("Translates...", "english_sentence", "french_sentence")
+    PredictModule-&gt;&gt;LM: Send formatted prompt (e.g., "Translate...\nEnglish: Hello\nFrench:")
+    LM--&gt;&gt;PredictModule: Return generated text (e.g., "Bonjour")
+    PredictModule-&gt;&gt;Signature: Parse LM output into 'french_sentence' field
+    Signature--&gt;&gt;PredictModule: Return structured output {french_sentence: "Bonjour"}
+    PredictModule--&gt;&gt;User: Return structured output (Prediction object)
+</code></pre>
+
+<p>The core logic for defining signatures resides in:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">dspy/signatures/signature.py</code>: Defines the base <code class="language-plaintext highlighter-rouge">Signature</code> class and the logic for handling instructions and fields.</li>
+  <li><code class="language-plaintext highlighter-rouge">dspy/signatures/field.py</code>: Defines <code class="language-plaintext highlighter-rouge">InputField</code> and <code class="language-plaintext highlighter-rouge">OutputField</code>.</li>
+</ul>
+
+<p>Modules like <code class="language-plaintext highlighter-rouge">dspy.Predict</code> (in <code class="language-plaintext highlighter-rouge">dspy/predict/predict.py</code>) contain the code to <em>read</em> these Signatures and interact with LMs accordingly.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view inside dspy/signatures/signature.py
+</span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">pydantic.fields</span> <span class="kn">import</span> <span class="n">FieldInfo</span>
+<span class="c1"># ... other imports ...
+</span>
+<span class="k">class</span> <span class="nc">SignatureMeta</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">)):</span>
+    <span class="c1"># Metaclass magic to handle fields and docstring
+</span>    <span class="k">def</span> <span class="nf">__new__</span><span class="p">(</span><span class="n">mcs</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">bases</span><span class="p">,</span> <span class="n">namespace</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># ... logic to find fields, handle docstring ...
+</span>        <span class="n">cls</span> <span class="o">=</span> <span class="nb">super</span><span class="p">().</span><span class="n">__new__</span><span class="p">(</span><span class="n">mcs</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">bases</span><span class="p">,</span> <span class="n">namespace</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">cls</span><span class="p">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">cls</span><span class="p">.</span><span class="n">__doc__</span> <span class="ow">or</span> <span class="n">_default_instructions</span><span class="p">(</span><span class="n">cls</span><span class="p">)</span> <span class="c1"># Default instructions if none provided
+</span>        <span class="c1"># ... logic to validate fields ...
+</span>        <span class="k">return</span> <span class="n">cls</span>
+
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">instructions</span><span class="p">(</span><span class="n">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="c1"># Retrieves the docstring as instructions
+</span>        <span class="k">return</span> <span class="n">inspect</span><span class="p">.</span><span class="n">cleandoc</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="s">"__doc__"</span><span class="p">,</span> <span class="s">""</span><span class="p">))</span>
+
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">input_fields</span><span class="p">(</span><span class="n">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">FieldInfo</span><span class="p">]:</span>
+        <span class="c1"># Finds fields marked as input
+</span>        <span class="k">return</span> <span class="n">cls</span><span class="p">.</span><span class="n">_get_fields_with_type</span><span class="p">(</span><span class="s">"input"</span><span class="p">)</span>
+
+    <span class="o">@</span><span class="nb">property</span>
+    <span class="k">def</span> <span class="nf">output_fields</span><span class="p">(</span><span class="n">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">FieldInfo</span><span class="p">]:</span>
+        <span class="c1"># Finds fields marked as output
+</span>        <span class="k">return</span> <span class="n">cls</span><span class="p">.</span><span class="n">_get_fields_with_type</span><span class="p">(</span><span class="s">"output"</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">Signature</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">metaclass</span><span class="o">=</span><span class="n">SignatureMeta</span><span class="p">):</span>
+    <span class="c1"># The base class you inherit from
+</span>    <span class="k">pass</span>
+
+<span class="c1"># Simplified view inside dspy/signatures/field.py
+</span><span class="kn">import</span> <span class="nn">pydantic</span>
+
+<span class="k">def</span> <span class="nf">InputField</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="c1"># Creates a Pydantic field marked as input for DSPy
+</span>    <span class="k">return</span> <span class="n">pydantic</span><span class="p">.</span><span class="n">Field</span><span class="p">(</span><span class="o">**</span><span class="n">move_kwargs</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="n">__dspy_field_type</span><span class="o">=</span><span class="s">"input"</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">OutputField</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="c1"># Creates a Pydantic field marked as output for DSPy
+</span>    <span class="k">return</span> <span class="n">pydantic</span><span class="p">.</span><span class="n">Field</span><span class="p">(</span><span class="o">**</span><span class="n">move_kwargs</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="n">__dspy_field_type</span><span class="o">=</span><span class="s">"output"</span><span class="p">))</span>
+
+</code></pre></div></div>
+
+<p>The key takeaway is that the <code class="language-plaintext highlighter-rouge">Signature</code> class structure (using <code class="language-plaintext highlighter-rouge">InputField</code>, <code class="language-plaintext highlighter-rouge">OutputField</code>, and the docstring) provides a standardized way for modules to understand the task specification.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now learned about <code class="language-plaintext highlighter-rouge">Signatures</code>, the essential component for defining <em>what</em> a DSPy module should do!</p>
+
+<ul>
+  <li>A <code class="language-plaintext highlighter-rouge">Signature</code> specifies the <strong>Inputs</strong>, <strong>Outputs</strong>, and <strong>Instructions</strong> for a task.</li>
+  <li>It acts like a contract or recipe card for modules, especially those using LMs.</li>
+  <li>You typically define them by subclassing <code class="language-plaintext highlighter-rouge">dspy.Signature</code>, using <code class="language-plaintext highlighter-rouge">InputField</code>, <code class="language-plaintext highlighter-rouge">OutputField</code>, and a descriptive <strong>docstring</strong> for instructions.</li>
+  <li>Modules like <code class="language-plaintext highlighter-rouge">dspy.Predict</code> use Signatures to understand the task and generate appropriate prompts for the LM.</li>
+</ul>
+
+<p>Signatures bring clarity and structure to LM interactions. But how do we provide concrete examples to help the LM learn or perform better? That’s where <code class="language-plaintext highlighter-rouge">Examples</code> come in!</p>
+
+<p><strong>Next:</strong> <a href="03_example.md">Chapter 3: Example</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

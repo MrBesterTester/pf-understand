@@ -1,0 +1,272 @@
+<h1 id="chapter-7-mcp-protocol-types---the-standard-language">Chapter 7: MCP Protocol Types - The Standard Language</h1>
+
+<p>In the previous chapter, <a href="06_fastmcp_context___context__.md">Chapter 6: Talking Back - FastMCP Context (<code class="language-plaintext highlighter-rouge">Context</code>)</a>, we saw how the <code class="language-plaintext highlighter-rouge">Context</code> object gives our tools and resources a “backstage pass” to send logs, report progress, and access other server features during a request. We’ve built up a good understanding of how <code class="language-plaintext highlighter-rouge">FastMCP</code> helps us create powerful servers with tools (<a href="04_fastmcp_tools___tool____toolmanager__.md">Chapter 4</a>), resources (<a href="03_fastmcp_resources___resource____resourcemanager__.md">Chapter 3</a>), and prompts (<a href="05_fastmcp_prompts___prompt____promptmanager__.md">Chapter 5</a>).</p>
+
+<p>But have you ever wondered <em>how</em> the client and server actually talk to each other under the hood? When your tool function uses <code class="language-plaintext highlighter-rouge">ctx.report_progress()</code>, how does that message get sent? When a client asks to call a tool, what does that request <em>look like</em> electronically?</p>
+
+<p>Imagine trying to send mail internationally. If everyone used different envelope sizes, address formats, and languages, it would be chaos! Postal services rely on standards. Similarly, for a client (like a chatbot interface) and your MCP server (like your <code class="language-plaintext highlighter-rouge">CalculatorServer</code>) to communicate reliably, they need a <strong>standard language</strong> and <strong>standard formats</strong> for their messages.</p>
+
+<p>This is where <strong>MCP Protocol Types</strong> come in. They are the fundamental, standardized data structures – the “digital forms” or “letter formats” – defined by the Model Context Protocol (MCP) specification itself.</p>
+
+<h2 id="what-are-mcp-protocol-types">What are MCP Protocol Types?</h2>
+
+<p>Think of MCP Protocol Types as the official <strong>blueprints</strong> for all the different kinds of messages that can be sent between an MCP client and server. They define precisely what information should be included in each type of message.</p>
+
+<p>These types cover all the interactions we’ve implicitly seen:</p>
+
+<ul>
+  <li><strong>Requests:</strong> Messages asking the other side to do something (e.g., “Initialize our connection”, “List the available tools”, “Read this resource”, “Call that tool”).</li>
+  <li><strong>Responses:</strong> Messages sent back after a request, containing either the result or an error (e.g., “Here are the tools”, “Here is the resource content”, “Here is the result of the tool call”, “Sorry, an error occurred”).</li>
+  <li><strong>Notifications:</strong> Messages sent one-way, just to inform the other side about something without expecting a direct reply (e.g., “Initialization is complete”, “Here’s a progress update”, “Here’s a log message”).</li>
+  <li><strong>Errors:</strong> A specific kind of response indicating something went wrong with a request.</li>
+</ul>
+
+<p>These types have specific names defined in the <code class="language-plaintext highlighter-rouge">MCP Python SDK</code>, usually found in the <code class="language-plaintext highlighter-rouge">mcp.types</code> module. You’ll see names that clearly indicate their purpose:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">InitializeRequest</code>: The “form” a client sends to start communication.</li>
+  <li><code class="language-plaintext highlighter-rouge">InitializeResult</code>: The “form” a server sends back confirming initialization.</li>
+  <li><code class="language-plaintext highlighter-rouge">ListToolsResult</code>: The “form” containing the list of tools sent by the server.</li>
+  <li><code class="language-plaintext highlighter-rouge">CallToolRequest</code>: The “form” a client uses to ask the server to run a tool.</li>
+  <li><code class="language-plaintext highlighter-rouge">CallToolResult</code>: The “form” the server sends back with the tool’s output.</li>
+  <li><code class="language-plaintext highlighter-rouge">ProgressNotification</code>: The “form” used to send progress updates (like when we used <code class="language-plaintext highlighter-rouge">ctx.report_progress</code>).</li>
+  <li><code class="language-plaintext highlighter-rouge">JSONRPCError</code>: The standard “form” for reporting errors.</li>
+</ul>
+
+<p>These are just a few examples; the MCP specification defines many such types to cover all standard interactions.</p>
+
+<h2 id="why-standardized-types-meet-pydantic">Why Standardized Types? Meet Pydantic</h2>
+
+<p>Why go to the trouble of defining all these specific types? Why not just send messages like “Hey server, run the add tool with 5 and 7”?</p>
+
+<p>Without standards, communication quickly breaks down:</p>
+<ul>
+  <li>Did the client send integers or strings for the numbers?</li>
+  <li>Did the server send the result back as a number or text?</li>
+  <li>How does the client know if the server understood the request or if an error happened?</li>
+</ul>
+
+<p>Standardized types solve these problems by ensuring both the client and server agree on the exact structure and data types for every message.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">MCP Python SDK</code> uses a popular Python library called <strong>Pydantic</strong> to define and manage these protocol types. Think of Pydantic as both the <strong>form designer</strong> and the <strong>quality control inspector</strong>:</p>
+
+<ol>
+  <li><strong>Definition:</strong> Pydantic allows the SDK developers to define each protocol type (like <code class="language-plaintext highlighter-rouge">CallToolRequest</code>) using simple Python classes with type hints. This creates a clear, code-based blueprint for each “form”.</li>
+  <li><strong>Validation:</strong> When your server receives a message, Pydantic automatically checks if it perfectly matches the expected structure defined by the corresponding protocol type. Does the <code class="language-plaintext highlighter-rouge">CallToolRequest</code> actually have a <code class="language-plaintext highlighter-rouge">name</code> field that’s a string? Does it have an <code class="language-plaintext highlighter-rouge">arguments</code> field that’s a dictionary? If not, Pydantic raises an error immediately, preventing bad data from causing problems later. It does the same when your server sends messages back.</li>
+  <li><strong>Type Safety &amp; Developer Experience:</strong> Because the types are clearly defined, your code editor can help you! It knows what fields exist on an <code class="language-plaintext highlighter-rouge">InitializeResult</code> object, reducing typos and making development faster and less error-prone.</li>
+</ol>
+
+<p>Pydantic makes the communication reliable and robust by enforcing the MCP standard for every message.</p>
+
+<h2 id="examples-in-action-connecting-high-level-to-low-level">Examples in Action: Connecting High-Level to Low-Level</h2>
+
+<p>While <code class="language-plaintext highlighter-rouge">FastMCP</code> does a great job hiding these low-level details, let’s peek behind the curtain and see how our previous examples relate to these protocol types.</p>
+
+<p><strong>Scenario 1: Client Listing Tools</strong></p>
+
+<ol>
+  <li>A client wants to know what tools your <code class="language-plaintext highlighter-rouge">CalculatorServer</code> offers.</li>
+  <li>Client sends a message. Under the hood, this message is structured according to the <code class="language-plaintext highlighter-rouge">JSONRPCRequest</code> format, specifying the method <code class="language-plaintext highlighter-rouge">tools/list</code>.</li>
+  <li>Your <code class="language-plaintext highlighter-rouge">FastMCP</code> server receives this raw message. Pydantic validates it.</li>
+  <li><code class="language-plaintext highlighter-rouge">FastMCP</code> understands it’s a request for <code class="language-plaintext highlighter-rouge">tools/list</code> and asks the <code class="language-plaintext highlighter-rouge">ToolManager</code> (<a href="04_fastmcp_tools___tool____toolmanager__.md">Chapter 4</a>) for the list of tools.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">ToolManager</code> provides the tool information (name, description, input schema).</li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">FastMCP</code> takes this information and constructs a <code class="language-plaintext highlighter-rouge">ListToolsResult</code> object. This object is a Pydantic model defined in <code class="language-plaintext highlighter-rouge">mcp.types</code>.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified example of creating a ListToolsResult object
+# (FastMCP does this automatically for you!)
+</span><span class="kn">from</span> <span class="nn">mcp.types</span> <span class="kn">import</span> <span class="n">ListToolsResult</span><span class="p">,</span> <span class="n">Tool</span>
+
+<span class="c1"># ToolManager gathered this info from your @server.tool decorator
+</span><span class="n">add_tool_info</span> <span class="o">=</span> <span class="n">Tool</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s">"add"</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="s">"Adds two numbers together."</span><span class="p">,</span>
+    <span class="n">inputSchema</span><span class="o">=</span><span class="p">{</span> <span class="c1"># JSON Schema describing expected input
+</span>        <span class="s">"type"</span><span class="p">:</span> <span class="s">"object"</span><span class="p">,</span>
+        <span class="s">"properties"</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s">"num1"</span><span class="p">:</span> <span class="p">{</span><span class="s">"type"</span><span class="p">:</span> <span class="s">"integer"</span><span class="p">},</span>
+            <span class="s">"num2"</span><span class="p">:</span> <span class="p">{</span><span class="s">"type"</span><span class="p">:</span> <span class="s">"integer"</span><span class="p">}</span>
+        <span class="p">},</span>
+        <span class="s">"required"</span><span class="p">:</span> <span class="p">[</span><span class="s">"num1"</span><span class="p">,</span> <span class="s">"num2"</span><span class="p">]</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+
+<span class="c1"># FastMCP creates the result object
+</span><span class="n">result_data</span> <span class="o">=</span> <span class="n">ListToolsResult</span><span class="p">(</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">add_tool_info</span><span class="p">]</span>
+    <span class="c1"># nextCursor would be set if paginating
+</span><span class="p">)</span>
+
+<span class="c1"># This result_data object is then packaged into a
+# standard JSONRPCResponse and sent to the client.
+</span><span class="k">print</span><span class="p">(</span><span class="n">result_data</span><span class="p">.</span><span class="n">model_dump_json</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span> <span class="c1"># See its JSON form
+</span></code></pre></div>    </div>
+
+    <p><strong>Example Output (JSON representation):</strong></p>
+    <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"_meta"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"nextCursor"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"tools"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+    </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"add"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Adds two numbers together."</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"inputSchema"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"num1"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+          </span><span class="nl">"num2"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+          </span><span class="s2">"num1"</span><span class="p">,</span><span class="w">
+          </span><span class="s2">"num2"</span><span class="w">
+        </span><span class="p">]</span><span class="w">
+      </span><span class="p">}</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div>    </div>
+    <p>This structured JSON, based on the <code class="language-plaintext highlighter-rouge">ListToolsResult</code> model, is what gets sent back to the client.</p>
+  </li>
+</ol>
+
+<p><strong>Scenario 2: Reporting Progress with <code class="language-plaintext highlighter-rouge">Context</code></strong></p>
+
+<ol>
+  <li>Your tool function calls <code class="language-plaintext highlighter-rouge">await ctx.report_progress(step, total_steps)</code> (<a href="06_fastmcp_context___context__.md">Chapter 6</a>).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Context</code> object uses the provided <code class="language-plaintext highlighter-rouge">step</code> and <code class="language-plaintext highlighter-rouge">total_steps</code> values.</li>
+  <li>It looks up the unique <code class="language-plaintext highlighter-rouge">progressToken</code> associated with the original request that started this tool call.</li>
+  <li>It creates a <code class="language-plaintext highlighter-rouge">ProgressNotificationParams</code> object containing the token and progress values.</li>
+  <li>
+    <p>It wraps this in a <code class="language-plaintext highlighter-rouge">ProgressNotification</code> object.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified example of creating a ProgressNotification
+# (Context object does this for you!)
+</span><span class="kn">from</span> <span class="nn">mcp.types</span> <span class="kn">import</span> <span class="n">ProgressNotification</span><span class="p">,</span> <span class="n">ProgressNotificationParams</span>
+
+<span class="c1"># Context gets these values
+</span><span class="n">token_from_request</span> <span class="o">=</span> <span class="s">"client_progress_token_123"</span>
+<span class="n">current_step</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">total_steps</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">progress_value</span> <span class="o">=</span> <span class="n">current_step</span> <span class="o">/</span> <span class="n">total_steps</span> <span class="c1"># 0.4
+</span>
+<span class="c1"># Context creates the notification object
+</span><span class="n">notification_data</span> <span class="o">=</span> <span class="n">ProgressNotification</span><span class="p">(</span>
+    <span class="n">method</span><span class="o">=</span><span class="s">"notifications/progress"</span><span class="p">,</span> <span class="c1"># Standard MCP method name
+</span>    <span class="n">params</span><span class="o">=</span><span class="n">ProgressNotificationParams</span><span class="p">(</span>
+        <span class="n">progressToken</span><span class="o">=</span><span class="n">token_from_request</span><span class="p">,</span>
+        <span class="n">progress</span><span class="o">=</span><span class="n">progress_value</span><span class="p">,</span>
+        <span class="n">total</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">total_steps</span><span class="p">)</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+
+<span class="c1"># This notification_data is then packaged into a
+# JSONRPCNotification message and sent to the client.
+</span><span class="k">print</span><span class="p">(</span><span class="n">notification_data</span><span class="p">.</span><span class="n">model_dump_json</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+</code></pre></div>    </div>
+
+    <p><strong>Example Output (JSON representation):</strong></p>
+    <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"method"</span><span class="p">:</span><span class="w"> </span><span class="s2">"notifications/progress"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"params"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"_meta"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"progressToken"</span><span class="p">:</span><span class="w"> </span><span class="s2">"client_progress_token_123"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"progress"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.4</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"total"</span><span class="p">:</span><span class="w"> </span><span class="mf">5.0</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div>    </div>
+    <p>This structured JSON notification, based on the <code class="language-plaintext highlighter-rouge">ProgressNotification</code> model, is sent to the client to update its UI.</p>
+  </li>
+</ol>
+
+<h2 id="do-i-need-to-use-these-directly">Do I Need to Use These Directly?</h2>
+
+<p>Probably not, especially when you’re starting out and using <code class="language-plaintext highlighter-rouge">FastMCP</code>!</p>
+
+<p>The beauty of <code class="language-plaintext highlighter-rouge">FastMCP</code> and its decorators (<code class="language-plaintext highlighter-rouge">@server.tool</code>, <code class="language-plaintext highlighter-rouge">@server.resource</code>) and helpers (<code class="language-plaintext highlighter-rouge">Context</code>) is that they <strong>abstract away</strong> these low-level protocol types. You work with regular Python functions, arguments, and return values, and <code class="language-plaintext highlighter-rouge">FastMCP</code> handles the conversion to and from the appropriate MCP Protocol Types automatically using Pydantic.</p>
+
+<p>However, understanding that these types exist is valuable:</p>
+
+<ul>
+  <li><strong>Debugging:</strong> If you encounter communication errors, the error messages might refer to fields within these specific types (e.g., “Invalid params in CallToolRequest”). Knowing the structure helps diagnose the problem.</li>
+  <li><strong>Advanced Use:</strong> If you ever need to build a custom MCP client, or interact with an MCP server without using the <code class="language-plaintext highlighter-rouge">MCP Python SDK</code>’s client helpers, you’ll need to construct and parse these types yourself.</li>
+  <li><strong>Understanding the Protocol:</strong> Reading the official MCP specification or the SDK’s <code class="language-plaintext highlighter-rouge">mcp/types.py</code> file gives you the ground truth about how communication works.</li>
+</ul>
+
+<p>Think of it like driving a car. You mostly use the steering wheel, pedals, and shifter (like <code class="language-plaintext highlighter-rouge">FastMCP</code> abstractions). You don’t usually interact directly with the engine pistons or fuel injectors (like MCP Protocol Types). But knowing they exist helps you understand how the car works and what might be wrong if it breaks down.</p>
+
+<h2 id="under-the-hood-messages-in-transit">Under the Hood: Messages in Transit</h2>
+
+<p>Let’s visualize where these types fit into a simple <code class="language-plaintext highlighter-rouge">callTool</code> interaction.</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant ClientApp as Client Application
+    participant ClientSDK as MCP Client SDK
+    participant ServerSDK as MCP Server SDK (FastMCP)
+    participant YourTool as Your @server.tool Function
+
+    ClientApp-&gt;&gt;+ClientSDK: Request tool "add" with {num1: 5, num2: 7}
+    ClientSDK-&gt;&gt;ClientSDK: Create CallToolRequest object (Pydantic model)
+    ClientSDK-&gt;&gt;+ServerSDK: Send JSON message (based on CallToolRequest)
+    ServerSDK-&gt;&gt;ServerSDK: Receive JSON, parse into CallToolRequest object (Pydantic validation)
+    ServerSDK-&gt;&gt;+YourTool: Call add_numbers(num1=5, num2=7)
+    YourTool--&gt;&gt;-ServerSDK: Return 12
+    ServerSDK-&gt;&gt;ServerSDK: Create CallToolResult object (Pydantic model, content=[TextContent(text="12")])
+    ServerSDK-&gt;&gt;-ClientSDK: Send JSON message (based on CallToolResult)
+    ClientSDK-&gt;&gt;ClientSDK: Receive JSON, parse into CallToolResult object (Pydantic validation)
+    ClientSDK--&gt;&gt;-ClientApp: Return result "12"
+</code></pre>
+
+<p>This shows that the <code class="language-plaintext highlighter-rouge">CallToolRequest</code> and <code class="language-plaintext highlighter-rouge">CallToolResult</code> (which are MCP Protocol Types defined as Pydantic models in <code class="language-plaintext highlighter-rouge">mcp/types.py</code>) are the actual structures being serialized into JSON messages for transmission and parsed back upon receipt.</p>
+
+<p>You can find the definitions for all these types within the SDK:</p>
+
+<p><strong>Inside <code class="language-plaintext highlighter-rouge">mcp/types.py</code> (Example Snippet):</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># This file defines all the standard MCP types using Pydantic
+</span>
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="c1"># Define the base for parameters of progress notifications
+</span><span class="k">class</span> <span class="nc">ProgressNotificationParams</span><span class="p">(</span><span class="n">NotificationParams</span><span class="p">):</span>
+    <span class="s">"""Parameters for progress notifications."""</span>
+    <span class="n">progressToken</span><span class="p">:</span> <span class="n">ProgressToken</span> <span class="c1"># Defined elsewhere as str | int
+</span>    <span class="n">progress</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">total</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="bp">None</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">extra</span><span class="o">=</span><span class="s">"allow"</span><span class="p">)</span>
+
+<span class="c1"># Define the notification itself, using the params above
+</span><span class="k">class</span> <span class="nc">ProgressNotification</span><span class="p">(</span>
+    <span class="n">Notification</span><span class="p">[</span><span class="n">ProgressNotificationParams</span><span class="p">,</span> <span class="n">Literal</span><span class="p">[</span><span class="s">"notifications/progress"</span><span class="p">]]</span>
+<span class="p">):</span>
+    <span class="s">"""
+    An out-of-band notification used to inform the receiver of a progress update...
+    """</span>
+    <span class="n">method</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s">"notifications/progress"</span><span class="p">]</span>
+    <span class="n">params</span><span class="p">:</span> <span class="n">ProgressNotificationParams</span>
+
+<span class="c1"># --- Other definitions like Tool, Resource, CallToolRequest etc. ---
+</span></code></pre></div></div>
+<p>This snippet shows how Pydantic <code class="language-plaintext highlighter-rouge">BaseModel</code> is used with standard Python type hints (<code class="language-plaintext highlighter-rouge">float</code>, <code class="language-plaintext highlighter-rouge">str | int</code>, <code class="language-plaintext highlighter-rouge">Literal["..."]</code>) to define the structure and expected data types for the <code class="language-plaintext highlighter-rouge">ProgressNotification</code>.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about MCP Protocol Types – the standardized “digital forms” that define the structure of all communication (requests, responses, notifications, errors) between MCP clients and servers.</p>
+
+<ul>
+  <li>They are defined by the <strong>MCP specification</strong>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">MCP Python SDK</code> uses <strong>Pydantic</strong> models (<code class="language-plaintext highlighter-rouge">mcp/types.py</code>) to represent these types, providing clear definitions and automatic validation for reliable communication.</li>
+  <li>Examples include <code class="language-plaintext highlighter-rouge">InitializeRequest</code>, <code class="language-plaintext highlighter-rouge">ListToolsResult</code>, <code class="language-plaintext highlighter-rouge">CallToolRequest</code>, <code class="language-plaintext highlighter-rouge">ProgressNotification</code>, and <code class="language-plaintext highlighter-rouge">JSONRPCError</code>.</li>
+  <li>While <strong><code class="language-plaintext highlighter-rouge">FastMCP</code> largely hides these details</strong>, understanding them provides valuable context for debugging and appreciating the underlying communication mechanics.</li>
+</ul>
+
+<p>These types form the bedrock of MCP communication. Now that we understand the messages themselves, we can look at how connections are managed over time. In the next chapter, we’ll explore how the SDK manages the ongoing conversation between a client and server using <a href="08_client_server_sessions___clientsession____serversession__.md">Chapter 8: Client/Server Sessions (<code class="language-plaintext highlighter-rouge">ClientSession</code>, <code class="language-plaintext highlighter-rouge">ServerSession</code>)</a>.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

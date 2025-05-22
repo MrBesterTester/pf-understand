@@ -1,0 +1,280 @@
+<h1 id="chapter-4-tool---equipping-your-agents">Chapter 4: Tool - Equipping Your Agents</h1>
+
+<p>In <a href="03_task.md">Chapter 3: Task</a>, we learned how to define specific assignments (<code class="language-plaintext highlighter-rouge">Task</code>s) for our AI <code class="language-plaintext highlighter-rouge">Agent</code>s. We told the ‘Travel Researcher’ agent to find sunny cities and the ‘Activity Planner’ agent to create an itinerary.</p>
+
+<p>But wait… how does the ‘Travel Researcher’ actually <em>find</em> those cities? Can it browse the web? Can it look at weather data? By default, an <a href="02_agent.md">Agent</a>’s “brain” (<a href="06_llm.md">LLM</a>) is great at reasoning and generating text based on the information it already has, but it can’t interact with the outside world on its own.</p>
+
+<p>This is where <code class="language-plaintext highlighter-rouge">Tool</code>s come in! They are the <strong>special equipment and abilities</strong> we give our agents to make them more capable.</p>
+
+<h2 id="why-do-we-need-tools">Why Do We Need Tools?</h2>
+
+<p>Imagine you hire a brilliant researcher. They can think, analyze, and write reports. But if their task is “Find the best coffee shop near me right now,” they need specific tools: maybe a map application, a business directory, or a review website. Without these tools, they can only guess or rely on outdated knowledge.</p>
+
+<p>Similarly, our AI <a href="02_agent.md">Agent</a>s need <code class="language-plaintext highlighter-rouge">Tool</code>s to perform actions beyond simple text generation.</p>
+
+<ul>
+  <li>Want your agent to find current information? Give it a <strong>web search tool</strong>.</li>
+  <li>Need it to perform calculations? Give it a <strong>calculator tool</strong>.</li>
+  <li>Want it to read a specific document? Give it a <strong>file reading tool</strong>.</li>
+  <li>Need it to ask another agent for help? Use the built-in <strong>delegation tool</strong> (<a href="tools/agent_tools/agent_tools.py">AgentTools</a>).</li>
+</ul>
+
+<p><strong>Problem Solved:</strong> <code class="language-plaintext highlighter-rouge">Tool</code>s extend an <a href="02_agent.md">Agent</a>’s capabilities beyond its built-in knowledge, allowing it to interact with external systems, perform specific computations, or access real-time information.</p>
+
+<h2 id="what-is-a-tool">What is a Tool?</h2>
+
+<p>Think of a <code class="language-plaintext highlighter-rouge">Tool</code> as a <strong>function or capability</strong> that an <a href="02_agent.md">Agent</a> can choose to use while working on a <a href="03_task.md">Task</a>. Each <code class="language-plaintext highlighter-rouge">Tool</code> has a few key parts:</p>
+
+<ol>
+  <li><strong><code class="language-plaintext highlighter-rouge">name</code></strong>: A short, unique name for the tool (e.g., <code class="language-plaintext highlighter-rouge">web_search</code>, <code class="language-plaintext highlighter-rouge">calculator</code>).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">description</code></strong>: This is <strong>very important</strong>! It tells the <a href="02_agent.md">Agent</a> <em>what the tool does</em> and <em>when it should be used</em>. The agent’s <a href="06_llm.md">LLM</a> reads this description to decide if the tool is appropriate for the current step of its task. A good description is crucial for the agent to use the tool correctly. Example: “Useful for searching the internet for current events or information.”</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">args_schema</code></strong> (Optional): Defines the inputs the tool needs to work. For example, a <code class="language-plaintext highlighter-rouge">web_search</code> tool would likely need a <code class="language-plaintext highlighter-rouge">query</code> argument (the search term). This is often defined using Pydantic models.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">_run</code> method</strong>: This is the actual code that gets executed when the agent uses the tool. It takes the arguments defined in <code class="language-plaintext highlighter-rouge">args_schema</code> and performs the action (like calling a search API or performing a calculation).</li>
+</ol>
+
+<p>Agents are given a list of <code class="language-plaintext highlighter-rouge">Tool</code>s they are allowed to use. When an agent is working on a task, its internal thought process might lead it to conclude that it needs a specific capability. It will then look through its available tools, read their descriptions, and if it finds a match, it will figure out the necessary arguments and execute the tool’s <code class="language-plaintext highlighter-rouge">_run</code> method.</p>
+
+<h2 id="equipping-an-agent-with-a-tool">Equipping an Agent with a Tool</h2>
+
+<p>CrewAI integrates with many existing toolkits, like <code class="language-plaintext highlighter-rouge">crewai_tools</code> (install separately: <code class="language-plaintext highlighter-rouge">pip install 'crewai[tools]'</code>). Let’s give our ‘Travel Researcher’ agent a web search tool. We’ll use <code class="language-plaintext highlighter-rouge">SerperDevTool</code> as an example, which uses the Serper.dev API for Google Search results.</p>
+
+<p><em>(Note: Using tools like this often requires API keys. You’ll need to sign up for Serper.dev and set the <code class="language-plaintext highlighter-rouge">SERPER_API_KEY</code> environment variable for this specific example to run.)</em></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Make sure you have crewai and crewai_tools installed
+# pip install crewai crewai_tools
+</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">crewai</span> <span class="kn">import</span> <span class="n">Agent</span>
+<span class="kn">from</span> <span class="nn">crewai_tools</span> <span class="kn">import</span> <span class="n">SerperDevTool</span>
+
+<span class="c1"># Set up your API key (replace with your actual key or environment variable setup)
+# IMPORTANT: Do NOT hardcode keys in production code! Use environment variables.
+# os.environ["SERPER_API_KEY"] = "YOUR_SERPER_API_KEY"
+</span>
+<span class="c1"># 1. Instantiate the tool
+#    (It automatically gets a name and description)
+</span><span class="n">search_tool</span> <span class="o">=</span> <span class="n">SerperDevTool</span><span class="p">()</span>
+
+<span class="c1"># 2. Define the agent and provide the tool in the 'tools' list
+</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+  <span class="n">role</span><span class="o">=</span><span class="s">'Expert Travel Researcher'</span><span class="p">,</span>
+  <span class="n">goal</span><span class="o">=</span><span class="s">'Find the three most exciting and sunny European cities for a birthday trip in late May.'</span><span class="p">,</span>
+  <span class="n">backstory</span><span class="o">=</span><span class="p">(</span>
+      <span class="s">"You are a world-class travel researcher with deep knowledge of "</span>
+      <span class="s">"European destinations. You excel at finding hidden gems and understanding "</span>
+      <span class="s">"weather patterns. Your recommendations are always insightful and tailored. "</span>
+      <span class="s">"You MUST use the web search tool to find the most up-to-date information."</span> <span class="c1"># Added instruction
+</span>  <span class="p">),</span>
+  <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+  <span class="n">allow_delegation</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+  <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">search_tool</span><span class="p">]</span> <span class="c1"># &lt;-- Give the agent access to the tool!
+</span>  <span class="c1"># llm=your_llm # Assumes an LLM is configured (see Chapter 6)
+</span><span class="p">)</span>
+
+<span class="c1"># (You would then create a Task and a Crew as shown in previous chapters)
+# task1 = Task(description="Find 3 sunny European cities for May...", agent=researcher, ...)
+# trip_crew = Crew(agents=[researcher], tasks=[task1], ...)
+# result = trip_crew.kickoff()
+# print(result)
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>We import <code class="language-plaintext highlighter-rouge">SerperDevTool</code> from <code class="language-plaintext highlighter-rouge">crewai_tools</code>.</li>
+  <li>We create an instance of the tool: <code class="language-plaintext highlighter-rouge">search_tool = SerperDevTool()</code>. This object now holds the <code class="language-plaintext highlighter-rouge">name</code> (“Search”), <code class="language-plaintext highlighter-rouge">description</code> (“A tool that can be used to search the internet…”), and the <code class="language-plaintext highlighter-rouge">_run</code> logic to call the Serper API.</li>
+  <li>When defining our <code class="language-plaintext highlighter-rouge">researcher</code> <a href="02_agent.md">Agent</a>, we pass a list containing <code class="language-plaintext highlighter-rouge">search_tool</code> to the <code class="language-plaintext highlighter-rouge">tools</code> parameter: <code class="language-plaintext highlighter-rouge">tools=[search_tool]</code>.</li>
+  <li>We also updated the agent’s <code class="language-plaintext highlighter-rouge">backstory</code> to explicitly encourage using the tool, which can sometimes help guide the agent.</li>
+</ol>
+
+<p><strong>Expected Outcome (Conceptual):</strong></p>
+
+<p>When this <code class="language-plaintext highlighter-rouge">researcher</code> agent runs a <a href="03_task.md">Task</a> like “Find 3 sunny European cities for May…”, because <code class="language-plaintext highlighter-rouge">verbose=True</code>, you would see its thought process. It might look something like this (simplified):</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Thought: I need to find sunny European cities for May. The best way to get current information is to search the web. I have a 'Search' tool available. I should use it.
+Action: Search
+Action Input: {"query": "best sunny European cities May weather culture food"}
+
+[... Agent waits for the tool to run ...]
+
+Observation: [Search results mentioning Lisbon, Seville, Malta, Athens, etc. with details]
+
+Thought: Okay, the search results suggest Lisbon, Seville, and Malta are good options based on sun, culture, and food. I will summarize these findings as requested.
+Final Answer: Here are the top 3 sunny European cities for May... 1. Lisbon... 2. Seville... 3. Malta...
+</code></pre></div></div>
+
+<p>The agent used the tool’s <code class="language-plaintext highlighter-rouge">description</code> to know when to use it, formulated the necessary input (<code class="language-plaintext highlighter-rouge">query</code>), executed the tool, received the <code class="language-plaintext highlighter-rouge">Observation</code> (the tool’s output), and then used that information to generate its <code class="language-plaintext highlighter-rouge">Final Answer</code>.</p>
+
+<h2 id="how-tools-work-under-the-hood">How Tools Work “Under the Hood”</h2>
+
+<p>When an <a href="02_agent.md">Agent</a> equipped with tools runs a <a href="03_task.md">Task</a>, a fascinating interaction happens between the Agent, its <a href="06_llm.md">LLM</a> brain, and the Tools.</p>
+
+<ol>
+  <li><strong>Task Received:</strong> The Agent gets the task description and any context.</li>
+  <li><strong>Initial Thought:</strong> The Agent’s <a href="06_llm.md">LLM</a> thinks about the task and its profile (<code class="language-plaintext highlighter-rouge">role</code>, <code class="language-plaintext highlighter-rouge">goal</code>, <code class="language-plaintext highlighter-rouge">backstory</code>). It formulates an initial plan.</li>
+  <li><strong>Need for Capability:</strong> The LLM might realize it needs information it doesn’t have (e.g., “What’s the weather like <em>right now</em>?”) or needs to perform an action (e.g., “Calculate 5 factorial”).</li>
+  <li><strong>Tool Selection:</strong> The Agent provides its <a href="06_llm.md">LLM</a> with the list of available <code class="language-plaintext highlighter-rouge">Tool</code>s, including their <code class="language-plaintext highlighter-rouge">name</code>s and crucially, their <code class="language-plaintext highlighter-rouge">description</code>s. The LLM checks if any tool description matches the capability it needs.</li>
+  <li><strong>Tool Invocation Decision:</strong> If the LLM finds a suitable tool (e.g., it needs to search, and finds the <code class="language-plaintext highlighter-rouge">Search</code> tool whose description says “Useful for searching the internet”), it decides to use it. It outputs a special message indicating the tool name and the arguments (based on the tool’s <code class="language-plaintext highlighter-rouge">args_schema</code>).</li>
+  <li><strong>Tool Execution:</strong> The CrewAI framework intercepts this special message. It finds the corresponding <code class="language-plaintext highlighter-rouge">Tool</code> object and calls its <code class="language-plaintext highlighter-rouge">run()</code> method, passing the arguments the LLM provided.</li>
+  <li><strong>Action Performed:</strong> The tool’s <code class="language-plaintext highlighter-rouge">_run()</code> method executes its code (e.g., calls an external API, runs a calculation).</li>
+  <li><strong>Result Returned:</strong> The tool’s <code class="language-plaintext highlighter-rouge">_run()</code> method returns its result (e.g., the text of the search results, the calculated number).</li>
+  <li><strong>Observation Provided:</strong> The CrewAI framework takes the tool’s result and feeds it back to the Agent’s <a href="06_llm.md">LLM</a> as an “Observation”.</li>
+  <li><strong>Continued Thought:</strong> The LLM now has new information from the tool. It incorporates this observation into its thinking and continues working on the task, potentially deciding to use another tool or generate the final answer.</li>
+</ol>
+
+<p>Let’s visualize this flow for our researcher using the search tool:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant A as Agent
+    participant LLM as Agent's Brain
+    participant ST as Search Tool
+
+    A-&gt;&gt;LLM: Task: "Find sunny cities..." Plan?
+    LLM--&gt;&gt;A: Plan: Need current info. Search web for "sunny European cities May".
+    A-&gt;&gt;A: Check tools: Found 'Search' tool (description matches).
+    A-&gt;&gt;LLM: Format request for 'Search' tool. Query?
+    LLM--&gt;&gt;A: Output: Use Tool 'Search' with args {"query": "sunny European cities May"}
+    A-&gt;&gt;ST: run(query="sunny European cities May")
+    Note right of ST: ST._run() calls Serper API...
+    ST--&gt;&gt;A: Return results: "Lisbon (Sunny...), Seville (Hot...), Malta (Warm...)"
+    A-&gt;&gt;LLM: Observation: Got results "Lisbon...", "Seville...", "Malta..."
+    LLM--&gt;&gt;A: Thought: Use these results to formulate the final list.
+    LLM--&gt;&gt;A: Final Answer: "Based on recent web search, the top cities are..."
+</code></pre>
+
+<p><strong>Diving into the Code (<code class="language-plaintext highlighter-rouge">tools/base_tool.py</code>)</strong></p>
+
+<p>The foundation for all tools is the <code class="language-plaintext highlighter-rouge">BaseTool</code> class (found in <code class="language-plaintext highlighter-rouge">crewai/tools/base_tool.py</code>). When you use a pre-built tool or create your own, it typically inherits from this class.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified view from crewai/tools/base_tool.py
+</span><span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Type</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+<span class="k">class</span> <span class="nc">BaseTool</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">ABC</span><span class="p">):</span>
+    <span class="c1"># Configuration for the tool
+</span>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"The unique name of the tool."</span><span class="p">)</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"What the tool does, how/when to use it."</span><span class="p">)</span>
+    <span class="n">args_schema</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Type</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">"Pydantic schema for the tool's arguments."</span>
+    <span class="p">)</span>
+    <span class="c1"># ... other options like caching ...
+</span>
+    <span class="c1"># This method contains the actual logic
+</span>    <span class="o">@</span><span class="n">abstractmethod</span>
+    <span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="s">"""The core implementation of the tool's action."""</span>
+        <span class="k">pass</span>
+
+    <span class="c1"># This method is called by the agent execution framework
+</span>    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="s">"""Executes the tool's core logic."""</span>
+        <span class="c1"># Could add logging, error handling, caching calls here
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"----- Executing Tool: </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s"> -----"</span><span class="p">)</span> <span class="c1"># Example logging
+</span>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">_run</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"----- Tool </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">name</span><span class="si">}</span><span class="s"> Finished -----"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="c1"># Helper method to generate a structured description for the LLM
+</span>    <span class="k">def</span> <span class="nf">_generate_description</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Creates a detailed description including name, args, and description
+</span>        <span class="c1"># This is what the LLM sees to decide if it should use the tool
+</span>        <span class="k">pass</span>
+
+    <span class="c1"># ... other helper methods ...
+</span>
+<span class="c1"># You can create a simple tool using the 'Tool' class directly
+# or inherit from BaseTool for more complex logic.
+</span><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Type</span>
+
+<span class="k">class</span> <span class="nc">SimpleTool</span><span class="p">(</span><span class="n">BaseTool</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"MySimpleTool"</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"A very simple example tool."</span>
+    <span class="c1"># No args_schema needed if it takes no arguments
+</span>
+    <span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">"This simple tool was executed successfully!"</span>
+
+</code></pre></div></div>
+
+<p>Key takeaways:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">BaseTool</code> requires <code class="language-plaintext highlighter-rouge">name</code> and <code class="language-plaintext highlighter-rouge">description</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">args_schema</code> defines the expected input structure (using Pydantic).</li>
+  <li>The actual logic lives inside the <code class="language-plaintext highlighter-rouge">_run</code> method.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">run</code> method is the entry point called by the framework.</li>
+  <li>The framework (<code class="language-plaintext highlighter-rouge">crewai/tools/tool_usage.py</code> and <code class="language-plaintext highlighter-rouge">crewai/agents/executor.py</code>) handles the complex part: presenting tools to the LLM, parsing the LLM’s decision to use a tool, calling <code class="language-plaintext highlighter-rouge">tool.run()</code>, and feeding the result back.</li>
+</ul>
+
+<p>A special mention goes to <code class="language-plaintext highlighter-rouge">AgentTools</code> (<code class="language-plaintext highlighter-rouge">crewai/tools/agent_tools/agent_tools.py</code>), which provides tools like <code class="language-plaintext highlighter-rouge">Delegate work to coworker</code> and <code class="language-plaintext highlighter-rouge">Ask question to coworker</code>, enabling agents within a <a href="01_crew.md">Crew</a> to collaborate.</p>
+
+<h2 id="creating-your-own-simple-tool-optional">Creating Your Own Simple Tool (Optional)</h2>
+
+<p>While CrewAI offers many pre-built tools, sometimes you need a custom one. Let’s create a <em>very</em> basic calculator.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crewai.tools</span> <span class="kn">import</span> <span class="n">BaseTool</span>
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Type</span>
+<span class="kn">import</span> <span class="nn">math</span> <span class="c1"># Using math module for safety
+</span>
+<span class="c1"># 1. Define the input schema using Pydantic
+</span><span class="k">class</span> <span class="nc">CalculatorInput</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">expression</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s">"The mathematical expression to evaluate (e.g., '2 + 2 * 4')."</span><span class="p">)</span>
+
+<span class="c1"># 2. Create the Tool class, inheriting from BaseTool
+</span><span class="k">class</span> <span class="nc">CalculatorTool</span><span class="p">(</span><span class="n">BaseTool</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"Calculator"</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">"Useful for evaluating simple mathematical expressions involving numbers, +, -, *, /, and parentheses."</span>
+    <span class="n">args_schema</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">]</span> <span class="o">=</span> <span class="n">CalculatorInput</span> <span class="c1"># Link the input schema
+</span>
+    <span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="s">"""Evaluates the mathematical expression."""</span>
+        <span class="n">allowed_chars</span> <span class="o">=</span> <span class="s">"0123456789+-*/(). "</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="n">c</span> <span class="ow">in</span> <span class="n">allowed_chars</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">expression</span><span class="p">):</span>
+             <span class="k">return</span> <span class="s">"Error: Expression contains invalid characters."</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># VERY IMPORTANT: eval() is dangerous with arbitrary user input.
+</span>            <span class="c1"># In a real application, use a safer parsing library like 'numexpr' or build your own parser.
+</span>            <span class="c1"># This is a simplified example ONLY.
+</span>            <span class="n">result</span> <span class="o">=</span> <span class="nb">eval</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="p">{</span><span class="s">"__builtins__"</span><span class="p">:</span> <span class="bp">None</span><span class="p">},</span> <span class="p">{</span><span class="s">"math"</span><span class="p">:</span> <span class="n">math</span><span class="p">})</span> <span class="c1"># Safer eval
+</span>            <span class="k">return</span> <span class="sa">f</span><span class="s">"The result of '</span><span class="si">{</span><span class="n">expression</span><span class="si">}</span><span class="s">' is </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s">"</span>
+        <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s">"Error evaluating expression '</span><span class="si">{</span><span class="n">expression</span><span class="si">}</span><span class="s">': </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s">"</span>
+
+<span class="c1"># 3. Instantiate and use it in an agent
+</span><span class="n">calculator</span> <span class="o">=</span> <span class="n">CalculatorTool</span><span class="p">()</span>
+
+<span class="n">math_agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+    <span class="n">role</span><span class="o">=</span><span class="s">'Math Whiz'</span><span class="p">,</span>
+    <span class="n">goal</span><span class="o">=</span><span class="s">'Calculate the results of mathematical expressions accurately.'</span><span class="p">,</span>
+    <span class="n">backstory</span><span class="o">=</span><span class="s">'You are an expert mathematician agent.'</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">calculator</span><span class="p">],</span> <span class="c1"># Give the agent the calculator
+</span>    <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span>
+<span class="p">)</span>
+
+<span class="c1"># Example Task for this agent:
+# math_task = Task(description="What is the result of (5 + 3) * 6 / 2?", agent=math_agent)
+</span></code></pre></div></div>
+
+<p><strong>Explanation:</strong></p>
+
+<ol>
+  <li>We define <code class="language-plaintext highlighter-rouge">CalculatorInput</code> using Pydantic to specify that the tool needs an <code class="language-plaintext highlighter-rouge">expression</code> string. The <code class="language-plaintext highlighter-rouge">description</code> here helps the LLM understand what kind of string to provide.</li>
+  <li>We create <code class="language-plaintext highlighter-rouge">CalculatorTool</code> inheriting from <code class="language-plaintext highlighter-rouge">BaseTool</code>. We set <code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">description</code>, and link <code class="language-plaintext highlighter-rouge">args_schema</code> to our <code class="language-plaintext highlighter-rouge">CalculatorInput</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">_run</code> method takes the <code class="language-plaintext highlighter-rouge">expression</code> string. We added a basic safety check and used a slightly safer version of <code class="language-plaintext highlighter-rouge">eval</code>. <strong>Again, <code class="language-plaintext highlighter-rouge">eval</code> is generally unsafe; prefer dedicated math parsing libraries in production.</strong> It returns the result as a string.</li>
+  <li>We can now instantiate <code class="language-plaintext highlighter-rouge">CalculatorTool()</code> and add it to an agent’s <code class="language-plaintext highlighter-rouge">tools</code> list.</li>
+</ol>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve learned about <code class="language-plaintext highlighter-rouge">Tool</code>s – the essential equipment that gives your AI <a href="02_agent.md">Agent</a>s superpowers! Tools allow agents to perform actions like searching the web, doing calculations, or interacting with other systems, making them vastly more useful than agents that can only generate text. We saw how to equip an agent with pre-built tools and even how to create a simple custom tool by defining its <code class="language-plaintext highlighter-rouge">name</code>, <code class="language-plaintext highlighter-rouge">description</code>, <code class="language-plaintext highlighter-rouge">args_schema</code>, and <code class="language-plaintext highlighter-rouge">_run</code> method. The <code class="language-plaintext highlighter-rouge">description</code> is key for the agent to know when and how to use its tools effectively.</p>
+
+<p>Now that we have Agents equipped with Tools and assigned Tasks, how does the whole <a href="01_crew.md">Crew</a> actually coordinate the work? Do agents work one after another? Is there a manager? That’s determined by the <code class="language-plaintext highlighter-rouge">Process</code>. Let’s explore that next!</p>
+
+<p><strong>Next:</strong> <a href="05_process.md">Chapter 5: Process - Orchestrating the Workflow</a></p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>
