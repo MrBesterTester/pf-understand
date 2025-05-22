@@ -1,4 +1,9 @@
-```markdown
+---
+layout: default
+title: "Chapter 6: N-D to 1D Indexing Logic"
+parent: "My Tutorial for Mojo v1"
+nav_order: 6
+---
 # Chapter 6: N-D to 1D Indexing Logic (Strided Memory Access)
 
 Welcome to Chapter 6! We've come a long way in understanding how Mojo handles memory and N-dimensional data. Let's recap our journey:
@@ -247,7 +252,7 @@ fn main_stride_example():
     // offset = (1 * 2) + (0 * 1) = 2 + 0 = 2
     print("Calculated offset for matrix[1,0]:", offset)
 
-    // Verify by looking at the raw data (if we could easily inspect InlineArray)
+    // Verify by looking at the raw data (if we could easily inspected InlineArray)
     // The flat data_storage would look like: [10, 11, 20, 21]
     // matrix.data.offset(2).load() would give us 20.
     // matrix[1,0] internally does this!

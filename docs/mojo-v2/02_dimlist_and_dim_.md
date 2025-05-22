@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 2: DimList and Dim"
+parent: "My Tutorial for Mojo v2"
+nav_order: 2
+---
 Okay, here's Chapter 2 of the Mojo tutorial, focusing on `DimList` and `Dim`, designed to be very beginner-friendly.
 
 # Chapter 2: Defining Dimensions - `Dim` and `DimList`

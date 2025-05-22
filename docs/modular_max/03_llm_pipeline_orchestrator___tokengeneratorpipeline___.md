@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 3: LLM Pipeline Orchestrator"
+parent: "My Tutorial for Modular's Max"
+nav_order: 3
+---
 # Chapter 3: LLM Pipeline Orchestrator (`TokenGeneratorPipeline`)
 
 In [Chapter 2: Serving API Layer (FastAPI App & Routers)](02_serving_api_layer__fastapi_app___routers__.md), we saw how `modular` receives requests from the outside world, like a receptionist directing calls. But once a request like "tell me a story about a brave knight" arrives, who actually takes that request, gets it ready for the language model, and makes sure the story comes back?

@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 8: Telemetry and Metrics"
+parent: "My Tutorial for Modular's Max"
+nav_order: 8
+---
 # Chapter 8: Telemetry and Metrics (`METRICS`, `MetricClient`)
 
 Welcome to the final chapter of our core concepts tour! In [Chapter 7: EngineQueue](07_enginequeue_.md), we explored how different parts of `modular`, even across separate processes, communicate with each other. Now, with all these components working together, how do we know what's going on inside? Is the server running smoothly? Is it fast? Are there any bottlenecks?

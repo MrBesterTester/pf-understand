@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 6: KV Cache Management"
+parent: "My Tutorial for Modular's Max"
+nav_order: 6
+---
 # Chapter 6: KV Cache Management
 
 In [Chapter 5: Scheduler (`TokenGenerationScheduler`, `EmbeddingsScheduler`)](05_scheduler___tokengenerationscheduler____embeddingsscheduler___.md), we saw how the Scheduler intelligently batches requests to keep our AI model busy. But when an LLM generates text, especially long sequences, how does it "remember" what it said at the beginning of a sentence or paragraph to make sense of what comes next? If it had to re-read and re-calculate everything from scratch for every new word, it would be incredibly slow!

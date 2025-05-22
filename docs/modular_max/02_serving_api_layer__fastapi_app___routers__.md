@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 2: Serving API Layer"
+parent: "My Tutorial for Modular's Max"
+nav_order: 2
+---
 # Chapter 2: Serving API Layer (FastAPI App & Routers)
 
 Welcome back! In [Chapter 1: Settings (`Settings` class)](01_settings___settings__class__.md), we explored how the `modular` application is configured using the `Settings` class. We learned how to adjust things like the server port or which API types to enable. Now, let's see how `modular` actually *uses* these settings to listen for and understand requests from the outside world.

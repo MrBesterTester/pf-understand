@@ -1,4 +1,9 @@
-```markdown
+---
+layout: default
+title: "Chapter 3: IndexList"
+parent: "My Tutorial for Mojo v1"
+nav_order: 3
+---
 # Chapter 3: Working with Multiple Dimensions: `IndexList`
 
 In the previous chapters, we explored some of Mojo's fundamental building blocks for memory management, like `AddressSpace` for understanding different memory regions and `UnsafePointer` for directly accessing memory locations. Now, we're going to shift our focus to a common task in programming, especially in fields like graphics, scientific computing, and AI: working with multi-dimensional data.

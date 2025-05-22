@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 1: UnsafePointer"
+parent: "My Tutorial for Mojo v2"
+nav_order: 1
+---
 # Chapter 1: Meet `UnsafePointer` - Your Direct Line to Memory
 
 Welcome to your Mojo journey! In this first chapter, we'll explore a fundamental concept that's crucial for understanding how Mojo can work with data efficiently, especially when dealing with complex structures like `NDBuffer`. We're talking about `UnsafePointer`.
@@ -27,7 +33,7 @@ An `UnsafePointer` is like the **exact street address** of one of these warehous
 
 The `NDBuffer` holds this "street address" (the `UnsafePointer`) to know exactly where its data begins.
 
-Here’s a key description to keep in mind:
+Here's a key description to keep in mind:
 
 > `NDBuffer` contains a field `data` which is an `UnsafePointer`. This pointer directly references the starting address of the memory region that the `NDBuffer` describes.
 

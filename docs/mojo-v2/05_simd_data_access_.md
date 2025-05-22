@@ -1,4 +1,10 @@
-# Chapter 5: Speeding Up with SIMD - Loading and Storing Data in Chunks
+---
+layout: default
+title: "Chapter 5: SIMD Data Access"
+parent: "My Tutorial for Mojo v2"
+nav_order: 5
+---
+# Chapter 5: SIMD Data Access
 
 Welcome to Chapter 5! We've covered a lot about `NDBuffer`:
 *   How it uses `UnsafePointer` to find its data's starting point ([Chapter 1](01_unsafepointer__as_used_by_ndbuffer__.md)).

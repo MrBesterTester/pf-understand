@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 1: Settings Class"
+parent: "My Tutorial for Modular's Max"
+nav_order: 1
+---
 # Chapter 1: Settings (`Settings` class)
 
 Welcome to the `modular` tutorial! We're excited to help you understand how this powerful serving application works, piece by piece. In this first chapter, we'll dive into one of the most fundamental concepts: the **`Settings` class**.

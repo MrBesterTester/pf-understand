@@ -1,3 +1,11 @@
+---
+layout: default
+title: "Chapter 4: DimList"
+parent: "My Tutorial for Mojo v1"
+nav_order: 4
+---
+# Chapter 4: DimList
+
 Okay, here is Chapter 4 on `DimList` in Markdown format, designed to be very beginner-friendly.
 
 ```markdown

@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 4: Model Worker"
+parent: "My Tutorial for Modular's Max"
+nav_order: 4
+---
 # Chapter 4: Model Worker
 
 Welcome back! In [Chapter 3: LLM Pipeline Orchestrator (`TokenGeneratorPipeline`)](03_llm_pipeline_orchestrator___tokengeneratorpipeline___.md), we saw how the `TokenGeneratorPipeline` acts like an assembly line manager, preparing your requests (like "tell me a story") and coordinating their journey. But where does the *actual* story generation, the heavy lifting of the AI model, happen?

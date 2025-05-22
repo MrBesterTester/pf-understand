@@ -1,3 +1,11 @@
+---
+layout: default
+title: "Chapter 5: NDBuffer"
+parent: "My Tutorial for Mojo v1"
+nav_order: 5
+---
+# Chapter 5: NDBuffer
+
 Okay, here is Chapter 5 on `NDBuffer`, designed to be very beginner-friendly and in Markdown format.
 
 ```markdown

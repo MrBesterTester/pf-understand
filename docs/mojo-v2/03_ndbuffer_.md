@@ -1,4 +1,10 @@
-# Chapter 3: `NDBuffer` - Your Lens on N-Dimensional Data
+---
+layout: default
+title: "Chapter 3: NDBuffer"
+parent: "My Tutorial for Mojo v2"
+nav_order: 3
+---
+# Chapter 3: NDBuffer
 
 Welcome back! In our Mojo journey so far, we've explored some fundamental building blocks:
 

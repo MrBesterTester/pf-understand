@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 2: AsyncWebCrawler"
+parent: "Crawl4AI"
+nav_order: 2
+---
 # Chapter 2: AsyncWebCrawler
 
 In [Chapter 1: Configuration System](01_configuration_system_.md), we learned how to set up the configuration for our web crawler. Now, let's put those configurations to work with the `AsyncWebCrawler`, the main engine of the crawl4ai library!

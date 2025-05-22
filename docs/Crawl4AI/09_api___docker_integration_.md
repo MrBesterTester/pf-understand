@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 9: API & Docker Integration"
+parent: "Crawl4AI"
+nav_order: 9
+---
 # Chapter 9: API & Docker Integration
 
 In [Chapter 8: Async Logging Infrastructure](08_async_logging_infrastructure_.md), we learned how to track what our crawler is doing. Now, let's explore how to share our crawler with others by turning it into a service that can be accessed over a network!

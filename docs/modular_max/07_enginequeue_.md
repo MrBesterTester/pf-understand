@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 7: EngineQueue"
+parent: "My Tutorial for Modular's Max"
+nav_order: 7
+---
 # Chapter 7: EngineQueue
 
 Welcome back! In [Chapter 6: KV Cache Management](06_kv_cache_management_.md), we learned how `modular` intelligently manages memory for ongoing text generation using a "smart scratchpad" called the KV Cache. We've seen the [LLM Pipeline Orchestrator (`TokenGeneratorPipeline`)](03_llm_pipeline_orchestrator___tokengeneratorpipeline___.md) prepare requests and the [Model Worker](04_model_worker_.md) (with its [Scheduler (`TokenGenerationScheduler`, `EmbeddingsScheduler`)](05_scheduler___tokengenerationscheduler____embeddingsscheduler___.md)) do the heavy AI lifting.

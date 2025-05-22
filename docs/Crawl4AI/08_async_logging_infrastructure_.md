@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 8: Async Logging Infrastructure"
+parent: "Crawl4AI"
+nav_order: 8
+---
 # Chapter 8: Async Logging Infrastructure
 
 In [Chapter 7: Dispatcher Framework](07_dispatcher_framework_.md), we learned how to manage multiple crawling operations efficiently. Now, let's explore how to keep track of what's happening during these operations with the Async Logging Infrastructure.

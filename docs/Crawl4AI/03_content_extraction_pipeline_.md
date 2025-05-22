@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 3: Content Extraction Pipeline"
+parent: "Crawl4AI"
+nav_order: 3
+---
 # Chapter 3: Content Extraction Pipeline
 
 In [Chapter 2: AsyncWebCrawler](02_asyncwebcrawler_.md), we learned how to use the AsyncWebCrawler to fetch web content. But what happens to that content after it's downloaded? How does it go from raw HTML to structured, usable information? Let's find out!

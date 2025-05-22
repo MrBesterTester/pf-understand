@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 1: AddressSpace"
+parent: "My Tutorial for Mojo v1"
+nav_order: 1
+---
 # Chapter 1: Understanding Memory Neighborhoods with `AddressSpace`
 
 Welcome to your first step into the world of Mojo! In this series, we'll explore some fundamental concepts that help Mojo achieve its impressive performance, especially when dealing with different kinds of hardware like CPUs and GPUs.

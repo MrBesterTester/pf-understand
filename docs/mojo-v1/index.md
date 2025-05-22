@@ -1,7 +1,7 @@
 ---
 layout: default
 title: My Tutorial for Mojo v1
-nav_order: 1
+nav_order: 3
 has_children: true
 permalink: /mojo-v1/
 ---

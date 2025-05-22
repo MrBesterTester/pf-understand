@@ -1,4 +1,10 @@
-# Chapter 2: Peeking into Memory with `UnsafePointer`
+---
+layout: default
+title: "Chapter 2: UnsafePointer"
+parent: "My Tutorial for Mojo v1"
+nav_order: 2
+---
+# Chapter 2: UnsafePointer
 
 Welcome back! In [Chapter 1: Understanding Memory Neighborhoods with `AddressSpace`](01_addressspace_.md), we learned how Mojo categorizes memory into different "neighborhoods" using `AddressSpace`. This helps Mojo optimize how data is handled, especially with hardware like GPUs.
 

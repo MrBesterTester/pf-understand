@@ -1,3 +1,11 @@
+---
+layout: default
+title: "Chapter 4: Strides and Offset Computation"
+parent: "My Tutorial for Mojo v2"
+nav_order: 4
+---
+# Chapter 4: Strides and Offset Computation
+
 Okay, here's Chapter 4 of the Mojo tutorial, focusing on Strides and Offset Computation, designed to be very beginner-friendly.
 
 # Chapter 4: Finding Your Way - Strides and Offset Computation

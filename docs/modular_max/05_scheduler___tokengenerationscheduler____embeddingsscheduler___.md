@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 5: Scheduler"
+parent: "My Tutorial for Modular's Max"
+nav_order: 5
+---
 # Chapter 5: Scheduler (`TokenGenerationScheduler`, `EmbeddingsScheduler`)
 
 In [Chapter 4: Model Worker](04_model_worker_.md), we learned about the Model Worker, the dedicated workshop where the AI model does its heavy lifting. We saw that it receives requests from the [EngineQueue](07_enginequeue_.md). But how does the Model Worker decide *when* and *how* to feed these requests to the AI model? Does it process them one by one? Or is there a smarter way?
