@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 7: Dispatcher Framework"
+parent: "My Tutorial for Crawl4ai"
+nav_order: 7
+---
 # Chapter 7: Dispatcher Framework
 
 In [Chapter 6: Caching System](06_caching_system_.md), we learned how to store and reuse web content to make our crawlers more efficient. Now, let's explore how to manage multiple crawling operations happening at the same time with the Dispatcher Framework.

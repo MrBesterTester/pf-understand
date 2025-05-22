@@ -1,6 +1,6 @@
 # Theme settings - MUST be the first thing Jekyll processes
 # For my local server
-# theme: just-the-docs
+theme: just-the-docs
 # OR for GitHub Pages:
 remote_theme: just-the-docs/just-the-docs
 

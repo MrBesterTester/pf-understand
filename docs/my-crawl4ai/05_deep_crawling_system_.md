@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 5: Deep Crawling System"
+parent: "My Tutorial for Crawl4ai"
+nav_order: 5
+---
 # Chapter 5: Deep Crawling System
 
 In [Chapter 4: URL Filtering & Scoring](04_url_filtering___scoring_.md), we learned how to filter and prioritize URLs. Now, let's take the next step: exploring websites beyond a single page using the Deep Crawling System.

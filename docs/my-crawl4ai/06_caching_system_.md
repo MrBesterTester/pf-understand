@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 6: Caching System"
+parent: "My Tutorial for Crawl4ai"
+nav_order: 6
+---
 # Chapter 6: Caching System
 
 In [Chapter 5: Deep Crawling System](05_deep_crawling_system_.md), we learned how to explore websites beyond a single page. As you crawl multiple pages, you might notice something: crawling the same page multiple times wastes time and resources. This is where the Caching System comes in!

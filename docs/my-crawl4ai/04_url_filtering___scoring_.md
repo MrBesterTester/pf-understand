@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 4: URL Filtering & Scoring"
+parent: "My Tutorial for Crawl4ai"
+nav_order: 4
+---
 # Chapter 4: URL Filtering & Scoring
 
 In [Chapter 3: Content Extraction Pipeline](03_content_extraction_pipeline_.md), we learned how to process and extract useful information from web pages. But how do we decide which URLs to crawl in the first place, and in what order? That's where URL filtering and scoring come in!

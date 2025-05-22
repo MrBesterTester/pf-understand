@@ -1,3 +1,9 @@
+---
+layout: default
+title: "Chapter 1: Configuration System"
+parent: "My Tutorial for Crawl4ai"
+nav_order: 1
+---
 # Chapter 1: Configuration System
 
 Welcome to the first chapter of our Crawl4AI tutorial! Today, we're going to learn about the Configuration System, which is the foundation for controlling how our web crawler works.
