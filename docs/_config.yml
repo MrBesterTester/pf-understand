@@ -79,12 +79,12 @@ nav:
   - GitHub: "https://github.com/The-Pocket/Tutorial-Codebase-Knowledge"
   - Discord: "https://discord.gg/hUHHE9Sa6T"
 
-exclude:
-  - "../docs_OLD"
-  - "../utils"
-  - "../venv"
-  - "../_site"
-  - "../logs"
-  - "../output"
-  - "../assets"
-  - "../.jekyll-cache"
+# exclude:
+#   - "../docs_OLD"
+#   - "../utils"
+#   - "../venv"
+#   - "../_site"
+#   - "../logs"
+#   - "../output"
+#   - "../assets"
+#   - "../.jekyll-cache"
