@@ -1,32 +1,65 @@
-# Basic site settings
-title: Pocket Flow
+# Theme settings - MUST be the first thing Jekyll processes
+theme: just-the-docs
+# OR for GitHub Pages:
+# remote_theme: just-the-docs/just-the-docs
 
-# Theme settings
-remote_theme: just-the-docs/just-the-docs
+# Basic settings
+title: "Two Tutorials for Mojo using Pocket Flow"
+description: "Documentation generated using AI to explain codebases"
+
+# Color scheme and other appearance settings
+color_scheme: light
+search_enabled: true
+
+# Heading anchor links
+heading_anchors: true
+
+# Aux links for upper right navigation
+aux_links:
+  "View on GitHub":
+    - "https://github.com/MrBesterTester/pf-understand"
+
+# Mermaid diagram support
+mermaid:
+  version: "11.6.0"
+
+# Footer content
+footer_content: "Copyright &copy; 2023 Sam Kirk"
+
+# Collections for the tutorials
+collections:
+  crawl4ai:
+    permalink: "/:collection/:path/"
+    output: true
+  modular_max:
+    permalink: "/:collection/:path/"
+    output: true
+  mojo-v1:
+    permalink: "/:collection/:path/"
+    output: true
+  mojo-v2:
+    permalink: "/:collection/:path/"
+    output: true
+
+# Set up navigation for the collections
+just_the_docs:
+  collections:
+    crawl4ai:
+      name: Crawl4AI
+    modular_max:
+      name: Modular Max
+    mojo-v1:
+      name: Mojo (v1)
+    mojo-v2:
+      name: Mojo (v2)
 
 # Navigation
 nav_sort: case_sensitive
 
-# Aux links (shown in upper right)
-aux_links:
-  "View on GitHub":
-    - "https://github.com/the-pocket/Tutorial-Codebase-Knowledge"
-    
-# Color scheme
-color_scheme: light
-
 # Author settings
 author:
-    name: Zachary Huang
+    name: Sam Kirk
     url: https://www.columbia.edu/~zh2408/
-    twitter: ZacharyHuang12
-
-# Mermaid settings
-mermaid:
-  version: "11.6.0"  # Pick the version you want
-  # Default configuration
-  config: |
-    directionLR
 
 # Callouts settings
 callouts:
@@ -45,3 +78,13 @@ nav:
   - Home: index.md       # Link to your main docs index
   - GitHub: "https://github.com/The-Pocket/Tutorial-Codebase-Knowledge"
   - Discord: "https://discord.gg/hUHHE9Sa6T"
+
+exclude:
+  - "../docs_OLD"
+  - "../utils"
+  - "../venv"
+  - "../_site"
+  - "../logs"
+  - "../output"
+  - "../assets"
+  - "../.jekyll-cache"

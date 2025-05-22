@@ -1,0 +1,25 @@
+<!-- Add Mermaid support -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.min.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "default"
+    });
+    
+    // Process code blocks
+    document.querySelectorAll('pre code.language-mermaid').forEach(function(block) {
+      // Create a div with class 'mermaid'
+      var mermaidDiv = document.createElement('div');
+      mermaidDiv.className = 'mermaid';
+      mermaidDiv.innerHTML = block.textContent;
+      
+      // Replace the parent pre with the mermaid div
+      block.parentNode.parentNode.replaceChild(mermaidDiv, block.parentNode);
+      
+      console.log("Processed Mermaid block:", mermaidDiv.innerHTML.substring(0, 50) + "...");
+    });
+    
+    console.log("Mermaid initialization complete. Version:", mermaid.version());
+  });
+</script>

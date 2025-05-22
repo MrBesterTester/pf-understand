@@ -16,28 +16,25 @@ Ever stared at a new codebase written by others feeling completely lost? This pr
   </a>
 </p>
 
-This is a tutorial project of [Pocket Flow](https://github.com/The-Pocket/PocketFlow), a 100-line LLM framework. It crawls GitHub repositories and build a knowledge base from the code.
+# PF-Understand Documentation
 
-## Example Tutorials for Popular GitHub Repositories
+Welcome to the documentation for PF-Understand, a tool for generating comprehensive tutorials from codebases.
 
-- [AutoGen Core](./AutoGen Core/index.md) - Build AI teams that talk, think, and solve problems together like coworkers!
-- [Browser Use](./Browser Use/index.md) - Let AI surf the web for you, clicking buttons and filling forms like a digital assistant!
-- [Celery](./Celery/index.md) - Supercharge your app with background tasks that run while you sleep!
-- [Click](./Click/index.md) - Turn Python functions into slick command-line tools with just a decorator!
-- [Codex](./Codex/index.md) - Turn plain English into working code with this AI terminal wizard!
-- [Crawl4AI](./Crawl4AI/index.md) - Train your AI to extract exactly what matters from any website!
-- [CrewAI](./CrewAI/index.md) - Assemble a dream team of AI specialists to tackle impossible problems!
-- [DSPy](./DSPy/index.md) - Build LLM apps like Lego blocks that optimize themselves!
-- [FastAPI](./FastAPI/index.md) - Create APIs at lightning speed with automatic docs that clients will love!
-- [Flask](./Flask/index.md) - Craft web apps with minimal code that scales from prototype to production!
-- [Google A2A](./Google A2A/index.md) - The universal language that lets AI agents collaborate across borders!
-- [LangGraph](./LangGraph/index.md) - Design AI agents as flowcharts where each step remembers what happened before!
-- [LevelDB](./LevelDB/index.md) - Store data at warp speed with Google's engine that powers blockchains!
-- [MCP Python SDK](./MCP Python SDK/index.md) - Build powerful apps that communicate through an elegant protocol without sweating the details!
-- [NumPy Core](./NumPy Core/index.md) - Master the engine behind data science that makes Python as fast as C!
-- [OpenManus](./OpenManus/index.md) - Build AI agents with digital brains that think, learn, and use tools just like humans do!
-- [PocketFlow](./PocketFlow/index.md) - 100-line LLM framework. Let Agents build Agents!
-- [Pydantic Core](./Pydantic Core/index.md) - Validate data at rocket speed with just Python type hints!
-- [Requests](./Requests/index.md) - Talk to the internet in Python with code so simple it feels like cheating!
-- [SmolaAgents](./SmolaAgents/index.md) - Build tiny AI agents that punch way above their weight class!
+## Tutorials
+
+All in all, I did 4 fairly complete runs of Pocket Flow tutorializing abstractions.
+
+- [Crawl4AI](./Crawl4ai/) - The original tutorial already done in Pocket Flow's repo
+- [My Crawl4AI](./my-crawl4ai/) - My sanity check run for an that repo
+- [Modular Max](./modular_max/) - When doing the entire Modular repo, it chose to do Max Engine, ignoring Mojo almost entirely.
+- [Mojo v1](./mojo-v1/) - When focusing Pocket Flow on just the mojo folder in Modular's repo, a tutorial on its high-performance multi-dimensional array operation
+- [Mojo v2](./mojo-v2/) - The final run of Pocket Flow which ran smoothly (no errors in about 1.75 hours) on resulted in a different tutorial for Mojo, this time focusing on Mojo's N-dimensional data structures
+
+Using gemini-2.5-pro in Cursor, I did the following two comparisons:
+- TBD: the first run above, sanity check on [Crawl4AI](./crawl4ai/) in the exisitng repo in `output/crawl4ai/`.
+- TBD: the last two runs above, the two different versions of tutorials for Mojo.
+I also did a comparison 
+
+## Other notes TBD
+
 
