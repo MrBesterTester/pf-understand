@@ -24,7 +24,7 @@ Welcome to the documentation for PF-Understand, a tool for generating comprehens
 
 All in all, I did 4 fairly complete runs of Pocket Flow tutorializing abstractions.
 
-- [Crawl4AI](./Crawl4ai/) - The original tutorial already done in Pocket Flow's repo
+- [Crawl4AI](./Crawl4AI/) - The original tutorial already done in Pocket Flow's repo
 - [My Crawl4AI](./my-crawl4ai/) - My sanity check run for an that repo
 - [Modular Max](./modular_max/) - When doing the entire Modular repo, it chose to do Max Engine, ignoring Mojo almost entirely.
 - [Mojo v1](./mojo-v1/) - When focusing Pocket Flow on just the mojo folder in Modular's repo, a tutorial on its high-performance multi-dimensional array operation
