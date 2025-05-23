@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "System Design"
-nav_order: 2
+nav_order: 7
 ---
 
 # System Design: Codebase Knowledge Builder

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: My Tutorial for Modular's Max 
-nav_order: 2
+nav_order: 4
 has_children: true
 permalink: /modular_max/
 ---
