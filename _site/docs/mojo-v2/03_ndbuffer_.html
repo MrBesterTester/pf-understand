@@ -1,0 +1,240 @@
+<h1 id="chapter-3-ndbuffer">Chapter 3: NDBuffer</h1>
+
+<p>Welcome back! In our Mojo journey so far, we’ve explored some fundamental building blocks:</p>
+
+<ul>
+  <li>In <a href="01_unsafepointer__as_used_by_ndbuffer__.md">Chapter 1: Meet <code class="language-plaintext highlighter-rouge">UnsafePointer</code></a>, we learned that an <code class="language-plaintext highlighter-rouge">UnsafePointer</code> is like a direct street address to a location in your computer’s memory where data can be stored.</li>
+  <li>In <a href="02_dimlist_and_dim_.md">Chapter 2: Defining Dimensions - <code class="language-plaintext highlighter-rouge">Dim</code> and <code class="language-plaintext highlighter-rouge">DimList</code></a>, we saw how <code class="language-plaintext highlighter-rouge">Dim</code> represents the size of a single dimension (which can be known at compile-time or runtime) and <code class="language-plaintext highlighter-rouge">DimList</code> collects these <code class="language-plaintext highlighter-rouge">Dim</code>s to describe the overall shape of multi-dimensional data.</li>
+</ul>
+
+<p>Now, it’s time to bring these concepts together and meet the star of our show: <code class="language-plaintext highlighter-rouge">NDBuffer</code>.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">NDBuffer</code> struct is central to handling multi-dimensional arrays (like vectors, matrices, or tensors) in Mojo. Think of it as a sophisticated “lens” or a “view” that you place over a raw block of memory. It doesn’t own the memory itself, but it tells Mojo how to <em>interpret</em> that memory as an N-dimensional structure.</p>
+
+<p>As described in the project:</p>
+<blockquote>
+  <p>The <code class="language-plaintext highlighter-rouge">NDBuffer</code> struct is a non-owning, multi-dimensional view into a block of memory. It describes how to interpret a (potentially flat) piece of memory as an N-dimensional array (like a tensor or matrix). It achieves this by specifying the data type of elements (<code class="language-plaintext highlighter-rouge">type</code>), the number of dimensions (<code class="language-plaintext highlighter-rouge">rank</code>), the size of each dimension (<code class="language-plaintext highlighter-rouge">shape</code>), how to step through memory for each dimension (<code class="language-plaintext highlighter-rouge">strides</code>), the memory’s <code class="language-plaintext highlighter-rouge">origin</code> (related to aliasing and lifetime), and its <code class="language-plaintext highlighter-rouge">address_space</code> (e.g., CPU, GPU shared memory). <code class="language-plaintext highlighter-rouge">NDBuffer</code> itself doesn’t own the memory; it’s a descriptor or a “lens” for existing memory.</p>
+</blockquote>
+
+<p>Let’s dive into what makes an <code class="language-plaintext highlighter-rouge">NDBuffer</code> tick!</p>
+
+<h2 id="what-exactly-is-an-ndbuffer">What Exactly is an <code class="language-plaintext highlighter-rouge">NDBuffer</code>?</h2>
+
+<p>Imagine you have a large, flat sheet of graph paper, and each square on the paper can hold a single number. This sheet of graph paper is like a block of memory.</p>
+
+<p>An <code class="language-plaintext highlighter-rouge">NDBuffer</code> is like an adjustable stencil or a set of instructions you lay over this graph paper. This stencil tells you:</p>
+<ul>
+  <li><strong>What kind of numbers</strong> are in the squares (e.g., integers, decimal numbers).</li>
+  <li><strong>How many rows and columns</strong> (or even more dimensions, like layers) you should consider.</li>
+  <li><strong>The size of each row and column</strong>.</li>
+  <li><strong>How many squares to jump</strong> to get from one number to the next, either across a row or down to the next row.</li>
+</ul>
+
+<p>Crucially, the <code class="language-plaintext highlighter-rouge">NDBuffer</code> is just the stencil/instructions. It doesn’t <em>contain</em> the graph paper (the memory) itself. It just knows <em>how to look at it</em>. This is why it’s called a “non-owning view.”</p>
+
+<h2 id="the-anatomy-of-an-ndbuffer">The Anatomy of an <code class="language-plaintext highlighter-rouge">NDBuffer</code></h2>
+
+<p>Let’s peek inside the <code class="language-plaintext highlighter-rouge">NDBuffer</code> struct as defined in <code class="language-plaintext highlighter-rouge">stdlib/src/buffer/buffer.mojo</code>. We won’t look at every line, but we’ll focus on the main parts a beginner needs to understand.</p>
+
+<p>An <code class="language-plaintext highlighter-rouge">NDBuffer</code> is defined as a <code class="language-plaintext highlighter-rouge">struct</code>. When you create an <code class="language-plaintext highlighter-rouge">NDBuffer</code>, you’re creating an instance of this struct. It has several important <strong>parameters</strong> (information you provide when creating it) and internal <strong>fields</strong> (where it stores its state).</p>
+
+<h3 id="key-parameters-compile-time-information">Key Parameters (Compile-Time Information)</h3>
+
+<p>These are specified when you declare or create an <code class="language-plaintext highlighter-rouge">NDBuffer</code>. They help Mojo understand the <em>intended</em> structure and properties, often allowing for compile-time optimizations.</p>
+
+<pre><code class="language-mojo">// Simplified NDBuffer definition from stdlib/src/buffer/buffer.mojo
+struct NDBuffer[
+    mut: Bool, // Can the data be modified through this NDBuffer?
+    type: DType, // What's the data type of each element? (e.g., DType.float32)
+    rank: Int, // How many dimensions? (e.g., 2 for a matrix)
+    origin: Origin[mut], // Related to memory safety and lifetime tracking
+
+    // These use DimList from Chapter 2!
+    shape: DimList = DimList.create_unknown[rank](), // Compile-time description of dimension sizes
+    strides: DimList = DimList.create_unknown[rank](), // Compile-time description of memory layout
+
+    *, // Indicates subsequent parameters are keyword-only
+    alignment: Int = 1, // Preferred memory alignment for performance
+    address_space: AddressSpace = AddressSpace.GENERIC, // Where is the memory? (CPU, GPU)
+    exclusive: Bool = True // Is this NDBuffer the only way to access the memory?
+] {
+    // ... Internal fields and methods ...
+}
+</code></pre>
+
+<p>Let’s break these down:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">mut: Bool</code>: Short for “mutable.” If <code class="language-plaintext highlighter-rouge">True</code>, you can change the data elements in the <code class="language-plaintext highlighter-rouge">NDBuffer</code>. If <code class="language-plaintext highlighter-rouge">False</code>, it’s read-only.</li>
+  <li><code class="language-plaintext highlighter-rouge">type: DType</code>: Specifies the data type of the elements stored. <code class="language-plaintext highlighter-rouge">DType</code> is Mojo’s way of representing types like <code class="language-plaintext highlighter-rouge">float32</code>, <code class="language-plaintext highlighter-rouge">int64</code>, etc.</li>
+  <li><code class="language-plaintext highlighter-rouge">rank: Int</code>: The number of dimensions. A 1D array (vector) has <code class="language-plaintext highlighter-rouge">rank=1</code>. A 2D array (matrix) has <code class="language-plaintext highlighter-rouge">rank=2</code>. A 3D array (like a cube of data) has <code class="language-plaintext highlighter-rouge">rank=3</code>, and so on.</li>
+  <li><code class="language-plaintext highlighter-rouge">origin: Origin[mut]</code>: An advanced Mojo concept related to memory ownership and borrowing rules. It helps Mojo track where the permission to access the memory came from, enhancing safety. It’s often tied to the <code class="language-plaintext highlighter-rouge">UnsafePointer</code> that the <code class="language-plaintext highlighter-rouge">NDBuffer</code> will use.</li>
+  <li><code class="language-plaintext highlighter-rouge">shape: DimList</code>: This is where <code class="language-plaintext highlighter-rouge">DimList</code> (from Chapter 2) comes in! It’s a compile-time list of <code class="language-plaintext highlighter-rouge">Dim</code>s describing the <em>intended</em> size of each dimension. Some <code class="language-plaintext highlighter-rouge">Dim</code>s can be static (e.g., <code class="language-plaintext highlighter-rouge">Dim(10)</code>), and some can be dynamic (<code class="language-plaintext highlighter-rouge">Dim()</code>, meaning the size will be known at runtime). By default, it’s <code class="language-plaintext highlighter-rouge">DimList.create_unknown[rank]()</code>, meaning all dimension sizes are initially considered dynamic.</li>
+  <li><code class="language-plaintext highlighter-rouge">strides: DimList</code>: Another <code class="language-plaintext highlighter-rouge">DimList</code>! This describes the <em>strides</em> of the buffer at compile time. Strides tell Mojo how many elements to “skip” in memory to move to the next element along a particular dimension. We’ll cover strides in detail in the next chapter. Like <code class="language-plaintext highlighter-rouge">shape</code>, it defaults to all dynamic.</li>
+  <li><code class="language-plaintext highlighter-rouge">alignment: Int</code>: For performance, data in memory is sometimes “aligned” to start at addresses that are multiples of a certain number (e.g., 16 bytes, 64 bytes). This parameter specifies the desired alignment.</li>
+  <li><code class="language-plaintext highlighter-rouge">address_space: AddressSpace</code>: Tells Mojo where the memory this <code class="language-plaintext highlighter-rouge">NDBuffer</code> describes is located (e.g., general CPU memory (<code class="language-plaintext highlighter-rouge">AddressSpace.GENERIC</code>), GPU shared memory, etc.).</li>
+  <li><code class="language-plaintext highlighter-rouge">exclusive: Bool</code>: A more advanced flag. If <code class="language-plaintext highlighter-rouge">True</code>, it suggests that this <code class="language-plaintext highlighter-rouge">NDBuffer</code> (and its underlying pointer) is the <em>only</em> way the program is supposed to access this specific block of memory. This can enable certain optimizations.</li>
+</ul>
+
+<h3 id="core-internal-fields-runtime-information">Core Internal Fields (Runtime Information)</h3>
+
+<p>Inside every <code class="language-plaintext highlighter-rouge">NDBuffer</code> instance, there are a few crucial fields that store its runtime state:</p>
+
+<pre><code class="language-mojo">// Inside the NDBuffer struct definition...
+// ...
+    var data: UnsafePointer[
+        Scalar[type], // Points to elements of the NDBuffer's 'type'
+        address_space=address_space, // Inherits from NDBuffer's parameter
+        mut=mut, // Inherits from NDBuffer's parameter
+        origin=origin // Inherits from NDBuffer's parameter
+    ];
+
+    // These store the *actual* runtime dimension sizes and strides
+    var dynamic_shape: IndexList[rank, element_type = DType.uint64];
+    var dynamic_stride: IndexList[rank, element_type = DType.uint64];
+// ...
+</code></pre>
+
+<p>Let’s understand these:</p>
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">data: UnsafePointer[...]</code>: This is the direct link to the memory! It’s an <code class="language-plaintext highlighter-rouge">UnsafePointer</code> (from Chapter 1) that holds the memory address where the <em>first element</em> of the <code class="language-plaintext highlighter-rouge">NDBuffer</code>’s data begins.
+    <ul>
+      <li>Notice <code class="language-plaintext highlighter-rouge">Scalar[type]</code>: If <code class="language-plaintext highlighter-rouge">NDBuffer.type</code> is <code class="language-plaintext highlighter-rouge">DType.float32</code>, then <code class="language-plaintext highlighter-rouge">Scalar[type]</code> becomes <code class="language-plaintext highlighter-rouge">Float32</code>. The <code class="language-plaintext highlighter-rouge">UnsafePointer</code> points to individual elements of this type.</li>
+      <li>Its <code class="language-plaintext highlighter-rouge">address_space</code>, <code class="language-plaintext highlighter-rouge">mut</code> (mutability), and <code class="language-plaintext highlighter-rouge">origin</code> are typically inherited from the <code class="language-plaintext highlighter-rouge">NDBuffer</code>’s own parameters.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">dynamic_shape: IndexList[rank, ... ]</code>: This field holds the <em>actual, runtime</em> size of each of the <code class="language-plaintext highlighter-rouge">NDBuffer</code>’s <code class="language-plaintext highlighter-rouge">rank</code> dimensions.
+    <ul>
+      <li>An <code class="language-plaintext highlighter-rouge">IndexList</code> is a list of integers.</li>
+      <li>Even if you provided static dimensions in the <code class="language-plaintext highlighter-rouge">shape: DimList</code> parameter (e.g., <code class="language-plaintext highlighter-rouge">DimList(Dim(3), Dim(4))</code>), those values get stored here (e.g., <code class="language-plaintext highlighter-rouge">IndexList(3, 4)</code>).</li>
+      <li>If your <code class="language-plaintext highlighter-rouge">shape: DimList</code> had dynamic dimensions (e.g., <code class="language-plaintext highlighter-rouge">DimList(Dim(3), Dim())</code>), then <code class="language-plaintext highlighter-rouge">dynamic_shape</code> would be filled in when the <code class="language-plaintext highlighter-rouge">NDBuffer</code> is fully initialized with the actual runtime size for that dynamic dimension.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">dynamic_stride: IndexList[rank, ... ]</code>: Similar to <code class="language-plaintext highlighter-rouge">dynamic_shape</code>, this field holds the <em>actual, runtime</em> stride for each dimension. Strides are crucial for navigating the N-dimensional data in the flat 1D memory. We’ll dedicate the next chapter to understanding them.</li>
+</ol>
+
+<p>So, the <code class="language-plaintext highlighter-rouge">NDBuffer</code> uses its <code class="language-plaintext highlighter-rouge">data</code> pointer to find the start of the memory, and then uses <code class="language-plaintext highlighter-rouge">dynamic_shape</code> and <code class="language-plaintext highlighter-rouge">dynamic_stride</code> to interpret that flat memory as a structured N-dimensional array.</p>
+
+<h2 id="bringing-it-all-together-initializing-an-ndbuffer">Bringing It All Together: Initializing an <code class="language-plaintext highlighter-rouge">NDBuffer</code></h2>
+
+<p><code class="language-plaintext highlighter-rouge">NDBuffer</code> has many ways to be initialized (many <code class="language-plaintext highlighter-rouge">__init__</code> methods). We won’t cover them all, but let’s look at the general idea with a couple of simplified examples.</p>
+
+<p><strong>Example 1: A 2D <code class="language-plaintext highlighter-rouge">NDBuffer</code> with Statically Known Shape</strong></p>
+
+<p>Imagine you have an <code class="language-plaintext highlighter-rouge">UnsafePointer</code> called <code class="language-plaintext highlighter-rouge">my_ptr</code> that points to a block of <code class="language-plaintext highlighter-rouge">Float32</code> data in memory. You want to view this data as a 2x3 matrix (2 rows, 3 columns).</p>
+
+<pre><code class="language-mojo">from memory import UnsafePointer, DType, Origin
+from buffer import NDBuffer, DimList, Dim
+
+fn main() raises:
+    // Assume my_ptr is a valid UnsafePointer to enough Float32 data
+    // For this example, we'll just create a dummy one.
+    // In a real scenario, this memory would be allocated.
+    var my_ptr = UnsafePointer[Float32](); // Dummy pointer
+
+    // Define the NDBuffer's properties
+    alias MyOrigin = Origin[True].init() // A dummy origin for the example
+
+    // Create an NDBuffer for a 2x3 matrix of Float32s
+    // NDBuffer[mut, type, rank, origin, shape_dimlist](pointer_to_data)
+    let matrix_view = NDBuffer[
+        True,                 // mut = True (mutable)
+        DType.float32,        // type = DType.float32
+        2,                    // rank = 2 (2D)
+        MyOrigin,             // origin (memory tracking)
+        DimList(Dim(2), Dim(3)) // shape = 2 rows, 3 columns (all static)
+    ](my_ptr);
+
+    // What happens inside matrix_view?
+    // - matrix_view.data will hold my_ptr
+    // - matrix_view.dynamic_shape will be an IndexList like (2, 3)
+    // - matrix_view.dynamic_stride will be calculated for a contiguous 2x3 layout
+    //   (e.g., (3, 1) meaning jump 3 elements for next row, 1 for next column)
+    print(matrix_view.get_shape())
+</code></pre>
+<p><em>Output (conceptual, depends on actual initialization context for dummy pointer)</em>:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(2, 3)
+</code></pre></div></div>
+<p>In this case, because the shape <code class="language-plaintext highlighter-rouge">DimList(Dim(2), Dim(3))</code> is fully static, Mojo knows the exact dimensions at compile time. The <code class="language-plaintext highlighter-rouge">NDBuffer</code> then stores this pointer and shape information. It also computes default strides assuming the data is laid out contiguously (like words in a book, one row after another).</p>
+
+<p><strong>Example 2: A 1D <code class="language-plaintext highlighter-rouge">NDBuffer</code> with Dynamically Known Shape</strong></p>
+
+<p>Now, let’s say <code class="language-plaintext highlighter-rouge">my_ptr</code> points to <code class="language-plaintext highlighter-rouge">Int</code> data, but the number of integers isn’t known until runtime.</p>
+
+<pre><code class="language-mojo">from memory import UnsafePointer, DType, Origin, IndexList
+from buffer import NDBuffer, DimList
+
+fn main() raises:
+    var my_ptr = UnsafePointer[Int](); // Dummy pointer
+    alias MyOrigin = Origin[True].init()
+
+    let num_elements_runtime: Int = 10; // Determined at runtime
+
+    // Create an NDBuffer for a 1D array.
+    // The shape DimList parameter defaults to DimList.create_unknown[rank](),
+    // so we pass the dynamic shape directly.
+    // NDBuffer[mut, type, rank, origin](pointer_to_data, dynamic_shape_indexlist)
+    let vector_view = NDBuffer[
+        True,          // mut
+        DType.int64,   // type
+        1,             // rank = 1 (1D)
+        MyOrigin       // origin
+    ](my_ptr, IndexList[1](num_elements_runtime));
+
+    // Inside vector_view:
+    // - vector_view.data holds my_ptr
+    // - vector_view.dynamic_shape will be an IndexList like (10)
+    // - vector_view.dynamic_stride will be (1) for a contiguous 1D array.
+    print(vector_view.get_shape())
+</code></pre>
+<p><em>Output (conceptual)</em>:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(10)
+</code></pre></div></div>
+<p>Here, the <code class="language-plaintext highlighter-rouge">NDBuffer</code> is initialized with <code class="language-plaintext highlighter-rouge">my_ptr</code> and an <code class="language-plaintext highlighter-rouge">IndexList</code> containing the runtime size <code class="language-plaintext highlighter-rouge">num_elements_runtime</code>. The <code class="language-plaintext highlighter-rouge">dynamic_shape</code> field inside <code class="language-plaintext highlighter-rouge">vector_view</code> will store this runtime size.</p>
+
+<p>These examples show the core idea: <code class="language-plaintext highlighter-rouge">NDBuffer</code> combines a pointer to raw memory (<code class="language-plaintext highlighter-rouge">data</code>) with descriptions of its structure (<code class="language-plaintext highlighter-rouge">dynamic_shape</code>, <code class="language-plaintext highlighter-rouge">dynamic_stride</code>) to provide a meaningful N-dimensional view.</p>
+
+<h2 id="what-can-you-do-with-an-ndbuffer-a-sneak-peek">What Can You Do With an <code class="language-plaintext highlighter-rouge">NDBuffer</code>? (A Sneak Peek)</h2>
+
+<p>Once you have an <code class="language-plaintext highlighter-rouge">NDBuffer</code>, you can perform many operations, such as:</p>
+
+<ul>
+  <li><strong>Get its rank</strong>: <code class="language-plaintext highlighter-rouge">let r = my_ndbuffer.get_rank()</code></li>
+  <li><strong>Get its shape (runtime)</strong>: <code class="language-plaintext highlighter-rouge">let s = my_ndbuffer.get_shape()</code> (returns an <code class="language-plaintext highlighter-rouge">IndexList</code>)</li>
+  <li><strong>Get its strides (runtime)</strong>: <code class="language-plaintext highlighter-rouge">let st = my_ndbuffer.get_strides()</code> (returns an <code class="language-plaintext highlighter-rouge">IndexList</code>)</li>
+  <li><strong>Get the total number of elements</strong>: <code class="language-plaintext highlighter-rouge">let count = my_ndbuffer.num_elements()</code> or <code class="language-plaintext highlighter-rouge">len(my_ndbuffer)</code></li>
+  <li><strong>Access an element</strong>: <code class="language-plaintext highlighter-rouge">let element = my_ndbuffer[idx0, idx1, ...]</code> (e.g., <code class="language-plaintext highlighter-rouge">matrix_view[0, 1]</code> for row 0, col 1). This is done via the <code class="language-plaintext highlighter-rouge">__getitem__</code> method.</li>
+  <li><strong>Set an element (if mutable)</strong>: <code class="language-plaintext highlighter-rouge">my_ndbuffer[idx0, idx1, ...] = new_value</code>. This is done via the <code class="language-plaintext highlighter-rouge">__setitem__</code> method.</li>
+  <li><strong>Load/Store SIMD vectors</strong>: For performance, you can load or store multiple elements at once using SIMD operations (e.g., <code class="language-plaintext highlighter-rouge">my_ndbuffer.load[width=4](...)</code>).</li>
+</ul>
+
+<p>We’ll explore these operations, especially element access and the role of strides, in more detail in upcoming chapters.</p>
+
+<h2 id="key-takeaways-for-chapter-3">Key Takeaways for Chapter 3</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">NDBuffer</code> is a <strong>non-owning view</strong> or “lens” that interprets a block of memory as an N-dimensional array.</li>
+  <li>It combines an <code class="language-plaintext highlighter-rouge">UnsafePointer</code> (to the start of the data) with shape and stride information.</li>
+  <li><strong>Key Parameters</strong> (compile-time info): <code class="language-plaintext highlighter-rouge">mut</code>, <code class="language-plaintext highlighter-rouge">type</code>, <code class="language-plaintext highlighter-rouge">rank</code>, <code class="language-plaintext highlighter-rouge">origin</code>, <code class="language-plaintext highlighter-rouge">shape: DimList</code>, <code class="language-plaintext highlighter-rouge">strides: DimList</code>, <code class="language-plaintext highlighter-rouge">alignment</code>, <code class="language-plaintext highlighter-rouge">address_space</code>.</li>
+  <li><strong>Core Internal Fields</strong> (runtime info): <code class="language-plaintext highlighter-rouge">data: UnsafePointer</code>, <code class="language-plaintext highlighter-rouge">dynamic_shape: IndexList</code>, <code class="language-plaintext highlighter-rouge">dynamic_stride: IndexList</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">shape: DimList</code> parameter allows specifying static or dynamic dimension sizes at compile time, while <code class="language-plaintext highlighter-rouge">dynamic_shape: IndexList</code> stores the actual runtime sizes.</li>
+  <li><code class="language-plaintext highlighter-rouge">NDBuffer</code> enables Mojo to handle multi-dimensional data flexibly and efficiently.</li>
+</ul>
+
+<h2 id="whats-next">What’s Next?</h2>
+
+<p>We’ve seen that <code class="language-plaintext highlighter-rouge">NDBuffer</code> uses <code class="language-plaintext highlighter-rouge">data</code>, <code class="language-plaintext highlighter-rouge">dynamic_shape</code>, and <code class="language-plaintext highlighter-rouge">dynamic_stride</code> to make sense of memory. But how exactly does it use <code class="language-plaintext highlighter-rouge">dynamic_stride</code> to find, for example, the element at <code class="language-plaintext highlighter-rouge">[row_index, column_index]</code> in a 2D matrix? This involves understanding <strong>strides</strong> and <strong>offset computation</strong>. That’s precisely what we’ll unravel in <a href="04_strides_and_offset_computation_.md">Chapter 4: Strides and Offset Computation</a>!</p>
+
+<hr />
+<p><em>Navigation</em></p>
+<ol>
+  <li><a href="01_unsafepointer__as_used_by_ndbuffer__.md">UnsafePointer (as used by NDBuffer)</a></li>
+  <li><a href="02_dimlist_and_dim_.md">DimList and Dim</a></li>
+  <li><strong>NDBuffer (You are here)</strong></li>
+  <li><a href="04_strides_and_offset_computation_.md">Strides and Offset Computation</a></li>
+  <li><a href="05_simd_data_access_.md">SIMD Data Access</a>
+```</li>
+</ol>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

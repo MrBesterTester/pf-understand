@@ -1,0 +1,245 @@
+<h1 id="chapter-2-asyncwebcrawler">Chapter 2: AsyncWebCrawler</h1>
+
+<p>In <a href="01_configuration_system_.md">Chapter 1: Configuration System</a>, we learned how to set up the configuration for our web crawler. Now, let’s put those configurations to work with the <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code>, the main engine of the crawl4ai library!</p>
+
+<h2 id="what-is-asyncwebcrawler">What is AsyncWebCrawler?</h2>
+
+<p>Imagine you want to automatically collect information from websites. You could manually visit each page, copy the text, save images, and organize everything—but that would take forever! The <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code> is like your personal assistant that does all this automatically and efficiently.</p>
+
+<p>The “Async” part means it can work on multiple tasks simultaneously without waiting for each one to finish before starting the next, similar to how you might cook multiple dishes at once rather than one after another.</p>
+
+<h2 id="basic-usage-crawling-a-single-webpage">Basic Usage: Crawling a Single Webpage</h2>
+
+<p>Let’s start with a simple example. Say you want to extract content from a webpage and convert it to markdown format:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">simple_crawl</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">)</span>  <span class="c1"># Print the extracted markdown content
+</span>
+<span class="c1"># Run the async function
+</span><span class="n">asyncio</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">simple_crawl</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p>This code:</p>
+<ol>
+  <li>Creates an <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code> using a context manager (<code class="language-plaintext highlighter-rouge">async with</code>)</li>
+  <li>Crawls the URL “https://example.com”</li>
+  <li>Prints the extracted markdown content</li>
+</ol>
+
+<p>The <code class="language-plaintext highlighter-rouge">async with</code> statement ensures the crawler is properly started and closed, even if errors occur.</p>
+
+<h2 id="using-configuration-with-asyncwebcrawler">Using Configuration with AsyncWebCrawler</h2>
+
+<p>Remember the configurations we learned about in Chapter 1? Let’s use them with our crawler:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">BrowserConfig</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
+<span class="kn">from</span> <span class="nn">crawl4ai.cache_context</span> <span class="kn">import</span> <span class="n">CacheMode</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">configured_crawl</span><span class="p">():</span>
+    <span class="c1"># Browser configuration
+</span>    <span class="n">browser_config</span> <span class="o">=</span> <span class="n">BrowserConfig</span><span class="p">(</span><span class="n">headless</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">browser_type</span><span class="o">=</span><span class="s">"chromium"</span><span class="p">)</span>
+    
+    <span class="c1"># Crawler run configuration
+</span>    <span class="n">run_config</span> <span class="o">=</span> <span class="n">CrawlerRunConfig</span><span class="p">(</span>
+        <span class="n">cache_mode</span><span class="o">=</span><span class="n">CacheMode</span><span class="p">.</span><span class="n">ENABLED</span><span class="p">,</span>
+        <span class="n">screenshot</span><span class="o">=</span><span class="bp">True</span>
+    <span class="p">)</span>
+    
+    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">browser_config</span><span class="p">)</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">run_config</span><span class="p">)</span>
+        
+    <span class="k">return</span> <span class="n">result</span>
+</code></pre></div></div>
+
+<p>Here, we:</p>
+<ol>
+  <li>Create a <code class="language-plaintext highlighter-rouge">BrowserConfig</code> for how the browser behaves</li>
+  <li>Create a <code class="language-plaintext highlighter-rouge">CrawlerRunConfig</code> for how the crawler processes content</li>
+  <li>Pass the browser config when creating the crawler</li>
+  <li>Pass the run config when crawling the URL</li>
+</ol>
+
+<h2 id="understanding-crawler-results">Understanding Crawler Results</h2>
+
+<p>When you call <code class="language-plaintext highlighter-rouge">crawler.arun()</code>, it returns a <code class="language-plaintext highlighter-rouge">CrawlResult</code> object that contains all the extracted data:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">async</span> <span class="k">def</span> <span class="nf">examine_result</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">)</span>
+        
+        <span class="c1"># Access different parts of the result
+</span>        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Markdown content: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"HTML content: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">html</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Was crawl successful? </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">success</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+        
+        <span class="c1"># If you took a screenshot
+</span>        <span class="k">if</span> <span class="n">result</span><span class="p">.</span><span class="n">screenshot</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s">"screenshot.png"</span><span class="p">,</span> <span class="s">"wb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">f</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">screenshot</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">result</code> object has many useful attributes:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">markdown</code>: The page content converted to markdown format</li>
+  <li><code class="language-plaintext highlighter-rouge">html</code>: The original HTML of the page</li>
+  <li><code class="language-plaintext highlighter-rouge">success</code>: Whether the crawl was successful</li>
+  <li><code class="language-plaintext highlighter-rouge">screenshot</code>: Screenshot data (if configured)</li>
+  <li><code class="language-plaintext highlighter-rouge">links</code>: Dictionary of internal and external links found</li>
+  <li><code class="language-plaintext highlighter-rouge">media</code>: Dictionary of images, videos, and other media found</li>
+</ul>
+
+<h2 id="crawling-multiple-webpages">Crawling Multiple Webpages</h2>
+
+<p>Often, you’ll want to crawl multiple pages. The <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code> makes this efficient with the <code class="language-plaintext highlighter-rouge">arun_many</code> method:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">async</span> <span class="k">def</span> <span class="nf">crawl_multiple</span><span class="p">():</span>
+    <span class="n">urls</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s">"https://example.com"</span><span class="p">,</span>
+        <span class="s">"https://example.org"</span><span class="p">,</span>
+        <span class="s">"https://example.net"</span>
+    <span class="p">]</span>
+    
+    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun_many</span><span class="p">(</span><span class="n">urls</span><span class="o">=</span><span class="n">urls</span><span class="p">)</span>
+        
+    <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"</span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">url</span><span class="si">}</span><span class="s">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">)</span><span class="si">}</span><span class="s"> chars"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This crawls all three URLs concurrently, which is much faster than doing them one by one!</p>
+
+<h2 id="managing-crawler-lifecycle">Managing Crawler Lifecycle</h2>
+
+<p>While the context manager (<code class="language-plaintext highlighter-rouge">async with</code>) is recommended, you can also manage the crawler’s lifecycle explicitly:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">async</span> <span class="k">def</span> <span class="nf">explicit_lifecycle</span><span class="p">():</span>
+    <span class="n">crawler</span> <span class="o">=</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">start</span><span class="p">()</span>  <span class="c1"># Explicitly start the crawler
+</span>    
+    <span class="c1"># Use the crawler
+</span>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">)</span>
+    
+    <span class="c1"># Close when done
+</span>    <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+    
+    <span class="k">return</span> <span class="n">result</span>
+</code></pre></div></div>
+
+<p>This approach is useful for long-running applications where you want more control.</p>
+
+<h2 id="advanced-feature-taking-screenshots">Advanced Feature: Taking Screenshots</h2>
+
+<p>Want to capture what the webpage looks like? Just enable screenshots in your configuration:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">async</span> <span class="k">def</span> <span class="nf">take_screenshot</span><span class="p">():</span>
+    <span class="n">run_config</span> <span class="o">=</span> <span class="n">CrawlerRunConfig</span><span class="p">(</span><span class="n">screenshot</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    
+    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span>
+            <span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">,</span> 
+            <span class="n">config</span><span class="o">=</span><span class="n">run_config</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># Save the screenshot
+</span>        <span class="k">if</span> <span class="n">result</span><span class="p">.</span><span class="n">screenshot</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s">"example_screenshot.png"</span><span class="p">,</span> <span class="s">"wb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">f</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">screenshot</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This will save a PNG image of how the webpage looked during crawling.</p>
+
+<h2 id="what-happens-under-the-hood">What Happens Under the Hood</h2>
+
+<p>When you use <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code>, a lot happens behind the scenes. Here’s a simplified view:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User as Your Code
+    participant C as AsyncWebCrawler
+    participant B as Browser
+    participant W as Website
+    participant P as Processor
+
+    User-&gt;&gt;C: Create crawler
+    User-&gt;&gt;C: arun("https://example.com")
+    C-&gt;&gt;B: Launch browser
+    B-&gt;&gt;W: Request page
+    W-&gt;&gt;B: Return HTML
+    B-&gt;&gt;C: Return HTML &amp; screenshot
+    C-&gt;&gt;P: Process content
+    P-&gt;&gt;C: Return markdown &amp; extracted data
+    C-&gt;&gt;User: Return CrawlResult
+</code></pre>
+
+<ol>
+  <li>When you call <code class="language-plaintext highlighter-rouge">arun()</code>, the crawler first checks if the URL is in the cache (if caching is enabled)</li>
+  <li>If not cached, it uses the Playwright library to launch a browser</li>
+  <li>The browser navigates to the URL and waits for the page to load</li>
+  <li>If configured, it takes a screenshot of the page</li>
+  <li>The HTML content is extracted and processed to generate markdown</li>
+  <li>All the extracted data is bundled into a <code class="language-plaintext highlighter-rouge">CrawlResult</code> and returned to you</li>
+</ol>
+
+<h2 id="implementation-details">Implementation Details</h2>
+
+<p>Let’s peek at some implementation details from the code you provided:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From async_webcrawler.py
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">arun</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">CrawlerRunConfig</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="c1"># Auto-start if not ready
+</span>    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="p">.</span><span class="n">ready</span><span class="p">:</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">start</span><span class="p">()</span>
+        
+    <span class="n">config</span> <span class="o">=</span> <span class="n">config</span> <span class="ow">or</span> <span class="n">CrawlerRunConfig</span><span class="p">()</span>
+    <span class="c1"># ... [cache checking logic] ...
+</span>    
+    <span class="c1"># Fetch fresh content if needed
+</span>    <span class="k">if</span> <span class="ow">not</span> <span class="n">cached_result</span><span class="p">:</span>
+        <span class="n">async_response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">crawler_strategy</span><span class="p">.</span><span class="n">crawl</span><span class="p">(</span>
+            <span class="n">url</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># Process the HTML content
+</span>        <span class="n">crawl_result</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">aprocess_html</span><span class="p">(</span>
+            <span class="n">url</span><span class="o">=</span><span class="n">url</span><span class="p">,</span> <span class="n">html</span><span class="o">=</span><span class="n">async_response</span><span class="p">.</span><span class="n">html</span><span class="p">,</span> 
+            <span class="n">screenshot_data</span><span class="o">=</span><span class="n">async_response</span><span class="p">.</span><span class="n">screenshot</span><span class="p">,</span>
+            <span class="c1"># ... [other parameters] ...
+</span>        <span class="p">)</span>
+        
+    <span class="k">return</span> <span class="n">CrawlResultContainer</span><span class="p">(</span><span class="n">crawl_result</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">arun</code> method is the core of the crawler. It:</p>
+<ol>
+  <li>Makes sure the crawler is ready</li>
+  <li>Uses the configuration (or creates a default one)</li>
+  <li>Checks the cache for existing results</li>
+  <li>If needed, uses a crawler strategy to fetch content</li>
+  <li>Processes the HTML into a structured result</li>
+  <li>Returns everything wrapped in a container</li>
+</ol>
+
+<p>The actual browser interaction is handled by the <code class="language-plaintext highlighter-rouge">crawler_strategy</code>, typically an <code class="language-plaintext highlighter-rouge">AsyncPlaywrightCrawlerStrategy</code> instance that uses the Playwright library to control a real browser.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Now you understand the <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code>, the workhorse of the crawl4ai library! You’ve learned how to:</p>
+<ul>
+  <li>Create and use an AsyncWebCrawler</li>
+  <li>Configure its behavior</li>
+  <li>Extract content from a single webpage</li>
+  <li>Process multiple webpages efficiently</li>
+  <li>Handle the results</li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">AsyncWebCrawler</code> provides a high-level interface that hides the complexity of browser automation, network requests, and content extraction. It’s like having a robot that visits websites for you and brings back organized information!</p>
+
+<p>In the next chapter, <a href="03_content_extraction_pipeline_.md">Content Extraction Pipeline</a>, we’ll dive deeper into how the crawler extracts and processes the content it collects. You’ll learn how to customize this process to get exactly the content you need.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

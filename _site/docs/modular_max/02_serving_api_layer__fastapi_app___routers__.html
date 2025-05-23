@@ -1,0 +1,270 @@
+<h1 id="chapter-2-serving-api-layer-fastapi-app--routers">Chapter 2: Serving API Layer (FastAPI App &amp; Routers)</h1>
+
+<p>Welcome back! In <a href="01_settings___settings__class__.md">Chapter 1: Settings (<code class="language-plaintext highlighter-rouge">Settings</code> class)</a>, we explored how the <code class="language-plaintext highlighter-rouge">modular</code> application is configured using the <code class="language-plaintext highlighter-rouge">Settings</code> class. We learned how to adjust things like the server port or which API types to enable. Now, let’s see how <code class="language-plaintext highlighter-rouge">modular</code> actually <em>uses</em> these settings to listen for and understand requests from the outside world.</p>
+
+<p>This chapter focuses on the <strong>Serving API Layer</strong>, the very front door of our application.</p>
+
+<h2 id="what-problem-does-the-api-layer-solve">What Problem Does the API Layer Solve?</h2>
+
+<p>Imagine you want <code class="language-plaintext highlighter-rouge">modular</code> to generate some text based on a prompt, or you need it to calculate embeddings for a sentence. How do you tell <code class="language-plaintext highlighter-rouge">modular</code> what you want? You can’t just shout at your computer! You need a structured way to send your request and get a response.</p>
+
+<p>This is where the Serving API Layer comes in. It’s like the <strong>reception desk and main switchboard operator</strong> in a large office building:</p>
+<ul>
+  <li>It <strong>listens</strong> for incoming “calls” (which are HTTP requests from users or other programs).</li>
+  <li>It <strong>understands</strong> what the caller wants by looking at the “extension” they dialed (the URL path, e.g., <code class="language-plaintext highlighter-rouge">/v1/chat/completions</code>).</li>
+  <li>It <strong>directs</strong> the call to the correct department or person (an internal function that can handle the request).</li>
+  <li>Finally, it <strong>sends back</strong> a reply (an HTTP response, like the generated text).</li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">modular</code> API layer is built using a popular Python framework called <strong>FastAPI</strong>. It’s designed to be flexible and can speak different “languages” or API styles, such as those used by OpenAI, KServe, or AWS SageMaker. This means you can often use existing tools and client libraries that already know how to talk in these styles.</p>
+
+<h2 id="key-components-of-the-api-layer">Key Components of the API Layer</h2>
+
+<p>Let’s break down the main parts of this “reception and switchboard” system:</p>
+
+<h3 id="1-fastapi-the-super-efficient-receptionist">1. FastAPI: The Super-Efficient Receptionist</h3>
+
+<p>FastAPI is a modern, high-performance web framework for building APIs with Python. Think of it as a highly skilled and efficient receptionist. It handles many of the complex, low-level details of web communication for us, such as:</p>
+<ul>
+  <li>Understanding incoming HTTP requests (e.g., <code class="language-plaintext highlighter-rouge">GET</code>, <code class="language-plaintext highlighter-rouge">POST</code>).</li>
+  <li>Validating incoming data (e.g., ensuring a required field is present).</li>
+  <li>Converting Python data into JSON to send back in responses.</li>
+  <li>Generating interactive API documentation automatically.</li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">modular</code> uses FastAPI to build its entire API surface.</p>
+
+<h3 id="2-the-main-app-the-central-hub">2. The Main <code class="language-plaintext highlighter-rouge">app</code>: The Central Hub</h3>
+
+<p>At the heart of the API layer is the main FastAPI application instance, often referred to simply as <code class="language-plaintext highlighter-rouge">app</code>. This is like the central hub of the reception area. All incoming requests arrive here first.</p>
+
+<p>In <code class="language-plaintext highlighter-rouge">modular</code>, this <code class="language-plaintext highlighter-rouge">app</code> object is created and configured primarily in <code class="language-plaintext highlighter-rouge">src/max/serve/api_server.py</code>. It’s where various settings (from <a href="01_settings___settings__class__.md">Chapter 1: Settings (<code class="language-plaintext highlighter-rouge">Settings</code> class)</a>) are applied, middleware (special request/response handlers) are added, and different API “wings” (Routers) are connected.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/api_server.py
+</span><span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">FastAPI</span>
+<span class="kn">from</span> <span class="nn">max.serve.config</span> <span class="kn">import</span> <span class="n">Settings</span> <span class="c1"># We learned about this in Chapter 1!
+</span>
+<span class="c1"># This function sets up and returns the main FastAPI app
+</span><span class="k">def</span> <span class="nf">fastapi_app</span><span class="p">(</span>
+    <span class="n">settings</span><span class="p">:</span> <span class="n">Settings</span><span class="p">,</span>
+    <span class="c1"># ... other parameters for pipeline setup ...
+</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FastAPI</span><span class="p">:</span>
+    <span class="c1"># Create the main application instance
+</span>    <span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s">"MAX Serve"</span><span class="p">)</span>
+
+    <span class="c1"># ... (other setup like middleware, /version endpoint) ...
+</span>
+    <span class="c1"># We'll see how routers are added soon!
+</span>    <span class="k">return</span> <span class="n">app</span>
+</code></pre></div></div>
+<p>This code snippet shows the basic creation of the FastAPI <code class="language-plaintext highlighter-rouge">app</code>. This <code class="language-plaintext highlighter-rouge">app</code> object will then be “run” by a web server like Uvicorn to start listening for requests.</p>
+
+<h3 id="3-routers-the-departmental-switchboards">3. Routers: The Departmental Switchboards</h3>
+
+<p>Imagine our office building has different departments, each specializing in a certain type of work: one for OpenAI-style requests, one for KServe, and another for SageMaker. In FastAPI, <code class="language-plaintext highlighter-rouge">APIRouter</code> objects (or simply “routers”) help organize these different “departments.”</p>
+
+<p>A router groups together related API endpoints (specific tasks or functions). For example, all endpoints related to the OpenAI API (like <code class="language-plaintext highlighter-rouge">/v1/chat/completions</code> or <code class="language-plaintext highlighter-rouge">/v1/embeddings</code>) would be managed by an OpenAI-specific router.</p>
+
+<p><code class="language-plaintext highlighter-rouge">modular</code> uses routers to support multiple API standards. The <a href="01_settings___settings__class__.md">Settings (<code class="language-plaintext highlighter-rouge">Settings</code> class)</a> we discussed in Chapter 1 determine which of these routers are activated. If you configure <code class="language-plaintext highlighter-rouge">api_types</code> to include <code class="language-plaintext highlighter-rouge">OPENAI</code>, then the OpenAI router will be wired into the main <code class="language-plaintext highlighter-rouge">app</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/api_server.py
+# (inside the fastapi_app function)
+</span><span class="kn">from</span> <span class="nn">max.serve.config</span> <span class="kn">import</span> <span class="n">APIType</span> <span class="c1"># From Settings
+</span><span class="kn">from</span> <span class="nn">max.serve.router</span> <span class="kn">import</span> <span class="n">kserve_routes</span><span class="p">,</span> <span class="n">openai_routes</span><span class="p">,</span> <span class="n">sagemaker_routes</span>
+
+<span class="c1"># A mapping from API type to its router module
+</span><span class="n">ROUTES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">APIType</span><span class="p">.</span><span class="n">KSERVE</span><span class="p">:</span> <span class="n">kserve_routes</span><span class="p">,</span>
+    <span class="n">APIType</span><span class="p">.</span><span class="n">OPENAI</span><span class="p">:</span> <span class="n">openai_routes</span><span class="p">,</span>
+    <span class="n">APIType</span><span class="p">.</span><span class="n">SAGEMAKER</span><span class="p">:</span> <span class="n">sagemaker_routes</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="c1"># Inside the fastapi_app function:
+# for api_type_enabled in settings.api_types:
+#     router_module = ROUTES[api_type_enabled]
+#     app.include_router(router_module.router) # Adds the router to the app
+</span></code></pre></div></div>
+<p>This shows how, based on your configuration, the appropriate routers (like <code class="language-plaintext highlighter-rouge">openai_routes.router</code>) are “plugged into” the main <code class="language-plaintext highlighter-rouge">app</code>.</p>
+
+<h3 id="4-endpoints-paths--operations-the-specific-service-desks">4. Endpoints (Paths &amp; Operations): The Specific Service Desks</h3>
+
+<p>Within each router (department), there are specific “desks” or “services” offered. These are called <strong>endpoints</strong>. An endpoint is defined by:</p>
+<ul>
+  <li>A <strong>Path</strong>: The specific URL part after the main address (e.g., <code class="language-plaintext highlighter-rouge">/chat/completions</code>).</li>
+  <li>An <strong>HTTP Method</strong> (or Operation): What you want to do (e.g., <code class="language-plaintext highlighter-rouge">POST</code> to send data, <code class="language-plaintext highlighter-rouge">GET</code> to retrieve data).</li>
+</ul>
+
+<p>For example, to ask <code class="language-plaintext highlighter-rouge">modular</code> for a chat completion using the OpenAI API style, you would send a <code class="language-plaintext highlighter-rouge">POST</code> request to the path <code class="language-plaintext highlighter-rouge">/v1/chat/completions</code>. The API layer uses the path and method to find the exact Python function that should handle this request.</p>
+
+<p>Here’s how an endpoint might look within a router (e.g., <code class="language-plaintext highlighter-rouge">src/max/serve/router/openai_routes.py</code>):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/router/openai_routes.py
+</span><span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">Request</span>
+
+<span class="c1"># This router handles all paths starting with /v1
+</span><span class="n">router</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s">"/v1"</span><span class="p">)</span>
+
+<span class="c1"># This function handles POST requests to /v1/chat/completions
+</span><span class="o">@</span><span class="n">router</span><span class="p">.</span><span class="n">post</span><span class="p">(</span><span class="s">"/chat/completions"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">openai_create_chat_completion</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">):</span>
+    <span class="c1"># Logic to handle the chat completion request goes here
+</span>    <span class="c1"># For example, get data from 'request', call the model, format response
+</span>    <span class="c1"># response_data = {"id": "chatcmpl-123", "choices": [...]}
+</span>    <span class="c1"># return response_data
+</span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Handling chat completion for request ID: </span><span class="si">{</span><span class="n">request</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">request_id</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s">"message"</span><span class="p">:</span> <span class="s">"Chat completion response (simplified)"</span><span class="p">}</span>
+</code></pre></div></div>
+<p>The <code class="language-plaintext highlighter-rouge">@router.post("/chat/completions")</code> part is a decorator. It tells FastAPI that the <code class="language-plaintext highlighter-rouge">openai_create_chat_completion</code> function should be called whenever a <code class="language-plaintext highlighter-rouge">POST</code> request arrives for the <code class="language-plaintext highlighter-rouge">/v1/chat/completions</code> path.</p>
+
+<h2 id="example-requesting-a-chat-completion">Example: Requesting a Chat Completion</h2>
+
+<p>Let’s walk through what happens when you (or an application) want to generate text using <code class="language-plaintext highlighter-rouge">modular</code>, assuming it’s configured to serve an OpenAI-compatible API:</p>
+
+<ol>
+  <li>
+    <p><strong>You send a request</strong>: You might use a tool like <code class="language-plaintext highlighter-rouge">curl</code> or a Python script to send an HTTP <code class="language-plaintext highlighter-rouge">POST</code> request to <code class="language-plaintext highlighter-rouge">http://&lt;server_address&gt;:&lt;port&gt;/v1/chat/completions</code>. This request includes your prompt and other parameters in a JSON format.</p>
+
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Example using curl (if the server is running on localhost:8000)</span>
+curl <span class="nt">-X</span> POST http://localhost:8000/v1/chat/completions <span class="se">\</span>
+     <span class="nt">-H</span> <span class="s2">"Content-Type: application/json"</span> <span class="se">\</span>
+     <span class="nt">-d</span> <span class="s1">'{
+           "model": "my-model-name",
+           "messages": [{"role": "user", "content": "Hello, world!"}]
+         }'</span>
+</code></pre></div>    </div>
+    <p>If you run this (and <code class="language-plaintext highlighter-rouge">modular</code> is running with a model), you’d get a JSON response back.</p>
+  </li>
+  <li>
+    <p><strong>The API Layer receives it</strong>: The <code class="language-plaintext highlighter-rouge">modular</code> server, listening on the configured host and port (thanks to <a href="01_settings___settings__class__.md">Settings (<code class="language-plaintext highlighter-rouge">Settings</code> class)</a>), receives this HTTP request.</p>
+  </li>
+  <li>
+    <p><strong>FastAPI takes over</strong>: The main FastAPI <code class="language-plaintext highlighter-rouge">app</code> instance gets the request.</p>
+  </li>
+  <li><strong>Routing to the right department</strong>:
+    <ul>
+      <li>FastAPI sees the path starts with <code class="language-plaintext highlighter-rouge">/v1</code>. It knows the <code class="language-plaintext highlighter-rouge">openai_routes</code> router handles <code class="language-plaintext highlighter-rouge">/v1</code> paths.</li>
+      <li>The <code class="language-plaintext highlighter-rouge">openai_routes</code> router then looks at the rest of the path: <code class="language-plaintext highlighter-rouge">/chat/completions</code> and the method <code class="language-plaintext highlighter-rouge">POST</code>.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Calling the right function</strong>: It finds the <code class="language-plaintext highlighter-rouge">openai_create_chat_completion</code> function (or a similar one) that’s decorated to handle this specific path and method.</p>
+  </li>
+  <li><strong>Processing the request</strong>: The <code class="language-plaintext highlighter-rouge">openai_create_chat_completion</code> function executes.
+    <ul>
+      <li>It extracts the data (your prompt) from the request.</li>
+      <li>It then typically calls another major component, the <a href="03_llm_pipeline_orchestrator___tokengeneratorpipeline___.md">LLM Pipeline Orchestrator (<code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code>)</a>, to do the actual text generation (we’ll learn about this in the next chapter!).</li>
+    </ul>
+  </li>
+  <li><strong>Sending the response</strong>: Once the <a href="03_llm_pipeline_orchestrator___tokengeneratorpipeline___.md">LLM Pipeline Orchestrator (<code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code>)</a> returns the generated text, the <code class="language-plaintext highlighter-rouge">openai_create_chat_completion</code> function formats it into an OpenAI-compatible JSON response and returns it. FastAPI then sends this HTTP response back to you.</li>
+</ol>
+
+<h2 id="under-the-hood-the-journey-of-a-request">Under the Hood: The Journey of a Request</h2>
+
+<p>Let’s visualize the path of a request:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant WebServer as Uvicorn Web Server
+    participant FastAPIApp as FastAPI App
+    participant APIRouter as API Router (e.g., OpenAI)
+    participant PathHandler as Path Operation Function
+    participant Pipeline as LLM Pipeline (Chapter 3)
+
+    User-&gt;&gt;WebServer: POST /v1/chat/completions (HTTP Request)
+    WebServer-&gt;&gt;FastAPIApp: Forwards request
+    Note over FastAPIApp: Request ID might be added here (via middleware from `src/max/serve/request.py`)
+    FastAPIApp-&gt;&gt;APIRouter: Route based on path prefix /v1
+    APIRouter-&gt;&gt;PathHandler: Invoke `openai_create_chat_completion()`
+    PathHandler-&gt;&gt;Pipeline: Ask to generate text based on request data
+    Pipeline--&gt;&gt;PathHandler: Generated text/result
+    PathHandler--&gt;&gt;FastAPIApp: Formatted JSON Response
+    FastAPIApp--&gt;&gt;WebServer: HTTP Response
+    WebServer--&gt;&gt;User: Sends HTTP Response back
+</code></pre>
+
+<p>Key steps in code:</p>
+
+<ol>
+  <li>
+    <p><strong>Server Setup (<code class="language-plaintext highlighter-rouge">src/max/serve/api_server.py</code> or <code class="language-plaintext highlighter-rouge">src/max/entrypoints/cli/serve.py</code>)</strong>:
+The FastAPI <code class="language-plaintext highlighter-rouge">app</code> needs to be run by an ASGI server like Uvicorn. The <a href="01_settings___settings__class__.md">Settings (<code class="language-plaintext highlighter-rouge">Settings</code> class)</a> provide the host and port.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from src/max/serve/api_server.py
+</span><span class="kn">from</span> <span class="nn">uvicorn</span> <span class="kn">import</span> <span class="n">Config</span><span class="p">,</span> <span class="n">Server</span>
+<span class="c1"># from max.serve.config import Settings # Defined in Chapter 1
+# from max.serve.api_server import fastapi_app # Our app factory
+</span>
+<span class="c1"># settings = Settings() # Load configuration
+# app_instance = fastapi_app(settings, ...) # Create the FastAPI app
+</span>
+<span class="c1"># Create Uvicorn config
+# config = Config(app=app_instance, host=settings.host, port=settings.port)
+# server = Server(config)
+# # server.serve() # This starts listening for requests!
+</span></code></pre></div>    </div>
+    <p>This Uvicorn server is what makes your FastAPI application accessible over the network.</p>
+  </li>
+  <li>
+    <p><strong>Application Lifespan (<code class="language-plaintext highlighter-rouge">src/max/serve/api_server.py</code>)</strong>:
+FastAPI has a concept called “lifespan” events, which are functions that run at startup and shutdown. <code class="language-plaintext highlighter-rouge">modular</code> uses this to initialize critical components, like the <a href="03_llm_pipeline_orchestrator___tokengeneratorpipeline___.md">LLM Pipeline Orchestrator (<code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code>)</a>, and make them available to request handlers.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/api_server.py
+</span><span class="kn">from</span> <span class="nn">contextlib</span> <span class="kn">import</span> <span class="n">asynccontextmanager</span>
+<span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">FastAPI</span>
+<span class="c1"># from max.serve.pipelines.llm import TokenGeneratorPipeline
+</span>
+<span class="o">@</span><span class="n">asynccontextmanager</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">lifespan</span><span class="p">(</span><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">settings</span><span class="p">,</span> <span class="n">serving_settings</span><span class="p">):</span>
+    <span class="c1"># ... (setup telemetry, workers etc.) ...
+</span>    <span class="c1"># pipeline = TokenGeneratorPipeline(...) # Initialize the pipeline
+</span>    <span class="c1"># app.state.pipeline = pipeline # Make pipeline accessible in requests
+</span>    <span class="k">print</span><span class="p">(</span><span class="s">"Server starting up, pipeline getting ready..."</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="c1"># The app runs while yield is active
+</span>    <span class="k">print</span><span class="p">(</span><span class="s">"Server shutting down..."</span><span class="p">)</span>
+
+<span class="c1"># When creating the app:
+# app = FastAPI(lifespan=partial(lifespan, ...))
+</span></code></pre></div>    </div>
+    <p>The <code class="language-plaintext highlighter-rouge">app.state.pipeline</code> makes the pipeline object (which does the heavy lifting for text generation) easily accessible within your endpoint functions like <code class="language-plaintext highlighter-rouge">openai_create_chat_completion</code>.</p>
+  </li>
+  <li>
+    <p><strong>Request Handling in an Endpoint (<code class="language-plaintext highlighter-rouge">src/max/serve/router/openai_routes.py</code>)</strong>:
+Once a request reaches an endpoint function, it can access shared state (like the pipeline) and process the request.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/router/openai_routes.py
+</span><span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">Request</span>
+<span class="c1"># from max.serve.pipelines.llm import TokenGeneratorPipeline
+</span>
+<span class="c1"># @router.post("/chat/completions")
+</span><span class="k">async</span> <span class="k">def</span> <span class="nf">openai_create_chat_completion</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">):</span>
+    <span class="c1"># request_data = await request.json() # Get JSON from POST body
+</span>    <span class="c1"># pipeline: TokenGeneratorPipeline = request.app.state.pipeline
+</span>
+    <span class="c1"># prompt = request_data["messages"][0]["content"]
+</span>    <span class="c1"># generated_text = await pipeline.generate_text(prompt) # Imaginary method
+</span>
+    <span class="c1"># return {"choices": [{"message": {"content": generated_text}}]}
+</span>    <span class="c1"># Actual logic is more complex, involves TokenGeneratorRequest, etc.
+</span>    <span class="k">return</span> <span class="p">{</span><span class="s">"message"</span><span class="p">:</span> <span class="s">"Simplified response from chat completion"</span><span class="p">}</span>
+</code></pre></div>    </div>
+    <p>This shows the basic flow: get data from the <code class="language-plaintext highlighter-rouge">request</code>, use the <code class="language-plaintext highlighter-rouge">pipeline</code> from <code class="language-plaintext highlighter-rouge">request.app.state</code>, and return a response. The actual implementation in <code class="language-plaintext highlighter-rouge">modular</code> is more detailed to handle streaming, various parameters, and error conditions.</p>
+  </li>
+</ol>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now seen how the Serving API Layer acts as the front door for <code class="language-plaintext highlighter-rouge">modular</code>. Using FastAPI, it defines clear entry points (endpoints like <code class="language-plaintext highlighter-rouge">/v1/chat/completions</code>) and uses routers to organize these endpoints based on API styles (OpenAI, KServe, etc.). This layer takes the configuration from the <a href="01_settings___settings__class__.md">Settings (<code class="language-plaintext highlighter-rouge">Settings</code> class)</a> to decide which APIs to expose and on which host/port to listen.</p>
+
+<p>Essentially, this layer is responsible for:</p>
+<ul>
+  <li><strong>Receiving</strong> HTTP requests.</li>
+  <li><strong>Understanding</strong> what the request is for (based on URL and HTTP method).</li>
+  <li><strong>Directing</strong> the request to the correct internal handler function.</li>
+  <li><strong>Sending back</strong> an HTTP response.</li>
+</ul>
+
+<p>But what happens <em>inside</em> those handler functions? How does <code class="language-plaintext highlighter-rouge">modular</code> actually process a request to generate text or embeddings once the API layer has handed it off? That’s the job of the <a href="03_llm_pipeline_orchestrator___tokengeneratorpipeline___.md">LLM Pipeline Orchestrator (<code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code>)</a>, which we’ll dive into in the next chapter!</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

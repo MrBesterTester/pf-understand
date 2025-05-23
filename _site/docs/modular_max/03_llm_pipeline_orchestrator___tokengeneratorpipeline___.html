@@ -1,0 +1,276 @@
+<h1 id="chapter-3-llm-pipeline-orchestrator-tokengeneratorpipeline">Chapter 3: LLM Pipeline Orchestrator (<code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code>)</h1>
+
+<p>In <a href="02_serving_api_layer__fastapi_app___routers__.md">Chapter 2: Serving API Layer (FastAPI App &amp; Routers)</a>, we saw how <code class="language-plaintext highlighter-rouge">modular</code> receives requests from the outside world, like a receptionist directing calls. But once a request like “tell me a story about a brave knight” arrives, who actually takes that request, gets it ready for the language model, and makes sure the story comes back?</p>
+
+<p>That’s where the <strong><code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code></strong> comes in! It’s the general manager for a specific language model.</p>
+
+<h2 id="what-problem-does-the-tokengeneratorpipeline-solve">What Problem Does the <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> Solve?</h2>
+
+<p>Imagine you’ve asked <code class="language-plaintext highlighter-rouge">modular</code> to write that story. The API Layer has accepted your request. Now what?</p>
+<ul>
+  <li>Your request (“tell me a story…”) is in human language. The AI model doesn’t understand English directly; it understands “tokens” (like special code words or numbers).</li>
+  <li>The AI model itself is a powerful but specialized piece of machinery (the <a href="04_model_worker_.md">Model Worker</a>, which we’ll cover later). It needs to be told exactly what to do and how.</li>
+  <li>Once the model starts generating the story, it might produce it word by word (or token by token). Someone needs to collect these pieces and send them back to you, either as they come or all at once.</li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> acts like an <strong>assembly line manager</strong> for this whole process. It takes the raw material (your prompt), ensures it’s correctly prepared, sends it to the machinery (the model worker), and then makes sure the finished product (the generated story) is delivered efficiently.</p>
+
+<p>It handles:</p>
+<ol>
+  <li><strong>Preparation</strong>: Using a “tokenizer” to translate your human-language prompt into model-understandable tokens.</li>
+  <li><strong>Coordination</strong>: Sending this prepared request to the correct <a href="04_model_worker_.md">Model Worker</a> via an <a href="07_enginequeue_.md">EngineQueue</a> (think of it as a high-tech conveyor belt).</li>
+  <li><strong>Delivery</strong>: Streaming the model’s answer back token by token, or as a complete response.</li>
+</ol>
+
+<h2 id="meet-the-tokengeneratorpipeline">Meet the <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code></h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> is the central orchestrator for getting text from a Large Language Model (LLM). Let’s look at its key collaborators:</p>
+
+<ul>
+  <li><strong>Tokenizer (<code class="language-plaintext highlighter-rouge">PipelineTokenizer</code>)</strong>: This is like a specialized translator. It converts human-readable text (your prompt) into a sequence of numbers (tokens) that the LLM can understand. It also does the reverse: converts tokens from the LLM back into human-readable text.</li>
+  <li><strong>EngineQueue</strong>: This is a communication channel. The <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> places the tokenized request into this queue, and the <a href="04_model_worker_.md">Model Worker</a> picks it up from there. It’s also used to send generated tokens back from the worker.</li>
+  <li><strong>Model Worker</strong>: This is the component that actually runs the LLM to generate new tokens based on the input. We’ll explore this in <a href="04_model_worker_.md">Chapter 4: Model Worker</a>.</li>
+</ul>
+
+<h3 id="how-its-set-up">How It’s Set Up</h3>
+
+<p>In <a href="02_serving_api_layer__fastapi_app___routers__.md">Chapter 2: Serving API Layer (FastAPI App &amp; Routers)</a>, we saw that the main FastAPI <code class="language-plaintext highlighter-rouge">app</code> has a “lifespan” function. This is where the <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> is typically created and made available to the API endpoint handlers.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/api_server.py
+</span>
+<span class="c1"># (inside the `lifespan` async context manager)
+# ...
+</span><span class="n">pipeline</span><span class="p">:</span> <span class="n">TokenGeneratorPipeline</span> <span class="o">=</span> <span class="n">TokenGeneratorPipeline</span><span class="p">(</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s">"my-cool-model"</span><span class="p">,</span> <span class="c1"># Name of the model being served
+</span>    <span class="n">tokenizer</span><span class="o">=</span><span class="n">my_tokenizer</span><span class="p">,</span>      <span class="c1"># The translator we talked about
+</span>    <span class="n">engine_queue</span><span class="o">=</span><span class="n">engine_queue</span><span class="p">,</span>   <span class="c1"># The conveyor belt to the Model Worker
+</span><span class="p">)</span>
+<span class="n">app</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">pipeline</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="c1"># Make it accessible to API endpoints
+# ...
+</span></code></pre></div></div>
+<p>This means that when an API endpoint (like <code class="language-plaintext highlighter-rouge">/v1/chat/completions</code>) needs to generate text, it can access this <code class="language-plaintext highlighter-rouge">pipeline</code> object.</p>
+
+<h3 id="receiving-a-request-and-generating-text">Receiving a Request and Generating Text</h3>
+
+<p>When an API endpoint (like <code class="language-plaintext highlighter-rouge">openai_create_chat_completion</code> from <code class="language-plaintext highlighter-rouge">src/max/serve/router/openai_routes.py</code>) receives a user’s request, it prepares a <code class="language-plaintext highlighter-rouge">TokenGeneratorRequest</code> object. This object is like a work order for the pipeline.</p>
+
+<p>Let’s look at what’s in a <code class="language-plaintext highlighter-rouge">TokenGeneratorRequest</code>:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/pipelines/core/interfaces/text_generation.py
+</span><span class="o">@</span><span class="n">dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">TokenGeneratorRequest</span><span class="p">:</span>
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span>                <span class="c1"># A unique ID for this specific request
+</span>    <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span>        <span class="c1"># Which model to use
+</span>    <span class="n">messages</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">TokenGeneratorRequestMessage</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># For chat prompts
+</span>    <span class="n">prompt</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="bp">None</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># For simple prompts
+</span>    <span class="n">max_new_tokens</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span> <span class="c1"># How many tokens to generate at most
+</span>    <span class="c1"># ... other fields like timestamp, tools, etc.
+</span></code></pre></div></div>
+<p>This <code class="language-plaintext highlighter-rouge">TokenGeneratorRequest</code> contains all the information the pipeline needs.</p>
+
+<p>The API endpoint then calls a method on the <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code>, usually <code class="language-plaintext highlighter-rouge">next_token()</code> for streaming responses or <code class="language-plaintext highlighter-rouge">all_tokens()</code> for a complete response.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified example of how an API route might use the pipeline
+# (Inspired by src/max/serve/router/openai_routes.py)
+</span>
+<span class="c1"># async def openai_create_chat_completion(request: Request):
+</span>    <span class="c1"># ... (code to parse user's HTTP request into `my_chat_request_data`) ...
+</span>
+    <span class="c1"># pipeline is taken from request.app.state.pipeline
+</span>    <span class="c1"># pipeline: TokenGeneratorPipeline = request.app.state.pipeline
+</span>
+    <span class="c1"># 1. Create the work order (TokenGeneratorRequest)
+</span>    <span class="n">token_gen_request</span> <span class="o">=</span> <span class="n">TokenGeneratorRequest</span><span class="p">(</span>
+        <span class="nb">id</span><span class="o">=</span><span class="s">"unique_req_abc123"</span><span class="p">,</span>
+        <span class="n">model_name</span><span class="o">=</span><span class="n">pipeline</span><span class="p">.</span><span class="n">model_name</span><span class="p">,</span>
+        <span class="n">messages</span><span class="o">=</span><span class="p">[{</span><span class="s">"role"</span><span class="p">:</span> <span class="s">"user"</span><span class="p">,</span> <span class="s">"content"</span><span class="p">:</span> <span class="s">"Tell me a short story."</span><span class="p">}],</span>
+        <span class="n">max_new_tokens</span><span class="o">=</span><span class="mi">50</span>
+    <span class="p">)</span>
+
+    <span class="c1"># 2. Ask the pipeline to generate text (streaming token by token)
+</span>    <span class="c1"># response_stream = pipeline.next_token(token_gen_request)
+</span>    
+    <span class="c1"># async for generated_output_chunk in response_stream:
+</span>    <span class="c1">#     # generated_output_chunk is a TokenGeneratorOutput
+</span>    <span class="c1">#     print(generated_output_chunk.decoded_token, end="")
+</span>    <span class="c1">#     # In a real server, this would be sent back to the user over HTTP
+</span>    <span class="c1"># Output (example, token by token):
+</span>    <span class="c1"># "Once "
+</span>    <span class="c1"># "upon "
+</span>    <span class="c1"># "a "
+</span>    <span class="c1"># "time"
+</span>    <span class="c1"># ", "
+</span>    <span class="c1"># "in "
+</span>    <span class="c1"># "a "
+</span>    <span class="c1"># # ... and so on
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">pipeline.next_token()</code> method returns an “async generator.” This means it yields <code class="language-plaintext highlighter-rouge">TokenGeneratorOutput</code> objects one by one as the model produces them.</p>
+
+<p>Let’s see what a <code class="language-plaintext highlighter-rouge">TokenGeneratorOutput</code> looks like:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/pipelines/llm.py
+</span><span class="o">@</span><span class="n">dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">TokenGeneratorOutput</span><span class="p">:</span>
+    <span class="n">decoded_token</span><span class="p">:</span> <span class="nb">str</span> <span class="c1"># The actual text part generated in this step
+</span>    <span class="c1"># ... other fields like log probabilities, token counts, etc.
+</span></code></pre></div></div>
+<p>Each <code class="language-plaintext highlighter-rouge">TokenGeneratorOutput</code> contains a piece of the generated text (<code class="language-plaintext highlighter-rouge">decoded_token</code>).</p>
+
+<h2 id="under-the-hood-the-journey-of-a-prompt">Under the Hood: The Journey of a Prompt</h2>
+
+<p>So, what happens inside the <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> when its <code class="language-plaintext highlighter-rouge">next_token()</code> method is called?</p>
+
+<ol>
+  <li><strong>Context Creation</strong>: The pipeline first uses its <code class="language-plaintext highlighter-rouge">tokenizer</code> to create a “context” from the <code class="language-plaintext highlighter-rouge">TokenGeneratorRequest</code>. This involves converting the prompt messages or text into the initial set of tokens the model needs. This step uses the <code class="language-plaintext highlighter-rouge">tokenizer.new_context()</code> method.
+    <ul>
+      <li><em>Analogy</em>: The assembly line manager gives the raw materials (your prompt) to a specialist (tokenizer) who prepares them (converts to tokens) for the main machine.</li>
+    </ul>
+  </li>
+  <li><strong>Sending to <code class="language-plaintext highlighter-rouge">EngineQueue</code></strong>: The request (now in a model-understandable format, often part of the “context”) is put into the <code class="language-plaintext highlighter-rouge">EngineQueue</code>. This queue acts as a buffer and a communication channel to the <a href="04_model_worker_.md">Model Worker</a>.
+    <ul>
+      <li><em>Analogy</em>: The prepared materials are placed on a conveyor belt (<code class="language-plaintext highlighter-rouge">EngineQueue</code>) leading to the main processing machinery (<a href="04_model_worker_.md">Model Worker</a>).</li>
+    </ul>
+  </li>
+  <li><strong>Model Processing (by Model Worker)</strong>: The <a href="04_model_worker_.md">Model Worker</a> (running in a separate process or thread) picks up the request from the <code class="language-plaintext highlighter-rouge">EngineQueue</code>. It runs the LLM to generate the next token(s).
+    <ul>
+      <li><em>Analogy</em>: The machinery processes the materials and produces a part of the finished product.</li>
+    </ul>
+  </li>
+  <li><strong>Receiving from <code class="language-plaintext highlighter-rouge">EngineQueue</code></strong>: The generated token(s) are sent back by the <a href="04_model_worker_.md">Model Worker</a> through the <code class="language-plaintext highlighter-rouge">EngineQueue</code> to the <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code>.
+    <ul>
+      <li><em>Analogy</em>: The finished part comes back on another conveyor belt.</li>
+    </ul>
+  </li>
+  <li><strong>Decoding</strong>: The <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> receives these raw generated tokens. It uses its <code class="language-plaintext highlighter-rouge">tokenizer</code> again, this time to <code class="language-plaintext highlighter-rouge">decode()</code> the tokens back into human-readable text.
+    <ul>
+      <li><em>Analogy</em>: The manager takes the finished part and asks the translator (tokenizer) to convert it back into something the customer understands.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Yielding Output</strong>: The decoded text (and other info) is packaged into a <code class="language-plaintext highlighter-rouge">TokenGeneratorOutput</code> object and “yielded” back to the caller (the API endpoint). If it’s a streaming request, this happens for each new piece of text generated.</p>
+  </li>
+  <li><strong>Repetition</strong>: Steps 3-6 repeat until the model finishes generating (e.g., it reaches <code class="language-plaintext highlighter-rouge">max_new_tokens</code>, generates an “end-of-sequence” token, or a stop phrase is detected).</li>
+</ol>
+
+<p>Here’s a simplified diagram of this flow:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant APIEndpoint as API Endpoint Handler
+    participant TGPipeline as TokenGeneratorPipeline
+    participant Tokenizer as PipelineTokenizer
+    participant EngQueue as EngineQueue
+    participant MWorker as Model Worker
+
+    APIEndpoint-&gt;&gt;TGPipeline: Call next_token(request)
+    TGPipeline-&gt;&gt;Tokenizer: new_context(request) [Encode Prompt]
+    Tokenizer--&gt;&gt;TGPipeline: Model-ready context
+    TGPipeline-&gt;&gt;EngQueue: stream(request.id, context)
+    EngQueue-&gt;&gt;MWorker: Forward request data
+    loop Generation Loop
+        MWorker-&gt;&gt;MWorker: Generate next token(s)
+        MWorker-&gt;&gt;EngQueue: Send generated token(s) back
+        EngQueue--&gt;&gt;TGPipeline: Receive generated token(s)
+        TGPipeline-&gt;&gt;Tokenizer: decode(token(s))
+        Tokenizer--&gt;&gt;TGPipeline: Decoded text chunk
+        TGPipeline--&gt;&gt;APIEndpoint: Yield TokenGeneratorOutput (chunk)
+    end
+    APIEndpoint--&gt;&gt;User: Streams text chunks
+</code></pre>
+
+<h3 id="diving-into-the-code-srcmaxservepipelinesllmpy">Diving into the Code (<code class="language-plaintext highlighter-rouge">src/max/serve/pipelines/llm.py</code>)</h3>
+
+<p>Let’s look at a very simplified structure of the <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> and its <code class="language-plaintext highlighter-rouge">next_token</code> method:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/pipelines/llm.py
+</span>
+<span class="k">class</span> <span class="nc">TokenGeneratorPipeline</span><span class="p">(</span><span class="n">Generic</span><span class="p">[</span><span class="n">TokenGeneratorContext</span><span class="p">]):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">tokenizer</span><span class="p">:</span> <span class="n">PipelineTokenizer</span><span class="p">,</span> <span class="c1"># Our "translator"
+</span>        <span class="n">engine_queue</span><span class="p">:</span> <span class="n">EngineQueue</span><span class="p">,</span>   <span class="c1"># Our "conveyor belt"
+</span>    <span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">model_name</span> <span class="o">=</span> <span class="n">model_name</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">tokenizer</span> <span class="o">=</span> <span class="n">tokenizer</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">engine_queue</span> <span class="o">=</span> <span class="n">engine_queue</span>
+        <span class="c1"># ... other initializations ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">next_token</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">TokenGeneratorRequest</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncGenerator</span><span class="p">[</span><span class="n">TokenGeneratorOutput</span><span class="p">,</span> <span class="bp">None</span><span class="p">]:</span>
+        <span class="c1"># 1. Create context using the tokenizer
+</span>        <span class="n">context</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">.</span><span class="n">new_context</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="c1"># 2. Stream responses from the engine_queue (which talks to Model Worker)
+</span>        <span class="k">async</span> <span class="k">for</span> <span class="n">response_from_worker</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">.</span><span class="n">engine_queue</span><span class="p">.</span><span class="n">stream</span><span class="p">(</span>
+            <span class="n">request</span><span class="p">.</span><span class="nb">id</span><span class="p">,</span> <span class="n">context</span>
+        <span class="p">):</span>
+            <span class="c1"># `response_from_worker` contains raw tokens from the model
+</span>
+            <span class="c1"># 5. Decode the raw token from worker into text
+</span>            <span class="n">decoded_text_chunk</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">.</span><span class="n">decode</span><span class="p">(</span>
+                <span class="n">context</span><span class="p">,</span>
+                <span class="n">response_from_worker</span><span class="p">.</span><span class="n">next_token</span><span class="p">,</span> <span class="c1"># The raw token
+</span>                <span class="c1"># ... other args like skip_special_tokens ...
+</span>            <span class="p">)</span>
+
+            <span class="c1"># 6. Yield the human-readable output
+</span>            <span class="k">yield</span> <span class="n">TokenGeneratorOutput</span><span class="p">(</span><span class="n">decoded_token</span><span class="o">=</span><span class="n">decoded_text_chunk</span><span class="p">)</span>
+        <span class="c1"># ... (error handling and cleanup would be here) ...
+</span></code></pre></div></div>
+<p>In this snippet:</p>
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">__init__</code> method shows how the pipeline is set up with its crucial components: the <code class="language-plaintext highlighter-rouge">tokenizer</code> and the <code class="language-plaintext highlighter-rouge">engine_queue</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">next_token</code> method:
+    <ul>
+      <li>Calls <code class="language-plaintext highlighter-rouge">self.tokenizer.new_context()</code> to prepare the initial input for the model.</li>
+      <li>Uses <code class="language-plaintext highlighter-rouge">self.engine_queue.stream()</code> to send the request to the <a href="04_model_worker_.md">Model Worker</a> (via the queue) and get back a stream of raw responses.</li>
+      <li>For each raw response from the worker, it calls <code class="language-plaintext highlighter-rouge">self.tokenizer.decode()</code> to convert the model’s output token back into text.</li>
+      <li>It then <code class="language-plaintext highlighter-rouge">yield</code>s a <code class="language-plaintext highlighter-rouge">TokenGeneratorOutput</code> containing this piece of decoded text.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">PipelineTokenizer</code> itself is an interface (defined in <code class="language-plaintext highlighter-rouge">src/max/pipelines/core/interfaces/text_generation.py</code>). A concrete implementation of this tokenizer would know the specific vocabulary and rules for the particular LLM being used.</p>
+
+<p>Key methods of <code class="language-plaintext highlighter-rouge">PipelineTokenizer</code>:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/pipelines/core/interfaces/text_generation.py
+</span>
+<span class="k">class</span> <span class="nc">PipelineTokenizer</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="c1"># ... (properties like eos token) ...
+</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">new_context</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">TokenGeneratorRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TokenGeneratorContext</span><span class="p">:</span>
+        <span class="c1"># Prepares the initial state for the model from the user's request.
+</span>        <span class="c1"># This often involves encoding the prompt messages.
+</span>        <span class="c1"># ...
+</span>        <span class="k">pass</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">encode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="n">TokenizerEncoded</span><span class="p">:</span>
+        <span class="c1"># Converts a string prompt into a sequence of token IDs.
+</span>        <span class="c1"># ...
+</span>        <span class="k">pass</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">decode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="n">TokenGeneratorContext</span><span class="p">,</span> <span class="n">encoded_tokens</span><span class="p">,</span> <span class="p">...)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="c1"># Converts a sequence of token IDs back into a string.
+</span>        <span class="c1"># ...
+</span>        <span class="k">pass</span>
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> acts as the skilled manager ensuring that your request smoothly goes through all these steps, from human language to model tokens, through the model, back to tokens, and finally back to human language for you to read.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">TokenGeneratorPipeline</code> is the heart of request processing in <code class="language-plaintext highlighter-rouge">modular</code> for language models. It’s the “general manager” that:</p>
+<ul>
+  <li>Takes a <code class="language-plaintext highlighter-rouge">TokenGeneratorRequest</code> (the work order).</li>
+  <li>Uses a <code class="language-plaintext highlighter-rouge">PipelineTokenizer</code> (the translator) to convert human language to model-understandable tokens and back.</li>
+  <li>Communicates with the <a href="04_model_worker_.md">Model Worker</a> (the machinery) through an <code class="language-plaintext highlighter-rouge">EngineQueue</code> (the conveyor belt).</li>
+  <li>Delivers the generated text, often streaming it token by token as <code class="language-plaintext highlighter-rouge">TokenGeneratorOutput</code>.</li>
+</ul>
+
+<p>It efficiently orchestrates the entire journey of your prompt to get you the response you need from the LLM.</p>
+
+<p>Now that we understand how requests are managed and prepared, what about the component that <em>actually</em> runs the AI model? In the next chapter, we’ll delve into the <a href="04_model_worker_.md">Model Worker</a>.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

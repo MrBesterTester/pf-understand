@@ -1,0 +1,298 @@
+<h1 id="chapter-5-simd-data-access">Chapter 5: SIMD Data Access</h1>
+
+<p>Welcome to Chapter 5! We’ve covered a lot about <code class="language-plaintext highlighter-rouge">NDBuffer</code>:</p>
+<ul>
+  <li>How it uses <code class="language-plaintext highlighter-rouge">UnsafePointer</code> to find its data’s starting point (<a href="01_unsafepointer__as_used_by_ndbuffer__.md">Chapter 1</a>).</li>
+  <li>How <code class="language-plaintext highlighter-rouge">Dim</code> and <code class="language-plaintext highlighter-rouge">DimList</code> define its shape (<a href="02_dimlist_and_dim_.md">Chapter 2</a>).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">NDBuffer</code> structure itself (<a href="03_ndbuffer_.md">Chapter 3</a>).</li>
+  <li>How strides and offset computation help locate any single element (<a href="04_strides_and_offset_computation_.md">Chapter 4</a>).</li>
+</ul>
+
+<p>Now, we’re going to explore how <code class="language-plaintext highlighter-rouge">NDBuffer</code> helps you work with data much faster by processing multiple elements at once. This is achieved through <strong>SIMD</strong> operations.</p>
+
+<p><code class="language-plaintext highlighter-rouge">NDBuffer</code> facilitates high-performance data access through SIMD (Single Instruction, Multiple Data) operations. Methods like <code class="language-plaintext highlighter-rouge">load[width=W]</code> and <code class="language-plaintext highlighter-rouge">store[width=W]</code> allow reading or writing <code class="language-plaintext highlighter-rouge">W</code> data elements (a “vector”) at once, rather than one by one. This can significantly speed up computations. The module also provides <code class="language-plaintext highlighter-rouge">partial_simd_load</code> and <code class="language-plaintext highlighter-rouge">partial_simd_store</code> utility functions to handle situations where the memory access for a full SIMD vector would go out of bounds, allowing for safe vectorized processing of edge cases with padding or masking.</p>
+
+<p>Think of SIMD access as using a wide tray to carry multiple teacups (data elements) at once between a shelf (memory) and a table (CPU registers), instead of carrying them individually. This is much faster. The <code class="language-plaintext highlighter-rouge">partial_</code> functions are like carefully using the tray when you’re at the end of the shelf and only have a few cups left, or the shelf doesn’t perfectly fit a full tray width, ensuring you don’t drop any or pick up empty air.</p>
+
+<h2 id="what-is-simd-single-instruction-multiple-data">What is SIMD? (Single Instruction, Multiple Data)</h2>
+
+<p>Imagine you’re a chef, and you have a dozen potatoes to peel.</p>
+<ul>
+  <li><strong>Scalar operation (one by one)</strong>: You pick up one potato, peel it, put it down. Pick up the next, peel it, put it down. And so on for all twelve.</li>
+  <li><strong>SIMD operation (multiple at once)</strong>: You have a special peeler that can handle, say, four potatoes simultaneously! You load four potatoes into your super-peeler, activate it once, and all four are peeled. You’d do this three times to peel all twelve.</li>
+</ul>
+
+<p>SIMD works on a similar principle inside your computer’s processor. Modern CPUs have special hardware units that can perform the same operation (like addition, multiplication, etc.) on multiple pieces of data <em>at the same time</em> with a single instruction. This “chunk” of data is often called a <strong>SIMD vector</strong>.</p>
+
+<p>Using SIMD can lead to massive speedups in programs that process large amounts of data, like in scientific computing, graphics, machine learning, and image processing.</p>
+
+<h2 id="full-chunks-ndbufferloadwidthw-and-ndbufferstorewidthw">Full Chunks: <code class="language-plaintext highlighter-rouge">NDBuffer.load[width=W]</code> and <code class="language-plaintext highlighter-rouge">NDBuffer.store[width=W]</code></h2>
+
+<p><code class="language-plaintext highlighter-rouge">NDBuffer</code> provides convenient methods to perform SIMD operations:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">load[width=W](index) -&gt; SIMD[type, W]</code>: Reads <code class="language-plaintext highlighter-rouge">W</code> elements starting from the memory location corresponding to <code class="language-plaintext highlighter-rouge">index</code> in the <code class="language-plaintext highlighter-rouge">NDBuffer</code>. It returns these <code class="language-plaintext highlighter-rouge">W</code> elements as a <code class="language-plaintext highlighter-rouge">SIMD[type, W]</code> object.</li>
+  <li><code class="language-plaintext highlighter-rouge">store[width=W](index, value: SIMD[type, W])</code>: Writes the <code class="language-plaintext highlighter-rouge">W</code> elements from the <code class="language-plaintext highlighter-rouge">SIMD</code> vector <code class="language-plaintext highlighter-rouge">value</code> to the <code class="language-plaintext highlighter-rouge">NDBuffer</code>, starting at the memory location corresponding to <code class="language-plaintext highlighter-rouge">index</code>.</li>
+</ul>
+
+<p>Here, <code class="language-plaintext highlighter-rouge">W</code> is a parameter you specify, representing the number of data elements in your SIMD vector (e.g., 2, 4, 8, depending on the data type and CPU capabilities). <code class="language-plaintext highlighter-rouge">type</code> is the <code class="language-plaintext highlighter-rouge">DType</code> of the elements in your <code class="language-plaintext highlighter-rouge">NDBuffer</code>.</p>
+
+<p><strong>How it Works (Simplified):</strong></p>
+<ol>
+  <li>You call <code class="language-plaintext highlighter-rouge">my_ndbuffer.load[width=W](some_index)</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">NDBuffer</code> uses its magic (strides and the <code class="language-plaintext highlighter-rouge">_offset()</code> method we saw in Chapter 4) to calculate the precise 1D memory address for <code class="language-plaintext highlighter-rouge">some_index</code>. Let’s call this <code class="language-plaintext highlighter-rouge">target_address_pointer</code>.</li>
+  <li>It then effectively tells this <code class="language-plaintext highlighter-rouge">target_address_pointer</code> (which is an <code class="language-plaintext highlighter-rouge">UnsafePointer</code>): “Load <code class="language-plaintext highlighter-rouge">W</code> elements starting from here.”</li>
+  <li>The <code class="language-plaintext highlighter-rouge">UnsafePointer</code> performs the SIMD load from memory.
+Storing works similarly but in reverse.</li>
+</ol>
+
+<p><strong>An Important Condition: Contiguity!</strong>
+SIMD operations usually assume that the <code class="language-plaintext highlighter-rouge">W</code> elements you want to load or store are sitting right next to each other in memory (i.e., they are <strong>contiguous</strong>).</p>
+<ul>
+  <li>If you’re working with a 1D <code class="language-plaintext highlighter-rouge">NDBuffer</code> (a simple array), its elements are typically contiguous.</li>
+  <li>For a 2D <code class="language-plaintext highlighter-rouge">NDBuffer</code> (matrix), if its elements are laid out row-by-row contiguously (row-major, stride of 1 for the last dimension), you can use SIMD to load/store parts of a row.</li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">load</code> and <code class="language-plaintext highlighter-rouge">store</code> methods in <code class="language-plaintext highlighter-rouge">NDBuffer</code> actually check for this:</p>
+<pre><code class="language-mojo">// Inside NDBuffer's load method (simplified)
+fn load[*, width: Int = 1, ...](self, idx: ...) -&gt; SIMD[type, width]:
+    debug_assert(
+        self.is_contiguous() or width == 1, // This check is important!
+        "Function requires contiguous buffer for width &gt; 1.",
+    )
+    return self._offset(idx).load[width=width, alignment=alignment]()
+</code></pre>
+<p>If the <code class="language-plaintext highlighter-rouge">NDBuffer</code> isn’t contiguous (meaning its innermost dimension’s stride isn’t 1) and you try a <code class="language-plaintext highlighter-rouge">width &gt; 1</code> SIMD operation, the <code class="language-plaintext highlighter-rouge">debug_assert</code> will trigger (in debug builds) because the <code class="language-plaintext highlighter-rouge">W</code> elements at the calculated offset might not correspond to <code class="language-plaintext highlighter-rouge">W</code> logically adjacent elements in your N-D view. Scalar operations (<code class="language-plaintext highlighter-rouge">width=1</code>) are always fine.</p>
+
+<p><strong>Example (Conceptual 1D <code class="language-plaintext highlighter-rouge">NDBuffer</code>):</strong>
+Let’s say <code class="language-plaintext highlighter-rouge">my_buffer</code> is an <code class="language-plaintext highlighter-rouge">NDBuffer</code> of <code class="language-plaintext highlighter-rouge">Float32</code>s: <code class="language-plaintext highlighter-rouge">[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, ...]</code></p>
+<pre><code class="language-mojo">from memory import DType
+from simd import SIMD
+
+// Assume my_buffer is an NDBuffer[True, DType.float32, 1, ...]
+// and it's contiguous.
+
+// Load 4 Float32s starting at index 0
+let simd_vec: SIMD[DType.float32, 4] = my_buffer.load[width=4](0)
+// simd_vec now holds [1.0, 2.0, 3.0, 4.0]
+
+// Let's say we process it (e.g., add 10.0 to each element)
+let processed_vec = simd_vec + SIMD[DType.float32, 4](10.0)
+// processed_vec is now [11.0, 12.0, 13.0, 14.0]
+
+// Store it back
+my_buffer.store[width=4](0, processed_vec)
+// my_buffer now starts with: [11.0, 12.0, 13.0, 14.0, 5.0, 6.0, ...]
+</code></pre>
+
+<h2 id="the-edge-problem-handling-leftovers">The “Edge” Problem: Handling Leftovers</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">load[width=W]</code> and <code class="language-plaintext highlighter-rouge">store[width=W]</code> methods are great when your data neatly aligns with the SIMD width. But what if your <code class="language-plaintext highlighter-rouge">NDBuffer</code> has, say, 10 elements, and your SIMD width <code class="language-plaintext highlighter-rouge">W</code> is 4?</p>
+<ul>
+  <li>You can process elements <code class="language-plaintext highlighter-rouge">0-3</code> with one SIMD operation.</li>
+  <li>You can process elements <code class="language-plaintext highlighter-rouge">4-7</code> with another SIMD operation.</li>
+  <li>But then you have elements <code class="language-plaintext highlighter-rouge">8-9</code> left over (only 2 elements).</li>
+</ul>
+
+<p>If you try to do a <code class="language-plaintext highlighter-rouge">my_buffer.load[width=4](8)</code>, it will attempt to read 4 elements starting from index 8 (<code class="language-plaintext highlighter-rouge">my_buffer[8]</code>, <code class="language-plaintext highlighter-rouge">my_buffer[9]</code>, <code class="language-plaintext highlighter-rouge">my_buffer[10]</code>, <code class="language-plaintext highlighter-rouge">my_buffer[11]</code>). But <code class="language-plaintext highlighter-rouge">my_buffer[10]</code> and <code class="language-plaintext highlighter-rouge">my_buffer[11]</code> are out of bounds! This can lead to crashes or incorrect data. This is the “edge” problem.</p>
+
+<h2 id="safe-edges-partial_simd_load-and-partial_simd_store">Safe Edges: <code class="language-plaintext highlighter-rouge">partial_simd_load</code> and <code class="language-plaintext highlighter-rouge">partial_simd_store</code></h2>
+
+<p>Mojo’s <code class="language-plaintext highlighter-rouge">buffer</code> module provides utility functions to handle these edge cases safely:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">partial_simd_load[type, width](storage_ptr, lbound, rbound, pad_value) -&gt; SIMD[type, width]</code></li>
+  <li><code class="language-plaintext highlighter-rouge">partial_simd_store[type, width](storage_ptr, lbound, rbound, data_vec)</code></li>
+</ul>
+
+<p>These are <strong>not</strong> methods of <code class="language-plaintext highlighter-rouge">NDBuffer</code> itself. They are standalone functions that operate on an <code class="language-plaintext highlighter-rouge">UnsafePointer</code> (which you can get from an <code class="language-plaintext highlighter-rouge">NDBuffer</code>’s <code class="language-plaintext highlighter-rouge">data</code> field, appropriately offset).</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">type</code>: The <code class="language-plaintext highlighter-rouge">DType</code> of the elements.</li>
+  <li><code class="language-plaintext highlighter-rouge">width</code>: The SIMD vector width (e.g., 4).</li>
+  <li><code class="language-plaintext highlighter-rouge">storage_ptr: UnsafePointer[Scalar[type], ... ]</code>: A pointer to the memory location where the data segment begins. For the “leftover” elements, this would be the pointer to the first leftover element.</li>
+  <li><code class="language-plaintext highlighter-rouge">lbound: Int</code>: The starting index <em>within the SIMD vector</em> where valid data should come from memory. For loading N leftover elements, this is usually <code class="language-plaintext highlighter-rouge">0</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">rbound: Int</code>: The ending index (exclusive) <em>within the SIMD vector</em> for valid data. For loading N leftover elements, this is <code class="language-plaintext highlighter-rouge">N</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">pad_value: Scalar[type]</code> (for <code class="language-plaintext highlighter-rouge">partial_simd_load</code>): The value to use for elements in the SIMD vector that are outside the <code class="language-plaintext highlighter-rouge">[lbound, rbound)</code> range.</li>
+  <li><code class="language-plaintext highlighter-rouge">data_vec: SIMD[type, width]</code> (for <code class="language-plaintext highlighter-rouge">partial_simd_store</code>): The SIMD vector containing data to be stored. Only elements within the <code class="language-plaintext highlighter-rouge">[lbound, rbound)</code> range will actually be written to memory.</li>
+</ul>
+
+<p><strong>How they work:</strong>
+Internally, these functions use special CPU instructions called <strong>masked loads and stores</strong>. They create a “mask” (a sequence of true/false values, one for each lane of the SIMD vector).</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">partial_simd_load</code>: For each lane <code class="language-plaintext highlighter-rouge">i</code> in the SIMD vector (from <code class="language-plaintext highlighter-rouge">0</code> to <code class="language-plaintext highlighter-rouge">width-1</code>):
+    <ul>
+      <li>If <code class="language-plaintext highlighter-rouge">lbound &lt;= i &lt; rbound</code>, it loads <code class="language-plaintext highlighter-rouge">storage_ptr[i]</code> into lane <code class="language-plaintext highlighter-rouge">i</code> of the result.</li>
+      <li>Otherwise, it fills lane <code class="language-plaintext highlighter-rouge">i</code> with <code class="language-plaintext highlighter-rouge">pad_value</code>.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">partial_simd_store</code>: For each lane <code class="language-plaintext highlighter-rouge">i</code>:
+    <ul>
+      <li>If <code class="language-plaintext highlighter-rouge">lbound &lt;= i &lt; rbound</code>, it stores <code class="language-plaintext highlighter-rouge">data_vec[i]</code> into <code class="language-plaintext highlighter-rouge">storage_ptr[i]</code>.</li>
+      <li>Otherwise, it does nothing for that memory location (<code class="language-plaintext highlighter-rouge">storage_ptr[i]</code> is not written to).</li>
+    </ul>
+  </li>
+</ul>
+
+<p>This ensures you only read from or write to valid memory locations, even if your data segment is smaller than the SIMD width.</p>
+
+<p><strong>Example (Handling leftovers from our previous example):</strong>
+Suppose <code class="language-plaintext highlighter-rouge">my_buffer</code> has 10 <code class="language-plaintext highlighter-rouge">Float32</code> elements, and <code class="language-plaintext highlighter-rouge">width=4</code>. We’ve processed elements 0-7.
+Leftovers are <code class="language-plaintext highlighter-rouge">my_buffer[8]</code> and <code class="language-plaintext highlighter-rouge">my_buffer[9]</code>. There are 2 leftover elements.</p>
+
+<pre><code class="language-mojo">from memory import UnsafePointer, DType
+from simd import SIMD
+from buffer import partial_simd_load, partial_simd_store
+
+// Assume my_buffer: NDBuffer[..., DType.float32, ...] of length 10
+let W: Int = 4 // SIMD width
+let num_leftover: Int = 2
+let pad_val: Float32 = 0.0
+
+// Get a pointer to the first leftover element (my_buffer[8])
+// In a real NDBuffer, you'd calculate offset for index 8.
+// let ptr_to_leftovers = my_buffer.data.offset(my_buffer._offset_of_index(8))
+// For simplicity, let's assume we have this UnsafePointer:
+var ptr_to_leftovers: UnsafePointer[Float32] = ... ; // Points to my_buffer[8]
+
+// Partial load
+let leftover_vec_loaded = partial_simd_load[DType.float32, W](
+    ptr_to_leftovers,
+    0,                // lbound: valid data starts at SIMD lane 0
+    num_leftover,     // rbound: valid data ends before SIMD lane 2 (i.e., lanes 0, 1 are valid)
+    pad_val
+)
+// If my_buffer[8]=8.8, my_buffer[9]=9.9, then
+// leftover_vec_loaded is [8.8, 9.9, 0.0, 0.0]
+
+// Process it (e.g., add 10.0)
+let processed_leftovers = leftover_vec_loaded + SIMD[DType.float32, W](10.0)
+// processed_leftovers is now [18.8, 19.9, 10.0, 10.0]
+// Note: We also "processed" the padded parts. This is often fine.
+
+// Partial store
+partial_simd_store[DType.float32, W](
+    ptr_to_leftovers,
+    0,
+    num_leftover,
+    processed_leftovers
+)
+// This will write:
+// - processed_leftovers[0] (18.8) to ptr_to_leftovers[0] (my_buffer[8])
+// - processed_leftovers[1] (19.9) to ptr_to_leftovers[1] (my_buffer[9])
+// - It will NOT write processed_leftovers[2] or [3] to memory.
+// So, my_buffer is now: [..., 18.8, 19.9]
+</code></pre>
+
+<h2 id="a-peek-at-the-standard-library-code">A Peek at the Standard Library Code</h2>
+
+<p>Let’s see how these are defined in <code class="language-plaintext highlighter-rouge">stdlib/src/buffer/buffer.mojo</code>.</p>
+
+<p><strong><code class="language-plaintext highlighter-rouge">NDBuffer.load</code> (and <code class="language-plaintext highlighter-rouge">store</code> is similar):</strong></p>
+<pre><code class="language-mojo">@always_inline("nodebug")
+fn load[
+    *, width: Int = 1, alignment: Int = Self._default_alignment[width]()
+](self, idx: StaticTuple[Int, rank]) -&gt; SIMD[type, width]:
+    """Loads a simd value from the buffer at the specified index.
+    Constraints:
+        The buffer must be contiguous or width must be 1.
+    ...
+    """
+    debug_assert(
+        self.is_contiguous() or width == 1,
+        "Function requires contiguous buffer.",
+    )
+    // 1. Calculate the flat 1D offset for the N-D index `idx`
+    // 2. Get the UnsafePointer at that offset
+    // 3. Call the UnsafePointer's own .load() method
+    return self._offset(idx).load[width=width, alignment=alignment]()
+</code></pre>
+<p>The <code class="language-plaintext highlighter-rouge">alignment</code> parameter is a hint about memory alignment, which can sometimes improve performance. <code class="language-plaintext highlighter-rouge">_default_alignment</code> provides a sensible default.</p>
+
+<p><strong><code class="language-plaintext highlighter-rouge">partial_simd_load</code> function:</strong></p>
+<pre><code class="language-mojo">@always_inline
+fn partial_simd_load[
+    type: DType, //, width: Int
+](
+    storage: UnsafePointer[Scalar[type], **_], // The pointer to memory
+    lbound: Int,                              // Start of valid data in SIMD vector
+    rbound: Int,                              // End of valid data in SIMD vector
+    pad_value: Scalar[type],                  // Value for padding
+) -&gt; SIMD[type, width]:
+    """Loads a vector with dynamic bound.
+    Out of bound data will be filled with pad value. ...
+    """
+    # Create a mask based on input bounds.
+    var effective_lbound = max(0, lbound)
+    var effective_rbound = min(width, rbound)
+    var incr = iota[DType.int32, width]() // Generates [0, 1, 2, ..., width-1]
+    var mask = (incr &gt;= effective_lbound) &amp; (incr &lt; effective_rbound)
+
+    // Use the masked_load intrinsic:
+    // Loads from `storage` where mask is true, uses `pad_value` where mask is false.
+    return masked_load[width](storage, mask, pad_value)
+</code></pre>
+<p><code class="language-plaintext highlighter-rouge">partial_simd_store</code> is structured similarly, using the <code class="language-plaintext highlighter-rouge">masked_store</code> intrinsic.</p>
+
+<h2 id="putting-it-all-together-vectorizing-a-loop-conceptual">Putting It All Together: Vectorizing a Loop (Conceptual)</h2>
+
+<p>Imagine you want to add a constant <code class="language-plaintext highlighter-rouge">C</code> to all elements of a large 1D <code class="language-plaintext highlighter-rouge">NDBuffer </code>my_data`.</p>
+
+<pre><code class="language-mojo">let N = len(my_data)
+let W = simdwidthof[MyDataType]() // Get native SIMD width for the data type
+
+// 1. Main SIMD loop for full vectors
+var i: Int = 0
+while i + W &lt;= N:
+    let data_vec = my_data.load[width=W](i)
+    let result_vec = data_vec + SIMD[MyDataType, W](C)
+    my_data.store[width=W](i, result_vec)
+    i += W
+
+// 2. Handle remaining elements using partial SIMD (if any)
+if i &lt; N:
+    let num_remaining = N - i
+    let ptr_to_remaining = my_data.data.offset(my_data._offset_of_index(i)) // Get pointer
+
+    let partial_data_vec = partial_simd_load[MyDataType, W](
+        ptr_to_remaining, 0, num_remaining, Scalar[MyDataType](0) // Pad with 0
+    )
+    let partial_result_vec = partial_data_vec + SIMD[MyDataType, W](C)
+    partial_simd_store[MyDataType, W](
+        ptr_to_remaining, 0, num_remaining, partial_result_vec
+    )
+</code></pre>
+<p>This pattern (a main SIMD loop and a smaller loop or partial operation for the remainder) is very common in high-performance code.</p>
+
+<h2 id="key-takeaways-for-chapter-5">Key Takeaways for Chapter 5</h2>
+
+<ul>
+  <li><strong>SIMD (Single Instruction, Multiple Data)</strong> allows processing multiple data elements simultaneously, significantly boosting performance.</li>
+  <li><code class="language-plaintext highlighter-rouge">NDBuffer</code> supports full SIMD vector operations via <code class="language-plaintext highlighter-rouge">load[width=W]()</code> and <code class="language-plaintext highlighter-rouge">store[width=W]()</code> methods.
+    <ul>
+      <li>These require the <code class="language-plaintext highlighter-rouge">NDBuffer</code> to be <strong>contiguous</strong> (innermost stride is 1) if <code class="language-plaintext highlighter-rouge">width &gt; 1</code>.</li>
+    </ul>
+  </li>
+  <li>The “edge problem” occurs when the number of elements isn’t a perfect multiple of SIMD width <code class="language-plaintext highlighter-rouge">W</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">buffer</code> module provides <code class="language-plaintext highlighter-rouge">partial_simd_load</code> and <code class="language-plaintext highlighter-rouge">partial_simd_store</code> utility functions to safely handle these edge cases using masking.
+    <ul>
+      <li>These functions operate on <code class="language-plaintext highlighter-rouge">UnsafePointer</code>s and take <code class="language-plaintext highlighter-rouge">lbound</code> and <code class="language-plaintext highlighter-rouge">rbound</code> parameters to define the valid portion of the SIMD vector.</li>
+    </ul>
+  </li>
+  <li>Combining full SIMD operations for the bulk of the data and partial SIMD operations for the remainder is a common strategy for vectorization.</li>
+</ul>
+
+<p>By understanding and using these SIMD capabilities, you can write much faster Mojo code for data-intensive tasks!</p>
+
+<hr />
+<p><em>Navigation</em></p>
+<ol>
+  <li><a href="01_unsafepointer__as_used_by_ndbuffer__.md">UnsafePointer (as used by NDBuffer)</a></li>
+  <li><a href="02_dimlist_and_dim_.md">DimList and Dim</a></li>
+  <li><a href="03_ndbuffer_.md">NDBuffer</a></li>
+  <li><a href="04_strides_and_offset_computation_.md">Strides and Offset Computation</a></li>
+  <li><strong>SIMD Data Access (You are here)</strong>
+```</li>
+</ol>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

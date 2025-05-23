@@ -1,0 +1,281 @@
+<h1 id="chapter-3-working-with-multiple-dimensions-indexlist">Chapter 3: Working with Multiple Dimensions: <code class="language-plaintext highlighter-rouge">IndexList</code></h1>
+
+<p>In the previous chapters, we explored some of Mojo’s fundamental building blocks for memory management, like <code class="language-plaintext highlighter-rouge">AddressSpace</code> for understanding different memory regions and <code class="language-plaintext highlighter-rouge">UnsafePointer</code> for directly accessing memory locations. Now, we’re going to shift our focus to a common task in programming, especially in fields like graphics, scientific computing, and AI: working with multi-dimensional data.</p>
+
+<p>Imagine you’re working with an image. An image is 2-dimensional (it has a width and a height). To specify a single pixel in that image, you need two numbers: a row and a column. Or, think about a 3D model; you’d need three coordinates (x, y, z) to define a point in space.</p>
+
+<p>Mojo provides a handy tool for exactly this: <code class="language-plaintext highlighter-rouge">IndexList</code>.</p>
+
+<h2 id="what-is-indexlist">What is <code class="language-plaintext highlighter-rouge">IndexList</code>?</h2>
+
+<p><code class="language-plaintext highlighter-rouge">IndexList</code> is a <strong>fixed-size list</strong>, much like a tuple in Python. Its primary job is to represent <strong>multi-dimensional coordinates (indices)</strong> or the <strong>shape of an N-dimensional array</strong>.</p>
+
+<p>Think of it like this:</p>
+<ul>
+  <li><strong>Coordinates on a map</strong>: If you have a 2D map (like an image), an <code class="language-plaintext highlighter-rouge">IndexList</code> could hold <code class="language-plaintext highlighter-rouge">(row, column)</code> to pinpoint a specific location (a pixel).</li>
+  <li><strong>Dimensions of a box</strong>: If you have a 3D box (like a 3D array of data), an <code class="language-plaintext highlighter-rouge">IndexList</code> could hold <code class="language-plaintext highlighter-rouge">(depth, height, width)</code> to describe its size.</li>
+</ul>
+
+<p>It’s a simple but powerful structure that helps us talk about locations and sizes in multi-dimensional spaces. As we’ll see in later chapters, <code class="language-plaintext highlighter-rouge">IndexList</code> is used internally by more complex types like <code class="language-plaintext highlighter-rouge">NDBuffer</code> (Mojo’s N-dimensional buffer, similar to a NumPy array or a tensor) to store its dimensions and the “strides” that help calculate memory offsets.</p>
+
+<h2 id="why-do-we-need-indexlist">Why Do We Need <code class="language-plaintext highlighter-rouge">IndexList</code>?</h2>
+
+<p>You might wonder, “Can’t I just use a regular tuple of integers?” While you could, <code class="language-plaintext highlighter-rouge">IndexList</code> offers several advantages:</p>
+
+<ol>
+  <li><strong>Clarity and Type Safety</strong>: Using <code class="language-plaintext highlighter-rouge">IndexList</code> makes your code more explicit about its intent. When you see an <code class="language-plaintext highlighter-rouge">IndexList</code>, you know it represents a set of indices or a shape. This is clearer than a generic tuple. Mojo’s type system can also leverage this specificity.</li>
+  <li><strong>Fixed Size at Compile Time</strong>: A key feature of <code class="language-plaintext highlighter-rouge">IndexList</code> is that its size (the number of dimensions it holds) is known when your Mojo program is compiled. This allows Mojo to perform many optimizations for better performance.</li>
+  <li><strong>Specialized Operations</strong>: <code class="language-plaintext highlighter-rouge">IndexList</code> is designed for working with indices and comes with useful built-in functionalities like element-wise arithmetic and type casting.</li>
+</ol>
+
+<h2 id="creating-an-indexlist">Creating an <code class="language-plaintext highlighter-rouge">IndexList</code></h2>
+
+<p>There are a couple of common ways to create an <code class="language-plaintext highlighter-rouge">IndexList</code>.</p>
+
+<h3 id="1-direct-initialization-indexlistsize">1. Direct Initialization: <code class="language-plaintext highlighter-rouge">IndexList[size](...)</code></h3>
+
+<p>You can directly create an <code class="language-plaintext highlighter-rouge">IndexList</code> by specifying its <code class="language-plaintext highlighter-rouge">size</code> (the number of elements it will hold) as a compile-time parameter, and then providing the values.</p>
+
+<pre><code class="language-mojo">from utils import IndexList
+from builtin import DType // For specifying element types
+
+fn main_direct_init():
+    // A 2D coordinate (e.g., row, column)
+    // Size is 2. Elements are (by default) 64-bit integers.
+    var coord2d = IndexList[2](10, 25)
+    print("2D Coordinate:", coord2d) // Output: (10, 25)
+
+    // A 3D shape (e.g., depth, height, width)
+    // Size is 3.
+    var shape3d = IndexList[3](3, 64, 128)
+    print("3D Shape:", shape3d) // Output: (3, 64, 128)
+
+    // You can also specify the element type.
+    // Here, we use 32-bit integers.
+    var coord2d_int32 = IndexList[2, element_type=DType.int32](5, 15)
+    print("2D Coordinate (Int32):", coord2d_int32) // Output: (5, 15)
+</code></pre>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">IndexList[size]</code>: <code class="language-plaintext highlighter-rouge">size</code> is a compile-time constant telling Mojo how many elements this list will hold.</li>
+  <li><code class="language-plaintext highlighter-rouge">element_type</code>: This optional parameter specifies the data type of the numbers within the <code class="language-plaintext highlighter-rouge">IndexList</code>. If you don’t specify it, it defaults to <code class="language-plaintext highlighter-rouge">DType.int64</code> (a 64-bit integer). <code class="language-plaintext highlighter-rouge">IndexList</code> is designed to hold integral types.</li>
+</ul>
+
+<h3 id="2-using-the-index-factory-function">2. Using the <code class="language-plaintext highlighter-rouge">Index()</code> Factory Function</h3>
+
+<p>Mojo also provides a convenient <code class="language-plaintext highlighter-rouge">Index()</code> factory function (which you import from <code class="language-plaintext highlighter-rouge">utils</code>) that often feels more natural, especially if you’re used to Python. It infers the size from the number of arguments you provide.</p>
+
+<pre><code class="language-mojo">from utils import Index, IndexList // IndexList is often good to have for type annotations
+from builtin import DType
+
+fn main_factory_func():
+    // The Index() function infers the size
+    var point_a = Index(100, 200) // Creates an IndexList[2]
+    print("Point A:", point_a)     // Output: (100, 200)
+
+    var dimensions = Index(800, 600, 3) // Creates an IndexList[3]
+    print("Dimensions:", dimensions)      // Output: (800, 600, 3)
+
+    // You can also specify the element type with Index()
+    var point_b_int32 = Index[dtype=DType.int32](50, 75)
+    print("Point B (Int32):", point_b_int32) // Output: (50, 75)
+</code></pre>
+<p>The <code class="language-plaintext highlighter-rouge">Index()</code> function is often a more concise way to create <code class="language-plaintext highlighter-rouge">IndexList</code> instances.</p>
+
+<h2 id="working-with-indexlist">Working with <code class="language-plaintext highlighter-rouge">IndexList</code></h2>
+
+<p>Once you have an <code class="language-plaintext highlighter-rouge">IndexList</code>, here are some common things you can do:</p>
+
+<h3 id="accessing-elements">Accessing Elements</h3>
+
+<p>You can access individual elements of an <code class="language-plaintext highlighter-rouge">IndexList</code> using the square bracket <code class="language-plaintext highlighter-rouge">[]</code> operator, just like with Python lists or tuples. Indexing starts at 0.</p>
+
+<pre><code class="language-mojo">from utils import Index
+
+fn main_access_elements():
+    var my_coords = Index(15, 30, 45) // An IndexList[3]
+
+    var x = my_coords[0] // Get the first element
+    var y = my_coords[1] // Get the second element
+    var z = my_coords[2] // Get the third element
+
+    print("X:", x) // Output: X: 15
+    print("Y:", y) // Output: Y: 30
+    print("Z:", z) // Output: Z: 45
+
+    // You can also modify elements if the IndexList is mutable (declared with `var`)
+    my_coords[0] = 16
+    print("Modified X:", my_coords[0]) // Output: Modified X: 16
+</code></pre>
+
+<h3 id="getting-the-length-size">Getting the Length (Size)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">len()</code> function tells you how many elements are in the <code class="language-plaintext highlighter-rouge">IndexList</code> (which matches the <code class="language-plaintext highlighter-rouge">size</code> parameter it was created with).</p>
+
+<pre><code class="language-mojo">from utils import Index
+
+fn main_get_length():
+    var coord2d = Index(10, 20)
+    var shape3d = Index(5, 8, 12)
+
+    print("Length of coord2d:", len(coord2d)) // Output: Length of coord2d: 2
+    print("Length of shape3d:", len(shape3d)) // Output: Length of shape3d: 3
+</code></pre>
+
+<h3 id="converting-to-string-printing">Converting to String (Printing)</h3>
+
+<p><code class="language-plaintext highlighter-rouge">IndexList</code> knows how to represent itself as a string, so you can easily print it.</p>
+
+<pre><code class="language-mojo">from utils import Index, IndexList
+
+fn main_to_string():
+    var il_multi = Index(1, 2, 3)
+    print(il_multi) // Output: (1, 2, 3)
+
+    // For single-element IndexLists, it prints with a trailing comma,
+    // just like single-element tuples in Python.
+    var il_single = IndexList[1](42)
+    print(il_single) // Output: (42,)
+</code></pre>
+
+<h3 id="comparing-indexlists">Comparing <code class="language-plaintext highlighter-rouge">IndexList</code>s</h3>
+
+<p>You can compare two <code class="language-plaintext highlighter-rouge">IndexList</code>s for equality (<code class="language-plaintext highlighter-rouge">==</code>) or inequality (<code class="language-plaintext highlighter-rouge">!=</code>). The comparison is element-wise: two <code class="language-plaintext highlighter-rouge">IndexList</code>s are equal if they have the same size and all their corresponding elements are equal.</p>
+
+<pre><code class="language-mojo">from utils import Index
+
+fn main_compare():
+    var p1 = Index(10, 20)
+    var p2 = Index(10, 20)
+    var p3 = Index(10, 30)
+
+    if p1 == p2:
+        print("p1 is equal to p2") // This will print
+    else:
+        print("p1 is not equal to p2")
+
+    if p1 == p3:
+        print("p1 is equal to p3")
+    else:
+        print("p1 is not equal to p3") // This will print
+</code></pre>
+<p><code class="language-plaintext highlighter-rouge">IndexList</code> also supports other comparison operators like <code class="language-plaintext highlighter-rouge">&lt;</code>, <code class="language-plaintext highlighter-rouge">&lt;=</code>, <code class="language-plaintext highlighter-rouge">&gt;</code>, <code class="language-plaintext highlighter-rouge">&gt;=</code>. These also perform element-wise comparisons, meaning <em>all</em> elements must satisfy the condition for the overall result to be true (this is different from a lexicographical comparison you might see in Python tuples).</p>
+
+<h3 id="casting-element-types">Casting Element Types</h3>
+
+<p>Sometimes, you might have an <code class="language-plaintext highlighter-rouge">IndexList</code> with one integer type (e.g., <code class="language-plaintext highlighter-rouge">DType.int64</code>) but need to convert it to another (e.g., <code class="language-plaintext highlighter-rouge">DType.int32</code>). The <code class="language-plaintext highlighter-rouge">cast[NewDType]()</code> method lets you do this.</p>
+
+<pre><code class="language-mojo">from utils import Index
+from builtin import DType
+
+fn main_casting():
+    var original_indices = Index(100, 200, -50) // Default DType.int64
+    print("Original:", original_indices)
+
+    // Cast to DType.int32
+    var casted_indices_i32 = original_indices.cast[DType.int32]()
+    print("Casted to Int32:", casted_indices_i32)
+    // Note: The print output looks the same, but internally
+    // the elements are now 32-bit integers.
+
+    // Cast to DType.uint64 (unsigned 64-bit integer)
+    // Be careful with signed to unsigned casts if there are negative numbers!
+    // For positive numbers, it's usually fine.
+    var positive_indices = Index(5, 10)
+    var casted_indices_u64 = positive_indices.cast[DType.uint64]()
+    print("Casted to UInt64:", casted_indices_u64)
+</code></pre>
+<p>Casting is useful when interfacing with functions or data structures that expect indices of a particular integer type.</p>
+
+<h3 id="arithmetic-operations">Arithmetic Operations</h3>
+
+<p><code class="language-plaintext highlighter-rouge">IndexList</code> supports element-wise arithmetic operations like addition (<code class="language-plaintext highlighter-rouge">+</code>), subtraction (<code class="language-plaintext highlighter-rouge">-</code>), multiplication (<code class="language-plaintext highlighter-rouge">*</code>), and floor division (<code class="language-plaintext highlighter-rouge">//</code>).</p>
+
+<pre><code class="language-mojo">from utils import Index
+
+fn main_arithmetic():
+    var v1 = Index(10, 20, 30)
+    var v2 = Index(2,  3,  4)
+
+    var sum_v = v1 + v2
+    print("v1 + v2 =", sum_v) // Output: v1 + v2 = (12, 23, 34)
+
+    var diff_v = v1 - v2
+    print("v1 - v2 =", diff_v) // Output: v1 - v2 = (8, 17, 26)
+
+    var prod_v = v1 * v2
+    print("v1 * v2 =", prod_v) // Output: v1 * v2 = (20, 60, 120)
+
+    var div_v = v1 // v2
+    print("v1 // v2 =", div_v) // Output: v1 // v2 = (5, 6, 7)
+</code></pre>
+<p>These operations create a new <code class="language-plaintext highlighter-rouge">IndexList</code> containing the results.</p>
+
+<h2 id="a-practical-example">A Practical Example</h2>
+
+<p>Let’s put some of these concepts together. Imagine we’re working with a 2D grid.</p>
+
+<pre><code class="language-mojo">from utils import Index, IndexList
+from builtin import DType
+
+fn main():
+    print("--- IndexList Practical Example ---")
+
+    # Define the starting coordinates of an object on a grid
+    var start_pos = Index(5, 10) # An IndexList[2] of Int64
+    print("Starting position:", start_pos)
+
+    # Define a movement vector
+    var move_vector = Index(3, -2)
+    print("Movement vector:", move_vector)
+
+    # Calculate the new position by adding the start_pos and move_vector
+    var end_pos = start_pos + move_vector
+    print("Ending position:", end_pos) # Expected: (5+3, 10-2) = (8, 8)
+
+    # Define the dimensions of a small tile
+    var tile_shape = IndexList[2, element_type=DType.int32](16, 16)
+    print("Tile shape (Int32):", tile_shape)
+
+    # Access elements
+    print("Starting X:", start_pos[0])
+    print("Starting Y:", start_pos[1])
+    print("Tile width:", tile_shape[0])
+
+    # Check length
+    print("Dimensions in start_pos:", len(start_pos))
+
+    print("--- End of Practical Example ---")
+
+</code></pre>
+
+<h2 id="key-takeaways">Key Takeaways</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">IndexList</code> is a <strong>fixed-size list</strong> (like a tuple) used for representing <strong>multi-dimensional indices</strong> or <strong>shapes</strong>.</li>
+  <li>Its size is a <strong>compile-time parameter</strong>, enabling optimizations: <code class="language-plaintext highlighter-rouge">IndexList[size](...)</code>.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">Index(...)</code> factory function is a convenient way to create them, inferring the size.</li>
+  <li>Elements are accessed using <code class="language-plaintext highlighter-rouge">[]</code> (e.g., <code class="language-plaintext highlighter-rouge">my_list[0]</code>).</li>
+  <li>Supports common operations: <code class="language-plaintext highlighter-rouge">len()</code>, string conversion, comparisons (<code class="language-plaintext highlighter-rouge">==</code>, <code class="language-plaintext highlighter-rouge">!=</code>, etc.), type casting (<code class="language-plaintext highlighter-rouge">.cast[DType]()</code>), and element-wise arithmetic (<code class="language-plaintext highlighter-rouge">+</code>, <code class="language-plaintext highlighter-rouge">-</code>, <code class="language-plaintext highlighter-rouge">*</code>, <code class="language-plaintext highlighter-rouge">//</code>).</li>
+  <li>It plays a crucial role in defining and accessing data in multi-dimensional structures like <code class="language-plaintext highlighter-rouge">NDBuffer</code>.</li>
+</ul>
+
+<h2 id="whats-next">What’s Next?</h2>
+
+<p>Understanding <code class="language-plaintext highlighter-rouge">IndexList</code> is a stepping stone. It helps us define how many dimensions something has and what its size is in each of those dimensions. In the upcoming chapters, we’ll see how types like <code class="language-plaintext highlighter-rouge">DimList</code> (another way to describe dimensions, often with more static information) and ultimately <code class="language-plaintext highlighter-rouge">NDBuffer</code> build upon these concepts to provide powerful ways to work with N-dimensional data in Mojo.</p>
+
+<hr />
+<p><strong>Index of Chapters (So Far):</strong></p>
+<ol>
+  <li><a href="01_addressspace_.md">Chapter 1: Understanding Memory Neighborhoods with <code class="language-plaintext highlighter-rouge">AddressSpace</code></a></li>
+  <li><a href="02_unsafepointer_.md">Chapter 2: Peeking into Memory with <code class="language-plaintext highlighter-rouge">UnsafePointer</code></a></li>
+  <li><strong>Chapter 3: Working with Multiple Dimensions: <code class="language-plaintext highlighter-rouge">IndexList</code></strong> (You are here)</li>
+  <li><em>Coming Soon: Chapter 4: Describing Dimensions: <code class="language-plaintext highlighter-rouge">DimList</code></em></li>
+  <li><em>Coming Soon: Chapter 5: The N-Dimensional Buffer: <code class="language-plaintext highlighter-rouge">NDBuffer</code></em></li>
+  <li><em>Coming Soon: Chapter 6: N-D to 1D Indexing Logic (Strided Memory Access)</em>
+```</li>
+</ol>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

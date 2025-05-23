@@ -1,0 +1,267 @@
+<h1 id="chapter-1-settings-settings-class">Chapter 1: Settings (<code class="language-plaintext highlighter-rouge">Settings</code> class)</h1>
+
+<p>Welcome to the <code class="language-plaintext highlighter-rouge">modular</code> tutorial! We’re excited to help you understand how this powerful serving application works, piece by piece. In this first chapter, we’ll dive into one of the most fundamental concepts: the <strong><code class="language-plaintext highlighter-rouge">Settings</code> class</strong>.</p>
+
+<p>Imagine you’re about to launch a new web application. You might need to decide:</p>
+<ul>
+  <li>“What web address (host) and port number should it use?”</li>
+  <li>“How much detail should its logs show?”</li>
+  <li>“Should it offer an OpenAI-compatible API, or perhaps a SageMaker one?”</li>
+</ul>
+
+<p>Changing these kinds of parameters directly in the main code can be messy and error-prone, especially as the application grows. This is where the <code class="language-plaintext highlighter-rouge">Settings</code> class comes in!</p>
+
+<h2 id="what-problem-do-settings-solve">What Problem Do <code class="language-plaintext highlighter-rouge">Settings</code> Solve?</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">Settings</code> class acts as the <strong>central control panel</strong> for the entire <code class="language-plaintext highlighter-rouge">modular</code> serving application. Think of it like the main dashboard of a complex machine, like a spaceship. This dashboard has various dials and switches that allow an operator (that’s you!) to adjust how the machine runs without needing to open up the engine and rewire things.</p>
+
+<p>For example, you might want to:</p>
+<ul>
+  <li>Run the server on port <code class="language-plaintext highlighter-rouge">8080</code> instead of the default <code class="language-plaintext highlighter-rouge">8000</code>.</li>
+  <li>Tell the application to expose only an OpenAI-compatible API.</li>
+  <li>Increase the logging detail to help debug an issue.</li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">Settings</code> class allows you to make these kinds of adjustments easily and safely.</p>
+
+<h2 id="meet-the-settings-class">Meet the <code class="language-plaintext highlighter-rouge">Settings</code> Class</h2>
+
+<p>At its core, the <code class="language-plaintext highlighter-rouge">Settings</code> class (found in <code class="language-plaintext highlighter-rouge">src/max/serve/config.py</code>) uses a popular Python library called Pydantic. Pydantic helps define what settings are available, what types they should be (e.g., a number, text, a list), and ensures that any values you provide are valid.</p>
+
+<p>These settings can be loaded from a few places:</p>
+<ol>
+  <li><strong>Environment Variables:</strong> These are variables set in your system’s environment (e.g., <code class="language-plaintext highlighter-rouge">MAX_SERVE_PORT=8080</code>).</li>
+  <li><strong>A <code class="language-plaintext highlighter-rouge">.env</code> file:</strong> This is a special file (literally named <code class="language-plaintext highlighter-rouge">.env</code>) you can create in your project directory to list your settings.</li>
+  <li><strong>Directly in code:</strong> When the application starts, it can provide default values or override others.</li>
+</ol>
+
+<p>Let’s look at some key aspects.</p>
+
+<h3 id="defining-a-setting">Defining a Setting</h3>
+
+<p>Here’s a simplified peek at how settings like the server host and port are defined within the <code class="language-plaintext highlighter-rouge">Settings</code> class:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: src/max/serve/config.py
+</span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">Field</span>
+<span class="kn">from</span> <span class="nn">pydantic_settings</span> <span class="kn">import</span> <span class="n">BaseSettings</span><span class="p">,</span> <span class="n">SettingsConfigDict</span>
+
+<span class="k">class</span> <span class="nc">Settings</span><span class="p">(</span><span class="n">BaseSettings</span><span class="p">):</span>
+    <span class="c1"># This tells Pydantic where to look for a .env file
+</span>    <span class="c1"># and to allow other environment variables not explicitly defined here.
+</span>    <span class="n">model_config</span> <span class="o">=</span> <span class="n">SettingsConfigDict</span><span class="p">(</span>
+        <span class="n">env_file</span><span class="o">=</span><span class="s">".env"</span><span class="p">,</span>
+        <span class="n">extra</span><span class="o">=</span><span class="s">"allow"</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Server host configuration
+</span>    <span class="n">host</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s">"Hostname to use"</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s">"0.0.0.0"</span><span class="p">,</span>  <span class="c1"># Default if not specified elsewhere
+</span>        <span class="n">alias</span><span class="o">=</span><span class="s">"MAX_SERVE_HOST"</span> <span class="c1"># Environment variable to look for
+</span>    <span class="p">)</span>
+    <span class="c1"># Server port configuration
+</span>    <span class="n">port</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s">"Port to use"</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">8000</span><span class="p">,</span>      <span class="c1"># Default if not specified elsewhere
+</span>        <span class="n">alias</span><span class="o">=</span><span class="s">"MAX_SERVE_PORT"</span> <span class="c1"># Environment variable to look for
+</span>    <span class="p">)</span>
+    <span class="c1"># ... many other settings for logging, model workers, etc. ...
+</span></code></pre></div></div>
+
+<p>In this snippet:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">host: str</code> means the <code class="language-plaintext highlighter-rouge">host</code> setting is expected to be a string (text).</li>
+  <li><code class="language-plaintext highlighter-rouge">default="0.0.0.0"</code> means if you don’t specify a host, it will use “0.0.0.0”.</li>
+  <li><code class="language-plaintext highlighter-rouge">alias="MAX_SERVE_HOST"</code> means Pydantic will look for an environment variable named <code class="language-plaintext highlighter-rouge">MAX_SERVE_HOST</code> to get the value for <code class="language-plaintext highlighter-rouge">host</code>. The <code class="language-plaintext highlighter-rouge">Settings</code> class internally uses <code class="language-plaintext highlighter-rouge">host</code>, but externally (like in environment variables), you’d use <code class="language-plaintext highlighter-rouge">MAX_SERVE_HOST</code>.</li>
+</ul>
+
+<h3 id="automatic-validation">Automatic Validation</h3>
+
+<p>Pydantic is smart! If you try to set <code class="language-plaintext highlighter-rouge">port</code> to a text value like <code class="language-plaintext highlighter-rouge">"eight-thousand"</code>, Pydantic will raise an error because it expects an integer (<code class="language-plaintext highlighter-rouge">int</code>). The <code class="language-plaintext highlighter-rouge">Settings</code> class can also have custom validation. For example, it checks if the chosen port is already in use:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: src/max/serve/config.py
+# (Inside the Settings class)
+</span>    <span class="o">@</span><span class="n">field_validator</span><span class="p">(</span><span class="s">"port"</span><span class="p">)</span> <span class="c1"># This function validates the 'port' field
+</span>    <span class="k">def</span> <span class="nf">validate_port</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">port</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="c1"># (Simplified: code to check if port is available)
+</span>        <span class="c1"># If port is in use, it raises a ValueError.
+</span>        <span class="c1"># Otherwise, it returns the port.
+</span>        <span class="c1"># ...
+</span>        <span class="k">return</span> <span class="n">port</span>
+</code></pre></div></div>
+<p>This helps catch configuration mistakes early on.</p>
+
+<h3 id="different-types-of-settings">Different Types of Settings</h3>
+
+<p>Settings aren’t just numbers and text. They can be more complex, like a list of API types to enable:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: src/max/serve/config.py
+</span><span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">Enum</span>
+
+<span class="k">class</span> <span class="nc">APIType</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span> <span class="c1"># Defines allowed API types
+</span>    <span class="n">KSERVE</span> <span class="o">=</span> <span class="s">"kserve"</span>
+    <span class="n">OPENAI</span> <span class="o">=</span> <span class="s">"openai"</span>
+    <span class="n">SAGEMAKER</span> <span class="o">=</span> <span class="s">"sagemaker"</span>
+
+<span class="k">class</span> <span class="nc">Settings</span><span class="p">(</span><span class="n">BaseSettings</span><span class="p">):</span>
+    <span class="c1"># ... other settings ...
+</span>    <span class="n">api_types</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">APIType</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s">"List of exposed API types."</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="p">[</span><span class="n">APIType</span><span class="p">.</span><span class="n">OPENAI</span><span class="p">,</span> <span class="n">APIType</span><span class="p">.</span><span class="n">SAGEMAKER</span><span class="p">]</span> <span class="c1"># Default is a list
+</span>    <span class="p">)</span>
+    <span class="c1"># ...
+</span></code></pre></div></div>
+<p>Here, <code class="language-plaintext highlighter-rouge">api_types</code> is expected to be a list, and each item in the list must be one of the predefined <code class="language-plaintext highlighter-rouge">APIType</code> values.</p>
+
+<h2 id="how-to-use-and-change-settings">How to Use and Change Settings</h2>
+
+<p>Let’s say you want to change the server port from the default <code class="language-plaintext highlighter-rouge">8000</code> to <code class="language-plaintext highlighter-rouge">8080</code>. You have a few ways to do this:</p>
+
+<p><strong>1. Using Environment Variables:</strong>
+Before running your application, you can set an environment variable in your terminal:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">export </span><span class="nv">MAX_SERVE_PORT</span><span class="o">=</span>8080
+<span class="c"># Now run your modular application</span>
+</code></pre></div></div>
+<p>When the <code class="language-plaintext highlighter-rouge">Settings</code> class is initialized, it will pick up <code class="language-plaintext highlighter-rouge">MAX_SERVE_PORT</code> and use <code class="language-plaintext highlighter-rouge">8080</code> for the port.</p>
+
+<p><strong>2. Using a <code class="language-plaintext highlighter-rouge">.env</code> file:</strong>
+Create a file named <code class="language-plaintext highlighter-rouge">.env</code> in the root directory of your <code class="language-plaintext highlighter-rouge">modular</code> project and add the line:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>MAX_SERVE_PORT=8080
+</code></pre></div></div>
+<p>or you can also use the attribute name directly:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>port=8080
+</code></pre></div></div>
+<p>The <code class="language-plaintext highlighter-rouge">Settings</code> class will automatically read this file when the application starts.</p>
+
+<p><strong>3. Initializing <code class="language-plaintext highlighter-rouge">Settings</code> in Code (Less Common for End-Users):</strong>
+Sometimes, settings are specified when the <code class="language-plaintext highlighter-rouge">Settings</code> object is created directly in the code. This is often used for internal defaults or specific configurations within the application’s entrypoints.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/entrypoints/cli/serve.py
+</span><span class="kn">from</span> <span class="nn">max.serve.config</span> <span class="kn">import</span> <span class="n">Settings</span>
+
+<span class="c1"># When starting the server, 'modular' might initialize settings like this:
+# This particular setting 'MAX_SERVE_USE_HEARTBEAT' is an example;
+# it would override any environment or .env file setting for this specific run.
+</span><span class="n">settings_object</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">(</span><span class="n">MAX_SERVE_USE_HEARTBEAT</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Host: </span><span class="si">{</span><span class="n">settings_object</span><span class="p">.</span><span class="n">host</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># Will show host from env/.env/default
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Port: </span><span class="si">{</span><span class="n">settings_object</span><span class="p">.</span><span class="n">port</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># Will show port from env/.env/default
+</span><span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Use Heartbeat: </span><span class="si">{</span><span class="n">settings_object</span><span class="p">.</span><span class="n">use_heartbeat</span><span class="si">}</span><span class="s">"</span><span class="p">)</span> <span class="c1"># Will show False
+</span></code></pre></div></div>
+
+<p><strong>Accessing Settings in the Application:</strong>
+Once the <code class="language-plaintext highlighter-rouge">Settings</code> object is created and populated, other parts of the <code class="language-plaintext highlighter-rouge">modular</code> application can access these values. For example, when the API server is being set up:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from: src/max/serve/api_server.py
+</span><span class="kn">from</span> <span class="nn">max.serve.config</span> <span class="kn">import</span> <span class="n">Settings</span> <span class="c1"># Assume Settings class is defined
+</span>
+<span class="k">def</span> <span class="nf">configure_my_server</span><span class="p">(</span><span class="n">current_settings</span><span class="p">:</span> <span class="n">Settings</span><span class="p">):</span>
+    <span class="c1"># The application uses the loaded settings
+</span>    <span class="n">host_to_use</span> <span class="o">=</span> <span class="n">current_settings</span><span class="p">.</span><span class="n">host</span>
+    <span class="n">port_to_use</span> <span class="o">=</span> <span class="n">current_settings</span><span class="p">.</span><span class="n">port</span>
+    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Server will run on: http://</span><span class="si">{</span><span class="n">host_to_use</span><span class="si">}</span><span class="s">:</span><span class="si">{</span><span class="n">port_to_use</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+    <span class="c1"># ... actual server setup using these values ...
+</span>
+<span class="c1"># When the application starts:
+</span><span class="n">app_settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span> <span class="c1"># Loads from .env, environment variables, or defaults
+</span><span class="n">configure_my_server</span><span class="p">(</span><span class="n">app_settings</span><span class="p">)</span>
+</code></pre></div></div>
+<p>If you had set <code class="language-plaintext highlighter-rouge">MAX_SERVE_PORT=8080</code>, the output would be:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Server will run on: http://0.0.0.0:8080
+</code></pre></div></div>
+<p>(Assuming <code class="language-plaintext highlighter-rouge">host</code> remained its default “0.0.0.0”).</p>
+
+<h2 id="under-the-hood-how-settings-are-loaded">Under the Hood: How <code class="language-plaintext highlighter-rouge">Settings</code> Are Loaded</h2>
+
+<p>When you create an instance of the <code class="language-plaintext highlighter-rouge">Settings</code> class (e.g., <code class="language-plaintext highlighter-rouge">my_settings = Settings()</code>), Pydantic performs a sequence of steps to determine the final value for each setting:</p>
+
+<ol>
+  <li><strong>Direct Initialization:</strong> If values are passed directly when creating the <code class="language-plaintext highlighter-rouge">Settings</code> object (e.g., <code class="language-plaintext highlighter-rouge">Settings(MAX_SERVE_PORT=9000)</code>), these take the highest precedence for those specific settings.</li>
+  <li><strong>Environment Variables:</strong> Pydantic then checks for environment variables that match the <code class="language-plaintext highlighter-rouge">alias</code> defined for each field (e.g., <code class="language-plaintext highlighter-rouge">MAX_SERVE_HOST</code>, <code class="language-plaintext highlighter-rouge">MAX_SERVE_PORT</code>). If found, these override values from the <code class="language-plaintext highlighter-rouge">.env</code> file and defaults.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">.env</code> File:</strong> If not found in environment variables, Pydantic looks for the setting in the <code class="language-plaintext highlighter-rouge">.env</code> file (specified by <code class="language-plaintext highlighter-rouge">model_config = SettingsConfigDict(env_file=".env", ...)</code>). It can match either the alias (e.g., <code class="language-plaintext highlighter-rouge">MAX_SERVE_PORT=8001</code>) or the field name directly (e.g., <code class="language-plaintext highlighter-rouge">port=8001</code>).</li>
+  <li><strong>Default Values:</strong> If the setting isn’t found in any of the above, the <code class="language-plaintext highlighter-rouge">default</code> value specified in the class definition is used (e.g., <code class="language-plaintext highlighter-rouge">default=8000</code> for <code class="language-plaintext highlighter-rouge">port</code>).</li>
+  <li><strong>Validation:</strong> After a value is determined, any associated validators (like <code class="language-plaintext highlighter-rouge">validate_port</code>) are run.</li>
+</ol>
+
+<p>Here’s a simplified diagram illustrating this loading process:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant App as Application Code
+    participant SettingsObj as Settings() Instance
+    participant Pydantic as Pydantic Logic
+    participant InitArgs as Direct Arguments
+    participant EnvVars as Environment Variables
+    participant DotEnv as .env File
+    participant Defaults as Default Values (in class)
+
+    App-&gt;&gt;SettingsObj: Create (e.g., Settings(MAX_SERVE_PORT=9000))
+    SettingsObj-&gt;&gt;Pydantic: Process settings fields
+
+    Pydantic-&gt;&gt;InitArgs: Check for 'MAX_SERVE_PORT'
+    alt Value provided in InitArgs (e.g., 9000)
+        InitArgs--&gt;&gt;Pydantic: Use 9000
+    else No value in InitArgs
+        Pydantic-&gt;&gt;EnvVars: Check for 'MAX_SERVE_PORT'
+        alt EnvVar 'MAX_SERVE_PORT' exists (e.g., 8080)
+            EnvVars--&gt;&gt;Pydantic: Use 8080
+        else EnvVar not found
+            Pydantic-&gt;&gt;DotEnv: Check '.env' for 'MAX_SERVE_PORT' or 'port'
+            alt Value in '.env' (e.g., 8001)
+                DotEnv--&gt;&gt;Pydantic: Use 8001
+            else Value not in '.env'
+                Pydantic-&gt;&gt;Defaults: Use default for 'port' (e.g., 8000)
+                Defaults--&gt;&gt;Pydantic: Use 8000
+            end
+        end
+    end
+    Pydantic--&gt;&gt;SettingsObj: Populated 'port' field
+    SettingsObj--&gt;&gt;App: Ready-to-use settings
+</code></pre>
+
+<p>The actual <code class="language-plaintext highlighter-rouge">Settings</code> class is defined in <code class="language-plaintext highlighter-rouge">src/max/serve/config.py</code>. It inherits from <code class="language-plaintext highlighter-rouge">BaseSettings</code> provided by <code class="language-plaintext highlighter-rouge">pydantic-settings</code>, which gives it all this powerful loading and validation capability.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From: src/max/serve/config.py
+</span><span class="kn">from</span> <span class="nn">pydantic_settings</span> <span class="kn">import</span> <span class="n">BaseSettings</span><span class="p">,</span> <span class="n">SettingsConfigDict</span>
+
+<span class="k">class</span> <span class="nc">Settings</span><span class="p">(</span><span class="n">BaseSettings</span><span class="p">):</span>
+    <span class="c1"># This 'model_config' is crucial.
+</span>    <span class="c1"># It tells Pydantic to look for a ".env" file and
+</span>    <span class="c1"># to use an empty prefix for environment variables by default
+</span>    <span class="c1"># (so 'MAX_SERVE_HOST' maps to 'host', not 'SOMETHING_host').
+</span>    <span class="n">model_config</span> <span class="o">=</span> <span class="n">SettingsConfigDict</span><span class="p">(</span>
+        <span class="n">env_file</span><span class="o">=</span><span class="s">".env"</span><span class="p">,</span>
+        <span class="n">env_prefix</span><span class="o">=</span><span class="s">""</span><span class="p">,</span> <span class="c1"># For aliases like MAX_SERVE_HOST
+</span>        <span class="n">extra</span><span class="o">=</span><span class="s">"allow"</span><span class="p">,</span> <span class="c1"># Allow other env vars not listed here
+</span>        <span class="n">populate_by_name</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="c1"># Important for alias behavior
+</span>    <span class="p">)</span>
+
+    <span class="c1"># Example of a setting:
+</span>    <span class="n">host</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="s">"0.0.0.0"</span><span class="p">,</span>
+        <span class="n">alias</span><span class="o">=</span><span class="s">"MAX_SERVE_HOST"</span> <span class="c1"># Matches env var MAX_SERVE_HOST
+</span>    <span class="p">)</span>
+    <span class="c1"># ... other settings definitions
+</span></code></pre></div></div>
+<p>When code like <code class="language-plaintext highlighter-rouge">settings = Settings()</code> is executed (as seen in <code class="language-plaintext highlighter-rouge">src/max/serve/api_server.py</code>’s <code class="language-plaintext highlighter-rouge">main</code> function or <code class="language-plaintext highlighter-rouge">src/max/entrypoints/cli/serve.py</code>’s <code class="language-plaintext highlighter-rouge">serve_pipeline</code>), Pydantic does its magic to collect all the values.</p>
+
+<h2 id="common-settings-you-might-tweak">Common Settings You Might Tweak</h2>
+
+<p>While there are many settings, here are a few common ones you might interact with:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">host</code> (Env: <code class="language-plaintext highlighter-rouge">MAX_SERVE_HOST</code>): The IP address the server listens on (e.g., “0.0.0.0” for all available interfaces, “127.0.0.1” for localhost).</li>
+  <li><code class="language-plaintext highlighter-rouge">port</code> (Env: <code class="language-plaintext highlighter-rouge">MAX_SERVE_PORT</code>): The port number the server uses (e.g., <code class="language-plaintext highlighter-rouge">8000</code>).</li>
+  <li><code class="language-plaintext highlighter-rouge">api_types</code>: A list specifying which API styles to enable (e.g., <code class="language-plaintext highlighter-rouge">[APIType.OPENAI, APIType.SAGEMAKER]</code>). You could set this via an environment variable like <code class="language-plaintext highlighter-rouge">MAX_SERVE_API_TYPES='["openai"]'</code> (note the string representation of a list).</li>
+  <li><code class="language-plaintext highlighter-rouge">logs_console_level</code> (Env: <code class="language-plaintext highlighter-rouge">MAX_SERVE_LOGS_CONSOLE_LEVEL</code>): Controls the verbosity of logs printed to your console (e.g., “INFO”, “DEBUG”, “WARNING”).</li>
+  <li><code class="language-plaintext highlighter-rouge">disable_telemetry</code> (Env: <code class="language-plaintext highlighter-rouge">MAX_SERVE_DISABLE_TELEMETRY</code>): A boolean (<code class="language-plaintext highlighter-rouge">True</code> or <code class="language-plaintext highlighter-rouge">False</code>) to turn off remote telemetry.</li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You’ve now learned about the <code class="language-plaintext highlighter-rouge">Settings</code> class, the central control panel for the <code class="language-plaintext highlighter-rouge">modular</code> application! You’ve seen how it allows for flexible configuration through environment variables, <code class="language-plaintext highlighter-rouge">.env</code> files, or code defaults, all validated by the power of Pydantic. This system ensures that you can tailor the application’s behavior to your needs without modifying its core code.</p>
+
+<p>With this foundation in how the application is configured, you’re ready to explore how these settings are put to use. In the next chapter, we’ll look at the <a href="02_serving_api_layer__fastapi_app___routers__.md">Serving API Layer (FastAPI App &amp; Routers)</a>, which is responsible for handling incoming requests based on these configurations.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

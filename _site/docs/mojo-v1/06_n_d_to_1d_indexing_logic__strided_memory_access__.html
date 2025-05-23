@@ -1,0 +1,339 @@
+<h1 id="chapter-6-n-d-to-1d-indexing-logic-strided-memory-access">Chapter 6: N-D to 1D Indexing Logic (Strided Memory Access)</h1>
+
+<p>Welcome to Chapter 6! We’ve come a long way in understanding how Mojo handles memory and N-dimensional data. Let’s recap our journey:</p>
+<ol>
+  <li><a href="01_addressspace_.md">Chapter 1: <code class="language-plaintext highlighter-rouge">AddressSpace</code></a> taught us about memory “neighborhoods.”</li>
+  <li><a href="02_unsafepointer_.md">Chapter 2: <code class="language-plaintext highlighter-rouge">UnsafePointer</code></a> showed us how Mojo directly references memory locations.</li>
+  <li><a href="03_indexlist_.md">Chapter 3: <code class="language-plaintext highlighter-rouge">IndexList</code></a> introduced a way to handle multi-dimensional coordinates.</li>
+  <li><a href="04_dimlist_.md">Chapter 4: <code class="language-plaintext highlighter-rouge">Dim</code> and <code class="language-plaintext highlighter-rouge">DimList</code></a> explained how to describe dimension sizes, statically or dynamically.</li>
+  <li><a href="05_ndbuffer_.md">Chapter 5: <code class="language-plaintext highlighter-rouge">NDBuffer</code></a> unveiled Mojo’s powerful N-dimensional array, which acts as a “view” over a flat block of memory.</li>
+</ol>
+
+<p>In the last chapter, we saw that an <code class="language-plaintext highlighter-rouge">NDBuffer</code> uses an <code class="language-plaintext highlighter-rouge">UnsafePointer</code> (its <code class="language-plaintext highlighter-rouge">data</code> field) to point to the beginning of its raw, 1D memory. But if the memory is flat, how does <code class="language-plaintext highlighter-rouge">NDBuffer</code> find the element at, say, <code class="language-plaintext highlighter-rouge">matrix[row, column, depth]</code>? This is where the magic of <strong>strided memory access</strong> comes in.</p>
+
+<p>This chapter dives into the core mechanism that <code class="language-plaintext highlighter-rouge">NDBuffer</code> uses to translate multi-dimensional indices (like <code class="language-plaintext highlighter-rouge">[row, col, depth]</code>) into a single, flat offset from its base <code class="language-plaintext highlighter-rouge">UnsafePointer</code>. This calculation crucially involves the <strong>strides</strong> associated with each dimension.</p>
+
+<h2 id="the-car-park-analogy-revisited">The Car Park Analogy Revisited</h2>
+
+<p>Remember the official description’s analogy? It’s perfect for understanding strides:</p>
+
+<blockquote>
+  <p>Imagine a multi-story car park where cars are arranged in rows on different levels. To find a specific car (indexed by <code class="language-plaintext highlighter-rouge">[level, row, spot]</code>), you’d calculate its position in a conceptual single line of all spots: <code class="language-plaintext highlighter-rouge">(level * spots_per_level) + (row * spots_per_row) + spot_number</code>. <code class="language-plaintext highlighter-rouge">NDBuffer</code> uses a similar formula: <code class="language-plaintext highlighter-rouge">offset = sum(index[i] * stride[i])</code>.</p>
+</blockquote>
+
+<p>Let’s break this down:</p>
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">[level, row, spot]</code></strong>: This is your multi-dimensional index.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">spots_per_level</code></strong>: This is the “stride” for the <code class="language-plaintext highlighter-rouge">level</code> dimension. It’s how many total spots you skip to move from one level to the next, assuming you keep the row and spot number the same.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">spots_per_row</code></strong>: This is the “stride” for the <code class="language-plaintext highlighter-rouge">row</code> dimension (within a level). It’s how many spots you skip to move from one row to the next, keeping the spot number the same.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">spot_number</code></strong>: The index for the <code class="language-plaintext highlighter-rouge">spot</code> dimension. Its implicit stride is 1 (to get to the next spot in the same row, you just move 1 position).</li>
+</ul>
+
+<p>The total calculation gives you a single number – the position of <em>your</em> car if all spots from all levels and all rows were laid out in one giant, continuous line. This single number is the <strong>offset</strong> from the very first car spot in the park.</p>
+
+<h2 id="what-are-strides-exactly">What are Strides, Exactly?</h2>
+
+<p>In the context of <code class="language-plaintext highlighter-rouge">NDBuffer</code> and computer memory:</p>
+
+<p><strong>Strides</strong> are a list of numbers, one for each dimension of the <code class="language-plaintext highlighter-rouge">NDBuffer</code>. The stride for a particular dimension tells you <strong>how many elements you need to “jump” over in the flat, 1D underlying memory to get to the next element in that dimension, while keeping all other dimension indices the same.</strong></p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">NDBuffer</code> stores these strides in its <code class="language-plaintext highlighter-rouge">dynamic_stride</code> field (an <code class="language-plaintext highlighter-rouge">IndexList</code> we learned about in Chapter 3), or they can be partly known statically via the <code class="language-plaintext highlighter-rouge">strides: DimList</code> parameter.</li>
+</ul>
+
+<p>Consider a 2D <code class="language-plaintext highlighter-rouge">NDBuffer</code> (a matrix) with <code class="language-plaintext highlighter-rouge">shape = (num_rows, num_cols)</code>:</p>
+<ul>
+  <li>It will have two strides: <code class="language-plaintext highlighter-rouge">stride_row</code> and <code class="language-plaintext highlighter-rouge">stride_col</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">stride_col</code>: Tells you how many elements to jump in the 1D memory to move from <code class="language-plaintext highlighter-rouge">matrix[r, c]</code> to <code class="language-plaintext highlighter-rouge">matrix[r, c+1]</code> (next column, same row).</li>
+  <li><code class="language-plaintext highlighter-rouge">stride_row</code>: Tells you how many elements to jump in the 1D memory to move from <code class="language-plaintext highlighter-rouge">matrix[r, c]</code> to <code class="language-plaintext highlighter-rouge">matrix[r+1, c]</code> (next row, same column).</li>
+</ul>
+
+<h2 id="the-magic-formula-calculating-the-1d-offset">The Magic Formula: Calculating the 1D Offset</h2>
+
+<p>As stated in the introduction, <code class="language-plaintext highlighter-rouge">NDBuffer</code> translates an N-D index <code class="language-plaintext highlighter-rouge">idx = [idx_0, idx_1, ..., idx_N-1]</code> into a 1D offset from its <code class="language-plaintext highlighter-rouge">data</code> pointer using this formula:</p>
+
+<p><code class="language-plaintext highlighter-rouge">offset = (idx_0 * stride_0) + (idx_1 * stride_1) + ... + (idx_N-1 * stride_N-1)</code></p>
+
+<p>Or, more compactly: <code class="language-plaintext highlighter-rouge">offset = sum(index[i] * stride[i])</code> for <code class="language-plaintext highlighter-rouge">i</code> from <code class="language-plaintext highlighter-rouge">0</code> to <code class="language-plaintext highlighter-rouge">rank-1</code>.</p>
+
+<p>Once this <code class="language-plaintext highlighter-rouge">offset</code> is calculated, the <code class="language-plaintext highlighter-rouge">NDBuffer</code> can access the element by moving <code class="language-plaintext highlighter-rouge">offset</code> elements from its base <code class="language-plaintext highlighter-rouge">data</code> pointer: <code class="language-plaintext highlighter-rouge">element_address = ndbuffer.data + offset</code>.</p>
+
+<h2 id="how-ndbuffer-gets-its-strides">How <code class="language-plaintext highlighter-rouge">NDBuffer</code> Gets Its Strides</h2>
+
+<p>When you create an <code class="language-plaintext highlighter-rouge">NDBuffer</code>, you can provide explicit strides. However, if you only provide a shape (like in many examples from Chapter 5), <code class="language-plaintext highlighter-rouge">NDBuffer</code> calculates default strides for you. These default strides correspond to a <strong>contiguous memory layout</strong>, typically <strong>row-major</strong> (which we’ll discuss soon).</p>
+
+<p>This calculation happens in the <code class="language-plaintext highlighter-rouge">_compute_ndbuffer_stride</code> function found in <code class="language-plaintext highlighter-rouge">stdlib/src/buffer/buffer.mojo</code>. Let’s look at its logic conceptually for an <code class="language-plaintext highlighter-rouge">NDBuffer</code> with <code class="language-plaintext highlighter-rouge">rank &gt; 0</code>:</p>
+
+<pre><code class="language-mojo">// Conceptual logic from _compute_ndbuffer_stride
+fn _compute_ndbuffer_stride[rank](shape: IndexList[rank]) -&gt; IndexList[rank]:
+    var stride = IndexList[rank]() // Initialize strides
+
+    if rank == 1:
+        stride[0] = 1 // For a 1D array, stride is just 1
+        return stride
+
+    // For rank &gt; 1 (e.g., 2D, 3D):
+    // The stride for the very last dimension is 1 (elements are next to each other)
+    stride[rank - 1] = 1
+
+    // Work backwards from the second-to-last dimension
+    for i in reversed(range(rank - 1)): // e.g., for rank 3, i goes 1, 0
+        // Stride of current dimension = shape of NEXT dimension * stride of NEXT dimension
+        stride[i] = shape[i + 1] * stride[i + 1]
+
+    return stride
+</code></pre>
+
+<p><strong>Example: 3D <code class="language-plaintext highlighter-rouge">NDBuffer</code> with <code class="language-plaintext highlighter-rouge">shape = (depth, rows, cols)</code> (e.g., <code class="language-plaintext highlighter-rouge">(2, 3, 4)</code>)</strong></p>
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">rank = 3</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">stride[2]</code> (for <code class="language-plaintext highlighter-rouge">cols</code> dimension) = <code class="language-plaintext highlighter-rouge">1</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">i = 1</code> (for <code class="language-plaintext highlighter-rouge">rows</code> dimension):
+<code class="language-plaintext highlighter-rouge">stride[1] = shape[2] * stride[2] = cols * 1 = cols</code>.
+So, <code class="language-plaintext highlighter-rouge">stride_row = 4</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">i = 0</code> (for <code class="language-plaintext highlighter-rouge">depth</code> dimension):
+<code class="language-plaintext highlighter-rouge">stride[0] = shape[1] * stride[1] = rows * cols</code>.
+So, <code class="language-plaintext highlighter-rouge">stride_depth = 3 * 4 = 12</code>.</li>
+</ol>
+
+<p>The resulting strides would be <code class="language-plaintext highlighter-rouge">(rows * cols, cols, 1)</code>. For shape <code class="language-plaintext highlighter-rouge">(2, 3, 4)</code>, strides are <code class="language-plaintext highlighter-rouge">(12, 4, 1)</code>.</p>
+
+<h2 id="how-ndbuffer-calculates-the-offset-inside-_compute_ndbuffer_offset">How <code class="language-plaintext highlighter-rouge">NDBuffer</code> Calculates the Offset: Inside <code class="language-plaintext highlighter-rouge">_compute_ndbuffer_offset</code></h2>
+
+<p>The actual calculation of the 1D offset using the indices and strides is performed by the <code class="language-plaintext highlighter-rouge">_compute_ndbuffer_offset</code> function in <code class="language-plaintext highlighter-rouge">stdlib/src/buffer/buffer.mojo</code>. There are a few versions of this function to handle different ways you might provide indices (e.g., as a <code class="language-plaintext highlighter-rouge">VariadicList[Int]</code>, a <code class="language-plaintext highlighter-rouge">StaticTuple</code>, or an <code class="language-plaintext highlighter-rouge">IndexList</code>).</p>
+
+<p>Let’s look at the core logic from one of these:</p>
+<pre><code class="language-mojo">// Simplified from _compute_ndbuffer_offset in stdlib/src/buffer/buffer.mojo
+@always_inline
+fn _compute_ndbuffer_offset(
+    buf: NDBuffer,
+    index: IndexList[buf.rank], // The N-D indices [idx_0, idx_1, ...]
+) -&gt; Int:
+    alias rank = buf.rank
+
+    @parameter // Means this can be optimized heavily at compile time
+    if buf.rank == 0: // Scalar NDBuffer
+        return 0
+
+    // This `_use_32bit_indexing` check is interesting!
+    // It checks if we're on a GPU and if the memory is in certain
+    // fast GPU address spaces (like SHARED or CONSTANT, from Chapter 1).
+    // If so, it might use 32-bit math for speed if the offset fits.
+    @parameter
+    if _use_32bit_indexing[buf.address_space]():
+        var result: Int32 = 0
+        @parameter
+        for i in range(rank):
+            // fma is "fused multiply-add": (a*b)+c
+            // result = (buf.stride[i]() * Int32(index[i])) + result
+            result = fma(Int32(buf.stride[i]()), Int32(index[i]), result)
+        return Int(result) // Convert back to standard Int
+    else:
+        // For CPU or other GPU memory, use standard Int (usually 64-bit)
+        var result: Int = 0
+        @parameter
+        for i in range(rank):
+            // result = (buf.stride[i]() * index[i]) + result
+            result = fma(buf.stride[i](), index[i], result)
+        return result
+</code></pre>
+<p>The key part is the loop:
+<code class="language-plaintext highlighter-rouge">result = fma(buf.stride[i](), index[i], result)</code></p>
+
+<p>This iteratively calculates <code class="language-plaintext highlighter-rouge">sum(index[i] * stride[i])</code>. The <code class="language-plaintext highlighter-rouge">fma</code> (fused multiply-add) instruction computes <code class="language-plaintext highlighter-rouge">(a*b)+c</code> often more efficiently and accurately than separate multiply and add operations.</p>
+
+<p>So, if you call <code class="language-plaintext highlighter-rouge">my_ndbuffer[idx0, idx1, idx2]</code>, <code class="language-plaintext highlighter-rouge">NDBuffer</code> internally calls a function like <code class="language-plaintext highlighter-rouge">_compute_ndbuffer_offset</code> with your indices. This function uses the <code class="language-plaintext highlighter-rouge">NDBuffer</code>’s stored <code class="language-plaintext highlighter-rouge">dynamic_stride</code> values and your <code class="language-plaintext highlighter-rouge">idx</code> values to calculate the final 1D offset. Then, it accesses <code class="language-plaintext highlighter-rouge">my_ndbuffer.data.offset(calculated_offset).load()</code> or <code class="language-plaintext highlighter-rouge">.store()</code>.</p>
+
+<h2 id="strides-in-action-memory-layouts">Strides in Action: Memory Layouts</h2>
+
+<p>The power of strides is that they define how the N-dimensional data is actually laid out in the 1D memory block. The two most common layouts are row-major and column-major.</p>
+
+<h3 id="1-row-major-order-c-style-default-in-mojonumpy">1. Row-Major Order (C-style, Default in Mojo/NumPy)</h3>
+
+<p>In row-major order, elements of a row are contiguous in memory. You go through all columns of row 0, then all columns of row 1, and so on.</p>
+
+<p>Consider a 2x3 matrix: <code class="language-plaintext highlighter-rouge">A = [[a, b, c], [d, e, f]]</code></p>
+<ul>
+  <li>Shape: <code class="language-plaintext highlighter-rouge">(2, 3)</code> (2 rows, 3 columns)</li>
+  <li>Memory Layout: <code class="language-plaintext highlighter-rouge">a, b, c, d, e, f</code></li>
+  <li>Strides (calculated by <code class="language-plaintext highlighter-rouge">_compute_ndbuffer_stride</code>):
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">stride[1]</code> (for columns) = <code class="language-plaintext highlighter-rouge">1</code> (to go from <code class="language-plaintext highlighter-rouge">a</code> to <code class="language-plaintext highlighter-rouge">b</code>, jump 1 element)</li>
+      <li><code class="language-plaintext highlighter-rouge">stride[0]</code> (for rows) = <code class="language-plaintext highlighter-rouge">shape[1] * stride[1] = 3 * 1 = 3</code> (to go from <code class="language-plaintext highlighter-rouge">a</code> to <code class="language-plaintext highlighter-rouge">d</code>, jump 3 elements: <code class="language-plaintext highlighter-rouge">b, c, d</code>)</li>
+      <li>So, strides are <code class="language-plaintext highlighter-rouge">(3, 1)</code>.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>To find element <code class="language-plaintext highlighter-rouge">A[r, c]</code>:
+<code class="language-plaintext highlighter-rouge">offset = (r * stride_row) + (c * stride_col) = (r * 3) + (c * 1)</code></p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">A[0,0] (a)</code>: <code class="language-plaintext highlighter-rouge">(0*3) + (0*1) = 0</code>. Offset 0 from base.</li>
+  <li><code class="language-plaintext highlighter-rouge">A[0,1] (b)</code>: <code class="language-plaintext highlighter-rouge">(0*3) + (1*1) = 1</code>. Offset 1 from base.</li>
+  <li><code class="language-plaintext highlighter-rouge">A[1,0] (d)</code>: <code class="language-plaintext highlighter-rouge">(1*3) + (0*1) = 3</code>. Offset 3 from base.</li>
+  <li><code class="language-plaintext highlighter-rouge">A[1,2] (f)</code>: <code class="language-plaintext highlighter-rouge">(1*3) + (2*1) = 5</code>. Offset 5 from base.</li>
+</ul>
+
+<h3 id="2-column-major-order-fortran-style">2. Column-Major Order (Fortran-style)</h3>
+
+<p>In column-major order, elements of a column are contiguous. You go through all rows of column 0, then all rows of column 1, etc.</p>
+
+<p>Consider the same 2x3 matrix: <code class="language-plaintext highlighter-rouge">A = [[a, b, c], [d, e, f]]</code></p>
+<ul>
+  <li>Shape: <code class="language-plaintext highlighter-rouge">(2, 3)</code> (2 rows, 3 columns)</li>
+  <li>Memory Layout: <code class="language-plaintext highlighter-rouge">a, d, b, e, c, f</code></li>
+  <li>Strides:
+    <ul>
+      <li>Here, to make columns contiguous, the stride for the <em>first</em> dimension (rows) must be 1.</li>
+      <li><code class="language-plaintext highlighter-rouge">stride[0]</code> (for rows) = <code class="language-plaintext highlighter-rouge">1</code> (to go from <code class="language-plaintext highlighter-rouge">a</code> to <code class="language-plaintext highlighter-rouge">d</code>, jump 1 element)</li>
+      <li><code class="language-plaintext highlighter-rouge">stride[1]</code> (for columns) = <code class="language-plaintext highlighter-rouge">shape[0] * stride[0] = 2 * 1 = 2</code> (to go from <code class="language-plaintext highlighter-rouge">a</code> to <code class="language-plaintext highlighter-rouge">b</code>, jump 2 elements: <code class="language-plaintext highlighter-rouge">d,b</code>)</li>
+      <li>So, strides are <code class="language-plaintext highlighter-rouge">(1, 2)</code>.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>To find element <code class="language-plaintext highlighter-rouge">A[r, c]</code> (using the <em>same</em> formula, just different stride values):
+<code class="language-plaintext highlighter-rouge">offset = (r * stride_row) + (c * stride_col) = (r * 1) + (c * 2)</code></p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">A[0,0] (a)</code>: <code class="language-plaintext highlighter-rouge">(0*1) + (0*2) = 0</code>. Offset 0.</li>
+  <li><code class="language-plaintext highlighter-rouge">A[0,1] (b)</code>: <code class="language-plaintext highlighter-rouge">(0*1) + (1*2) = 2</code>. Offset 2. (Memory: <code class="language-plaintext highlighter-rouge">a,d,b</code> &lt;- <code class="language-plaintext highlighter-rouge">b</code> is at offset 2)</li>
+  <li><code class="language-plaintext highlighter-rouge">A[1,0] (d)</code>: <code class="language-plaintext highlighter-rouge">(1*1) + (0*2) = 1</code>. Offset 1. (Memory: <code class="language-plaintext highlighter-rouge">a,d</code> &lt;- <code class="language-plaintext highlighter-rouge">d</code> is at offset 1)</li>
+  <li><code class="language-plaintext highlighter-rouge">A[1,2] (f)</code>: <code class="language-plaintext highlighter-rouge">(1*1) + (2*2) = 5</code>. Offset 5. (Memory: <code class="language-plaintext highlighter-rouge">a,d,b,e,c,f</code> &lt;- <code class="language-plaintext highlighter-rouge">f</code> is at offset 5)</li>
+</ul>
+
+<p><strong><code class="language-plaintext highlighter-rouge">NDBuffer</code> can represent data in either layout (or even more complex ones!) simply by having the correct <code class="language-plaintext highlighter-rouge">strides</code> parameter.</strong> The access logic (<code class="language-plaintext highlighter-rouge">matrix[r,c]</code>) and the formula <code class="language-plaintext highlighter-rouge">sum(index[i] * stride[i])</code> remain the same. This is incredibly flexible!</p>
+
+<h2 id="why-strided-access-matters">Why Strided Access Matters</h2>
+
+<ol>
+  <li><strong>Efficiency</strong>: Calculating an offset is a fast arithmetic operation. It allows direct access to any element without needing to iterate or search.</li>
+  <li><strong>Flexibility</strong>:
+    <ul>
+      <li>Supports different memory layouts (row-major, column-major) for compatibility with various libraries or hardware preferences.</li>
+      <li>Enables advanced array manipulations.</li>
+    </ul>
+  </li>
+  <li><strong>Zero-Copy Operations</strong>: This is a big one! Many operations that might seem to require data copying can be done by just creating a new <code class="language-plaintext highlighter-rouge">NDBuffer</code> with different shape/strides that points to the <em>same underlying data</em>.
+    <ul>
+      <li><strong>Slicing</strong>: Taking a sub-matrix <code class="language-plaintext highlighter-rouge">B = A[rows_slice, cols_slice]</code> can often be done by creating <code class="language-plaintext highlighter-rouge">B</code> with an offset base pointer from <code class="language-plaintext highlighter-rouge">A</code> and new strides/shape, without copying <code class="language-plaintext highlighter-rouge">A</code>’s data. The <code class="language-plaintext highlighter-rouge">tile()</code> method we saw in Chapter 5 does this.</li>
+      <li><strong>Transposing</strong>: Transposing a matrix <code class="language-plaintext highlighter-rouge">A</code> to get <code class="language-plaintext highlighter-rouge">A_T</code> involves swapping its shape dimensions and its stride dimensions. The new <code class="language-plaintext highlighter-rouge">NDBuffer</code> <code class="language-plaintext highlighter-rouge">A_T</code> can point to the exact same memory as <code class="language-plaintext highlighter-rouge">A</code>.</li>
+      <li><strong>Broadcasting</strong>: In operations like adding a vector to each row of a matrix, strides can be set to 0 for the broadcasted dimension, effectively reusing the vector’s data without copying.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>These zero-copy views save memory and significantly speed up computations by avoiding redundant data movement.</p>
+
+<h2 id="example-walkthrough-a-2x2-ndbuffer">Example Walkthrough: A 2x2 NDBuffer</h2>
+
+<p>Let’s create a simple 2x2 <code class="language-plaintext highlighter-rouge">NDBuffer</code> and trace the indexing.</p>
+
+<pre><code class="language-mojo">from buffer import NDBuffer, DimList
+from memory import InlineArray, MutableAnyOrigin
+from builtin import DType, Scalar
+from utils import IndexList
+
+fn main_stride_example():
+    print("--- Strides Example: 2x2 Matrix ---")
+
+    // 1. Create storage and an NDBuffer (default row-major)
+    var data_storage = InlineArray[Scalar[DType.int32], 2 * 2](uninitialized=True)
+    var matrix = NDBuffer[
+        DType.int32,
+        2, // rank
+        _, // origin
+        DimList(2, 2) // shape: 2 rows, 2 columns
+    ](data_storage)
+
+    // Let's see its shape and calculated strides
+    var shape = matrix.get_shape() // Should be (2, 2)
+    var strides = matrix.get_strides() // Should be (2, 1) for row-major
+    print("Shape:", shape)
+    print("Strides:", strides)
+
+    // Fill the matrix:
+    // matrix[0,0] = 10, matrix[0,1] = 11
+    // matrix[1,0] = 20, matrix[1,1] = 21
+    var counter: Int32 = 10
+    for r in range(matrix.dim[0]()): // Iterate rows
+        for c in range(matrix.dim[1]()): // Iterate columns
+            matrix[r,c] = counter
+            if c == 0 and r == 1: counter = 20 # Just to make values 10,11,20,21
+            else: counter += 1
+    
+    print("Matrix content (via NDBuffer access):")
+    print(matrix[0,0], matrix[0,1])
+    print(matrix[1,0], matrix[1,1])
+
+    // Let's manually calculate offset for matrix[1,0] (should be 20)
+    // Indices: r=1, c=0
+    // Strides: stride_r=2, stride_c=1
+    var r_idx = 1
+    var c_idx = 0
+    var stride_r = strides[0] // Is 2
+    var stride_c = strides[1] // Is 1
+
+    var offset = (r_idx * stride_r) + (c_idx * stride_c)
+    // offset = (1 * 2) + (0 * 1) = 2 + 0 = 2
+    print("Calculated offset for matrix[1,0]:", offset)
+
+    // Verify by looking at the raw data (if we could easily inspected InlineArray)
+    // The flat data_storage would look like: [10, 11, 20, 21]
+    // matrix.data.offset(2).load() would give us 20.
+    // matrix[1,0] internally does this!
+
+    print("Value at matrix[1,0] using NDBuffer:", matrix[1,0])
+</code></pre>
+<p>If you could run this (e.g., by calling <code class="language-plaintext highlighter-rouge">main_stride_example()</code>), you’d see:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--- Strides Example: 2x2 Matrix ---
+Shape: (2, 2)
+Strides: (2, 1)
+Matrix content (via NDBuffer access):
+10 11
+20 21
+Calculated offset for matrix[1,0]: 2
+Value at matrix[1,0] using NDBuffer: 20
+</code></pre></div></div>
+<p>This confirms that <code class="language-plaintext highlighter-rouge">NDBuffer</code> used the strides <code class="language-plaintext highlighter-rouge">(2,1)</code> to correctly find the element <code class="language-plaintext highlighter-rouge">matrix[1,0]</code> at offset <code class="language-plaintext highlighter-rouge">2</code> in the flat memory.</p>
+
+<h2 id="summary">Summary</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">NDBuffer</code> uses <strong>strides</strong> to map N-dimensional indices to a 1D memory offset.</li>
+  <li>The formula is simple but powerful: <code class="language-plaintext highlighter-rouge">offset = sum(index[i] * stride[i])</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">_compute_ndbuffer_stride</code> calculates default (contiguous, row-major) strides if not provided.</li>
+  <li><code class="language-plaintext highlighter-rouge">_compute_ndbuffer_offset</code> implements the offset calculation, often using efficient <code class="language-plaintext highlighter-rouge">fma</code> operations.</li>
+  <li>Strides define the actual <strong>memory layout</strong> (row-major, column-major, etc.) and enable <code class="language-plaintext highlighter-rouge">NDBuffer</code> to handle them transparently.</li>
+  <li>This mechanism is key to <code class="language-plaintext highlighter-rouge">NDBuffer</code>’s efficiency, flexibility, and its ability to perform <strong>zero-copy views</strong> for operations like slicing and transposing.</li>
+</ul>
+
+<p>Understanding strided memory access unlocks a deeper appreciation for how N-dimensional arrays are handled efficiently in systems like Mojo, and why <code class="language-plaintext highlighter-rouge">NDBuffer</code> is such a versatile tool.</p>
+
+<h2 id="whats-next">What’s Next?</h2>
+
+<p>This chapter concludes our deep dive into the fundamental building blocks and internal mechanics of <code class="language-plaintext highlighter-rouge">NDBuffer</code>. You now have a solid understanding of:</p>
+<ul>
+  <li>Memory organization (<code class="language-plaintext highlighter-rouge">AddressSpace</code>).</li>
+  <li>Raw memory access (<code class="language-plaintext highlighter-rouge">UnsafePointer</code>).</li>
+  <li>Representing N-D coordinates and shapes (<code class="language-plaintext highlighter-rouge">IndexList</code>, <code class="language-plaintext highlighter-rouge">DimList</code>).</li>
+  <li>The <code class="language-plaintext highlighter-rouge">NDBuffer</code> structure itself.</li>
+  <li>And how <code class="language-plaintext highlighter-rouge">NDBuffer</code> navigates its data using strides.</li>
+</ul>
+
+<p>With this foundation, you’re well-equipped to use <code class="language-plaintext highlighter-rouge">NDBuffer</code> effectively in Mojo for various numerical computing tasks. Future explorations might involve using <code class="language-plaintext highlighter-rouge">NDBuffer</code> in more complex algorithms, interfacing with other Mojo libraries, or diving into performance optimization techniques that leverage these concepts. Congratulations on completing this foundational series on <code class="language-plaintext highlighter-rouge">NDBuffer</code>!</p>
+
+<hr />
+<p><strong>Table of Contents</strong></p>
+<ol>
+  <li><a href="01_addressspace_.md">Chapter 1: Understanding Memory Neighborhoods with <code class="language-plaintext highlighter-rouge">AddressSpace</code></a></li>
+  <li><a href="02_unsafepointer_.md">Chapter 2: Peeking into Memory with <code class="language-plaintext highlighter-rouge">UnsafePointer</code></a></li>
+  <li><a href="03_indexlist_.md">Chapter 3: Working with Multiple Dimensions: <code class="language-plaintext highlighter-rouge">IndexList</code></a></li>
+  <li><a href="04_dimlist_.md">Chapter 4: Describing Dimensions with <code class="language-plaintext highlighter-rouge">Dim</code> and <code class="language-plaintext highlighter-rouge">DimList</code></a></li>
+  <li><a href="05_ndbuffer_.md">Chapter 5: The N-Dimensional Buffer: <code class="language-plaintext highlighter-rouge">NDBuffer</code></a></li>
+  <li><strong>Chapter 6: N-D to 1D Indexing Logic (Strided Memory Access)</strong> (You are here)
+```</li>
+</ol>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

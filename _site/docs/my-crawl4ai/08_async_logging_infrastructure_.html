@@ -1,0 +1,423 @@
+<h1 id="chapter-8-async-logging-infrastructure">Chapter 8: Async Logging Infrastructure</h1>
+
+<p>In <a href="07_dispatcher_framework_.md">Chapter 7: Dispatcher Framework</a>, we learned how to manage multiple crawling operations efficiently. Now, let’s explore how to keep track of what’s happening during these operations with the Async Logging Infrastructure.</p>
+
+<h2 id="what-is-the-async-logging-infrastructure">What is the Async Logging Infrastructure?</h2>
+
+<p>Imagine you’re exploring a vast, dark cave system. Would you venture in without a flashlight and a way to leave breadcrumbs? Probably not! Similarly, when your crawler is exploring the web, you need a way to see what it’s doing and track its progress.</p>
+
+<p>The Async Logging Infrastructure is like your flashlight and breadcrumb system for web crawling:</p>
+
+<ul>
+  <li>It shines a light on what’s happening in real-time</li>
+  <li>It leaves a trail of where you’ve been and what happened</li>
+  <li>It alerts you when something goes wrong</li>
+  <li>It helps you understand why your crawler is behaving a certain way</li>
+</ul>
+
+<p>Let’s see a simple example of how this works:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">AsyncLogger</span>
+
+<span class="c1"># Create a custom logger with colored output
+</span><span class="n">logger</span> <span class="o">=</span> <span class="n">AsyncLogger</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+<span class="c1"># Use it with our crawler
+</span><span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">(</span><span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">)</span>
+    
+    <span class="c1"># The logger will automatically show:
+</span>    <span class="c1"># - When the crawler starts
+</span>    <span class="c1"># - When a page is fetched
+</span>    <span class="c1"># - When content is processed
+</span>    <span class="c1"># - Any errors that occur
+</span>    <span class="c1"># - When the operation completes
+</span></code></pre></div></div>
+
+<p>When you run this code, you’ll see colorful, informative messages in your console showing exactly what’s happening during the crawl!</p>
+
+<h2 id="understanding-log-levels">Understanding Log Levels</h2>
+
+<p>Just like how a news reporter might classify stories as “breaking news,” “feature,” or “update,” the Async Logging Infrastructure uses different log levels to categorize messages:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.async_logger</span> <span class="kn">import</span> <span class="n">LogLevel</span>
+
+<span class="c1"># Different log levels from least to most severe
+</span><span class="n">debug_level</span> <span class="o">=</span> <span class="n">LogLevel</span><span class="p">.</span><span class="n">DEBUG</span>       <span class="c1"># Detailed information for debugging
+</span><span class="n">info_level</span> <span class="o">=</span> <span class="n">LogLevel</span><span class="p">.</span><span class="n">INFO</span>         <span class="c1"># General information about progress
+</span><span class="n">success_level</span> <span class="o">=</span> <span class="n">LogLevel</span><span class="p">.</span><span class="n">SUCCESS</span>   <span class="c1"># Successful operations
+</span><span class="n">warning_level</span> <span class="o">=</span> <span class="n">LogLevel</span><span class="p">.</span><span class="n">WARNING</span>   <span class="c1"># Something might be wrong
+</span><span class="n">error_level</span> <span class="o">=</span> <span class="n">LogLevel</span><span class="p">.</span><span class="n">ERROR</span>       <span class="c1"># Something definitely went wrong
+</span></code></pre></div></div>
+
+<p>Each level is displayed in a different color to help you quickly identify what’s happening:</p>
+<ul>
+  <li>DEBUG is light black (for detailed but non-essential information)</li>
+  <li>INFO is cyan (for regular progress updates)</li>
+  <li>SUCCESS is green (for successful operations)</li>
+  <li>WARNING is yellow (for potential issues)</li>
+  <li>ERROR is red (for definite problems)</li>
+</ul>
+
+<h2 id="basic-logging-your-first-log-messages">Basic Logging: Your First Log Messages</h2>
+
+<p>Let’s start with the basics - how to use the logger to display information:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncLogger</span>
+
+<span class="c1"># Create a logger
+</span><span class="n">logger</span> <span class="o">=</span> <span class="n">AsyncLogger</span><span class="p">()</span>
+
+<span class="c1"># Log messages at different levels
+</span><span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="s">"Detailed information for troubleshooting"</span><span class="p">)</span>
+<span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="s">"The crawler is starting"</span><span class="p">)</span>
+<span class="n">logger</span><span class="p">.</span><span class="n">success</span><span class="p">(</span><span class="s">"Successfully crawled the page"</span><span class="p">)</span>
+<span class="n">logger</span><span class="p">.</span><span class="n">warning</span><span class="p">(</span><span class="s">"The page took a long time to load"</span><span class="p">)</span>
+<span class="n">logger</span><span class="p">.</span><span class="n">error</span><span class="p">(</span><span class="s">"Failed to access the website"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Each of these methods displays a message with appropriate formatting and coloring. You’ll see something like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[DEBUG].... ⋯ Detailed information for troubleshooting 
+[INFO]..... ℹ The crawler is starting 
+[SUCCESS].. ✔ Successfully crawled the page 
+[WARNING].. ⚠ The page took a long time to load 
+[ERROR].... × Failed to access the website 
+</code></pre></div></div>
+
+<h2 id="tracking-url-status">Tracking URL Status</h2>
+
+<p>When crawling, you often want to know which URLs were successfully processed. The logger has a special method for this:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Log the status of a URL fetch
+</span><span class="n">logger</span><span class="p">.</span><span class="n">url_status</span><span class="p">(</span>
+    <span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">,</span>
+    <span class="n">success</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">timing</span><span class="o">=</span><span class="mf">1.25</span><span class="p">,</span>  <span class="c1"># seconds
+</span>    <span class="n">tag</span><span class="o">=</span><span class="s">"FETCH"</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>This produces a nicely formatted output like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[FETCH].... ↓ https://example.com | ✓ | ⏱: 1.25s 
+</code></pre></div></div>
+
+<p>If a URL fails, you can log the error:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Log an error for a URL
+</span><span class="n">logger</span><span class="p">.</span><span class="n">error_status</span><span class="p">(</span>
+    <span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">,</span>
+    <span class="n">error</span><span class="o">=</span><span class="s">"Connection refused"</span><span class="p">,</span>
+    <span class="n">tag</span><span class="o">=</span><span class="s">"ERROR"</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>This shows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[ERROR].... × https://example.com | Error: Connection refused 
+</code></pre></div></div>
+
+<h2 id="customizing-your-logger">Customizing Your Logger</h2>
+
+<p>Like customizing your news feed, you can customize how the logger displays information:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Create a customized logger
+</span><span class="n">logger</span> <span class="o">=</span> <span class="n">AsyncLogger</span><span class="p">(</span>
+    <span class="n">log_file</span><span class="o">=</span><span class="s">"crawl_logs.txt"</span><span class="p">,</span>     <span class="c1"># Save logs to a file
+</span>    <span class="n">log_level</span><span class="o">=</span><span class="n">LogLevel</span><span class="p">.</span><span class="n">INFO</span><span class="p">,</span>       <span class="c1"># Only show INFO and above
+</span>    <span class="n">tag_width</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span>                  <span class="c1"># Width for the tag column
+</span>    <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span>                   <span class="c1"># Show output in console
+</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This creates a logger that:</p>
+<ol>
+  <li>Saves all logs to a file called “crawl_logs.txt”</li>
+  <li>Only displays messages at INFO level or higher (INFO, SUCCESS, WARNING, ERROR)</li>
+  <li>Uses a 12-character width for the tag column</li>
+  <li>Shows all output in the console</li>
+</ol>
+
+<h2 id="tracking-a-complete-crawl-operation">Tracking a Complete Crawl Operation</h2>
+
+<p>Now let’s see a complete example of logging during a crawl operation:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">AsyncLogger</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">log_complete_crawl</span><span class="p">():</span>
+    <span class="c1"># Create a logger that saves to a file
+</span>    <span class="n">logger</span> <span class="o">=</span> <span class="n">AsyncLogger</span><span class="p">(</span><span class="n">log_file</span><span class="o">=</span><span class="s">"crawl_log.txt"</span><span class="p">)</span>
+    
+    <span class="c1"># Create a crawler with our logger
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">(</span><span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="c1"># Log before we start
+</span>        <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Starting crawl of example.com"</span><span class="p">,</span> <span class="n">tag</span><span class="o">=</span><span class="s">"CRAWL"</span><span class="p">)</span>
+        
+        <span class="c1"># Run the crawler
+</span>        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">)</span>
+        
+        <span class="c1"># Log completion
+</span>        <span class="k">if</span> <span class="n">result</span><span class="p">.</span><span class="n">success</span><span class="p">:</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">success</span><span class="p">(</span>
+                <span class="s">"Crawl complete with {words} words"</span><span class="p">,</span> 
+                <span class="n">tag</span><span class="o">=</span><span class="s">"COMPLETE"</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s">"words"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">split</span><span class="p">())}</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">error</span><span class="p">(</span>
+                <span class="s">"Crawl failed: {error}"</span><span class="p">,</span> 
+                <span class="n">tag</span><span class="o">=</span><span class="s">"COMPLETE"</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s">"error"</span><span class="p">:</span> <span class="n">result</span><span class="p">.</span><span class="n">error_message</span><span class="p">}</span>
+            <span class="p">)</span>
+</code></pre></div></div>
+
+<p>The logger is used at each step of the process, giving you a complete picture of what happened.</p>
+
+<h2 id="structured-logging-with-parameters">Structured Logging with Parameters</h2>
+
+<p>Sometimes you want to include dynamic data in your log messages. The AsyncLogger makes this easy with parameter substitution:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Log with parameters
+</span><span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span>
+    <span class="n">message</span><span class="o">=</span><span class="s">"Found {link_count} links on {url}"</span><span class="p">,</span>
+    <span class="n">tag</span><span class="o">=</span><span class="s">"LINKS"</span><span class="p">,</span>
+    <span class="n">params</span><span class="o">=</span><span class="p">{</span>
+        <span class="s">"link_count"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">links</span><span class="p">),</span>
+        <span class="s">"url"</span><span class="p">:</span> <span class="n">result</span><span class="p">.</span><span class="n">url</span>
+    <span class="p">},</span>
+    <span class="n">colors</span><span class="o">=</span><span class="p">{</span>
+        <span class="s">"link_count"</span><span class="p">:</span> <span class="n">LogColor</span><span class="p">.</span><span class="n">GREEN</span><span class="p">,</span>  <span class="c1"># Highlight the count in green
+</span>        <span class="s">"url"</span><span class="p">:</span> <span class="n">LogColor</span><span class="p">.</span><span class="n">CYAN</span>           <span class="c1"># Show the URL in cyan
+</span>    <span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>This creates a message with colorized parts, making important information stand out!</p>
+
+<h2 id="how-the-logger-works-under-the-hood">How the Logger Works Under the Hood</h2>
+
+<p>When you use the AsyncLogger, here’s what happens behind the scenes:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant YC as Your Code
+    participant L as AsyncLogger
+    participant C as Console
+    participant F as Log File
+
+    YC-&gt;&gt;L: logger.info("Starting crawl")
+    L-&gt;&gt;L: Format message with tag and icon
+    L-&gt;&gt;L: Apply colors to message parts
+    L-&gt;&gt;C: Print colored message to console
+    L-&gt;&gt;F: Write plain text message to file
+    
+    YC-&gt;&gt;L: logger.url_status(url, success, timing)
+    L-&gt;&gt;L: Format URL status with colors
+    L-&gt;&gt;C: Print URL status to console
+    L-&gt;&gt;F: Write URL status to file
+</code></pre>
+
+<p>The logger takes your message, formats it with tags, icons, and colors, then outputs it to the console and/or a file. It’s like a news editor taking your story, adding headlines and formatting, then publishing it to different channels.</p>
+
+<h2 id="understanding-the-implementation">Understanding the Implementation</h2>
+
+<p>Let’s look at how the AsyncLogger is implemented:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From crawl4ai/async_logger.py (simplified)
+</span><span class="k">class</span> <span class="nc">AsyncLogger</span><span class="p">(</span><span class="n">AsyncLoggerBase</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">log_file</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+        <span class="n">log_level</span><span class="o">=</span><span class="n">LogLevel</span><span class="p">.</span><span class="n">DEBUG</span><span class="p">,</span>
+        <span class="n">tag_width</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">log_file</span> <span class="o">=</span> <span class="n">log_file</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">log_level</span> <span class="o">=</span> <span class="n">log_level</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">tag_width</span> <span class="o">=</span> <span class="n">tag_width</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">console</span> <span class="o">=</span> <span class="n">Console</span><span class="p">()</span>  <span class="c1"># Rich console for colored output
+</span></code></pre></div></div>
+
+<p>The constructor sets up basic properties like where to log, what level to log at, and whether to show output in the console.</p>
+
+<p>The main logging method handles formatting and output:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Core logging method (simplified)
+</span><span class="k">def</span> <span class="nf">_log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">colors</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="c1"># Skip if level is below our threshold
+</span>    <span class="k">if</span> <span class="n">level</span><span class="p">.</span><span class="n">value</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="p">.</span><span class="n">log_level</span><span class="p">.</span><span class="n">value</span><span class="p">:</span>
+        <span class="k">return</span>
+        
+    <span class="c1"># Format the message with parameters if provided
+</span>    <span class="k">if</span> <span class="n">params</span><span class="p">:</span>
+        <span class="n">formatted_message</span> <span class="o">=</span> <span class="n">message</span><span class="p">.</span><span class="nb">format</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
+        <span class="c1"># Apply colors to parameters if specified
+</span>        <span class="c1"># ...
+</span>    <span class="k">else</span><span class="p">:</span>
+        <span class="n">formatted_message</span> <span class="o">=</span> <span class="n">message</span>
+        
+    <span class="c1"># Format the complete log line with tag and icon
+</span>    <span class="n">color</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">colors</span><span class="p">[</span><span class="n">level</span><span class="p">]</span>
+    <span class="n">log_line</span> <span class="o">=</span> <span class="sa">f</span><span class="s">"[</span><span class="si">{</span><span class="n">color</span><span class="si">}</span><span class="s">]</span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">_format_tag</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span><span class="si">}</span><span class="s"> </span><span class="si">{</span><span class="bp">self</span><span class="p">.</span><span class="n">_get_icon</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span><span class="si">}</span><span class="s"> </span><span class="si">{</span><span class="n">formatted_message</span><span class="si">}</span><span class="s">[/</span><span class="si">{</span><span class="n">color</span><span class="si">}</span><span class="s">]"</span>
+    
+    <span class="c1"># Output to console if verbose
+</span>    <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">verbose</span><span class="p">:</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">console</span><span class="p">.</span><span class="k">print</span><span class="p">(</span><span class="n">log_line</span><span class="p">)</span>
+        
+    <span class="c1"># Write to file if configured
+</span>    <span class="k">if</span> <span class="bp">self</span><span class="p">.</span><span class="n">log_file</span><span class="p">:</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">_write_to_file</span><span class="p">(</span><span class="n">log_line</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This method:</p>
+<ol>
+  <li>Checks if the log level is high enough to display</li>
+  <li>Formats the message with any parameters</li>
+  <li>Applies colors to specific parts if requested</li>
+  <li>Adds the tag and icon to the message</li>
+  <li>Outputs to the console and/or file</li>
+</ol>
+
+<p>The specific logging methods like <code class="language-plaintext highlighter-rouge">info()</code> and <code class="language-plaintext highlighter-rouge">error()</code> are just convenient wrappers around this core method:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">tag</span><span class="o">=</span><span class="s">"INFO"</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="s">"""Log an info message."""</span>
+    <span class="bp">self</span><span class="p">.</span><span class="n">_log</span><span class="p">(</span><span class="n">LogLevel</span><span class="p">.</span><span class="n">INFO</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">tag</span><span class="o">=</span><span class="s">"ERROR"</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="s">"""Log an error message."""</span>
+    <span class="bp">self</span><span class="p">.</span><span class="n">_log</span><span class="p">(</span><span class="n">LogLevel</span><span class="p">.</span><span class="n">ERROR</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h2 id="using-file-logging-for-long-running-crawls">Using File Logging for Long-Running Crawls</h2>
+
+<p>For long-running crawls, you might want to save logs to a file for later analysis:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncLogger</span>
+
+<span class="c1"># Create a logger that saves to a file
+</span><span class="n">logger</span> <span class="o">=</span> <span class="n">AsyncLogger</span><span class="p">(</span>
+    <span class="n">log_file</span><span class="o">=</span><span class="s">"crawls/my_project/crawler_log.txt"</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span>  <span class="c1"># Show in console AND save to file
+</span><span class="p">)</span>
+
+<span class="c1"># Use the logger with your crawler
+# ...
+</span>
+<span class="c1"># Later, you can examine the log file to see what happened
+</span></code></pre></div></div>
+
+<p>The log file contains all the messages in plain text format with timestamps:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[2023-04-15 14:32:45.123] [INFO] [INIT] Crawl4AI 1.0.0
+[2023-04-15 14:32:46.456] [INFO] [FETCH] https://example.com | ✓ | ⏱: 0.85s
+[2023-04-15 14:32:47.789] [SUCCESS] [COMPLETE] https://example.com | ✓ | ⏱: 2.25s
+</code></pre></div></div>
+
+<h2 id="customizing-log-format-with-colors-and-icons">Customizing Log Format with Colors and Icons</h2>
+
+<p>You can customize the icons and colors used by the logger:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncLogger</span>
+<span class="kn">from</span> <span class="nn">crawl4ai.async_logger</span> <span class="kn">import</span> <span class="n">LogLevel</span><span class="p">,</span> <span class="n">LogColor</span>
+
+<span class="c1"># Custom icons for different tags
+</span><span class="n">custom_icons</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">"CRAWL"</span><span class="p">:</span> <span class="s">"🕸️"</span><span class="p">,</span>
+    <span class="s">"DATA"</span><span class="p">:</span> <span class="s">"📊"</span><span class="p">,</span>
+    <span class="s">"FETCH"</span><span class="p">:</span> <span class="s">"📥"</span>
+<span class="p">}</span>
+
+<span class="c1"># Custom colors for different log levels
+</span><span class="n">custom_colors</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">LogLevel</span><span class="p">.</span><span class="n">INFO</span><span class="p">:</span> <span class="n">LogColor</span><span class="p">.</span><span class="n">CYAN</span><span class="p">,</span>
+    <span class="n">LogLevel</span><span class="p">.</span><span class="n">SUCCESS</span><span class="p">:</span> <span class="n">LogColor</span><span class="p">.</span><span class="n">GREEN</span><span class="p">,</span>
+    <span class="n">LogLevel</span><span class="p">.</span><span class="n">ERROR</span><span class="p">:</span> <span class="n">LogColor</span><span class="p">.</span><span class="n">MAGENTA</span>  <span class="c1"># Use magenta for errors
+</span><span class="p">}</span>
+
+<span class="c1"># Create logger with custom formatting
+</span><span class="n">logger</span> <span class="o">=</span> <span class="n">AsyncLogger</span><span class="p">(</span>
+    <span class="n">icons</span><span class="o">=</span><span class="n">custom_icons</span><span class="p">,</span>
+    <span class="n">colors</span><span class="o">=</span><span class="n">custom_colors</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>This gives you complete control over how your logs look, making them more informative and easier to understand at a glance.</p>
+
+<h2 id="integrating-with-your-crawler">Integrating with Your Crawler</h2>
+
+<p>When creating your crawler, you can pass your custom logger:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">AsyncLogger</span>
+
+<span class="c1"># Create a custom logger
+</span><span class="n">logger</span> <span class="o">=</span> <span class="n">AsyncLogger</span><span class="p">(</span><span class="n">log_file</span><span class="o">=</span><span class="s">"crawl_logs.txt"</span><span class="p">)</span>
+
+<span class="c1"># Pass it to the crawler
+</span><span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">(</span><span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+    <span class="c1"># The crawler will now use your logger for all messages
+</span>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This ensures all crawler operations use your logger configuration, giving you consistent logging throughout your application.</p>
+
+<h2 id="real-world-example-monitoring-a-deep-crawl">Real-World Example: Monitoring a Deep Crawl</h2>
+
+<p>Let’s put everything together in a real-world example - monitoring a deep crawl of a website:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">AsyncLogger</span><span class="p">,</span> <span class="n">BFSDeepCrawlStrategy</span>
+<span class="kn">from</span> <span class="nn">crawl4ai.async_logger</span> <span class="kn">import</span> <span class="n">LogLevel</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">monitor_deep_crawl</span><span class="p">():</span>
+    <span class="c1"># Create a detailed logger
+</span>    <span class="n">logger</span> <span class="o">=</span> <span class="n">AsyncLogger</span><span class="p">(</span>
+        <span class="n">log_file</span><span class="o">=</span><span class="s">"deep_crawl.log"</span><span class="p">,</span>
+        <span class="n">log_level</span><span class="o">=</span><span class="n">LogLevel</span><span class="p">.</span><span class="n">DEBUG</span><span class="p">,</span>  <span class="c1"># Capture everything
+</span>        <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span>
+    <span class="p">)</span>
+    
+    <span class="c1"># Set up a crawl strategy
+</span>    <span class="n">strategy</span> <span class="o">=</span> <span class="n">BFSDeepCrawlStrategy</span><span class="p">(</span><span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">max_pages</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+    
+    <span class="c1"># Create a crawler with our logger
+</span>    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">(</span><span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Starting deep crawl of example.com"</span><span class="p">,</span> <span class="n">tag</span><span class="o">=</span><span class="s">"DEEP"</span><span class="p">)</span>
+        
+        <span class="c1"># Run the deep crawl
+</span>        <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span>
+            <span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">,</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">strategy</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># Log completion
+</span>        <span class="n">logger</span><span class="p">.</span><span class="n">success</span><span class="p">(</span>
+            <span class="s">"Deep crawl complete. Visited {page_count} pages"</span><span class="p">,</span> 
+            <span class="n">tag</span><span class="o">=</span><span class="s">"DEEP"</span><span class="p">,</span>
+            <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s">"page_count"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)}</span>
+        <span class="p">)</span>
+</code></pre></div></div>
+
+<p>This gives you a complete log of the deep crawl operation, showing each page visited, any errors encountered, and the final results.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The Async Logging Infrastructure is your window into what your crawler is doing. Like a journalist documenting an expedition, it provides real-time updates, helps you track progress, and alerts you to any issues.</p>
+
+<p>In this chapter, we’ve learned:</p>
+<ul>
+  <li>How to create and customize a logger</li>
+  <li>How to log messages at different levels</li>
+  <li>How to track URL status and errors</li>
+  <li>How to use structured logging with parameters</li>
+  <li>How to save logs to files for later analysis</li>
+  <li>How the logger works internally</li>
+</ul>
+
+<p>With good logging, you can understand what your crawler is doing, diagnose problems quickly, and ensure your crawling operations are running smoothly.</p>
+
+<p>In the next chapter, <a href="09_api___docker_integration_.md">API &amp; Docker Integration</a>, we’ll learn how to expose your crawler as an API and run it in containers, making it easier to deploy and integrate with other systems.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>
