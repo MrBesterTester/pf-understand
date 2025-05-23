@@ -11,6 +11,10 @@ out/
 *.pyc
 __pycache__/
 
+# Jekyll generated files
+_site/
+.jekyll-cache/
+
 # Environment files
 .env
 .env.local
