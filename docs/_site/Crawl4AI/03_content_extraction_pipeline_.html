@@ -1,11 +1,27 @@
-<!DOCTYPE html> <html lang="en-US"> <head> <meta charset="UTF-8"> <meta http-equiv="X-UA-Compatible" content="IE=Edge"> <link rel="stylesheet" href="/assets/css/just-the-docs-default.css"> <script src="/assets/js/vendor/lunr.min.js"></script> <script src="/assets/js/just-the-docs.js"></script> <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- Begin Jekyll SEO tag v2.8.0 --> <title>Chapter 3: Content Extraction Pipeline | Two Tutorials for Mojo using Pocket Flow</title> <meta name="generator" content="Jekyll v4.3.4" /> <meta property="og:title" content="Chapter 3: Content Extraction Pipeline" /> <meta name="author" content="Sam Kirk" /> <meta property="og:locale" content="en_US" /> <meta name="description" content="Documentation generated using AI to explain codebases" /> <meta property="og:description" content="Documentation generated using AI to explain codebases" /> <link rel="canonical" href="http://localhost:4000/Crawl4AI/03_content_extraction_pipeline_.html" /> <meta property="og:url" content="http://localhost:4000/Crawl4AI/03_content_extraction_pipeline_.html" /> <meta property="og:site_name" content="Two Tutorials for Mojo using Pocket Flow" /> <meta property="og:type" content="website" /> <meta name="twitter:card" content="summary" /> <meta property="twitter:title" content="Chapter 3: Content Extraction Pipeline" /> <script type="application/ld+json"> {"@context":"https://schema.org","@type":"WebPage","author":{"@type":"Person","name":"Sam Kirk","url":"https://www.linkedin.com/in/samuelkirk"},"description":"Documentation generated using AI to explain codebases","headline":"Chapter 3: Content Extraction Pipeline","url":"http://localhost:4000/Crawl4AI/03_content_extraction_pipeline_.html"}</script> <!-- End Jekyll SEO tag --> <!-- Add Mermaid support --> <script src="https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.min.js"></script> <script> document.addEventListener("DOMContentLoaded", function() { mermaid.initialize({ startOnLoad: true, theme: "default" }); // Process code blocks document.querySelectorAll('pre code.language-mermaid').forEach(function(block) { // Create a div with class 'mermaid' var mermaidDiv = document.createElement('div'); mermaidDiv.className = 'mermaid'; mermaidDiv.innerHTML = block.textContent; // Replace the parent pre with the mermaid div block.parentNode.parentNode.replaceChild(mermaidDiv, block.parentNode); console.log("Processed Mermaid block:", mermaidDiv.innerHTML.substring(0, 50) + "..."); }); console.log("Mermaid initialization complete. Version:", mermaid.version()); }); </script> </head> <body> <a class="skip-to-main" href="#main-content">Skip to main content</a> <svg xmlns="http://www.w3.org/2000/svg" class="d-none"> <symbol id="svg-link" viewBox="0 0 24 24"> <title>Link</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link"> <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path> </svg> </symbol> <symbol id="svg-menu" viewBox="0 0 24 24"> <title>Menu</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu"> <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line> </svg> </symbol> <symbol id="svg-arrow-right" viewBox="0 0 24 24"> <title>Expand</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right"> <polyline points="9 18 15 12 9 6"></polyline> </svg> </symbol> <!-- Feather. MIT License: https://github.com/feathericons/feather/blob/master/LICENSE --> <symbol id="svg-external-link" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-external-link"> <title id="svg-external-link-title">(external link)</title> <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line> </symbol> <symbol id="svg-doc" viewBox="0 0 24 24"> <title>Document</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file"> <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline> </svg> </symbol> <symbol id="svg-search" viewBox="0 0 24 24"> <title>Search</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search"> <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line> </svg> </symbol> <!-- Bootstrap Icons. MIT License: https://github.com/twbs/icons/blob/main/LICENSE.md --> <symbol id="svg-copy" viewBox="0 0 16 16"> <title>Copy</title> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16"> <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/> <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/> </svg> </symbol> <symbol id="svg-copied" viewBox="0 0 16 16"> <title>Copied</title> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-check-fill" viewBox="0 0 16 16"> <path d="M6.5 0A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Zm3 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Z"/> <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1A2.5 2.5 0 0 1 9.5 5h-3A2.5 2.5 0 0 1 4 2.5v-1Zm6.854 7.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708.708Z"/> </svg> </symbol> </svg> <div class="side-bar"> <div class="site-header" role="banner"> <a href="/" class="site-title lh-tight"> Two Tutorials for Mojo using Pocket Flow </a> <button id="menu-button" class="site-button btn-reset" aria-label="Toggle menu" aria-pressed="false"> <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg> </a> </div> <nav aria-label="Main" id="site-nav" class="site-nav"> <ul class="nav-list"><li class="nav-list-item"><a href="/" class="nav-list-link">README</a></li><li class="nav-list-item active"><button class="nav-list-expander btn-reset" aria-label="toggle items in Crawl4AI category" aria-pressed="true"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/Crawl4AI/" class="nav-list-link">Crawl4AI</a><ul class="nav-list"><li class="nav-list-item "><a href="/Crawl4AI/01_asynccrawlerstrategy.html" class="nav-list-link">AsyncCrawlerStrategy</a></li><li class="nav-list-item "><a href="/Crawl4AI/01_configuration_system_.html" class="nav-list-link">Chapter 1: Configuration System</a></li><li class="nav-list-item "><a href="/Crawl4AI/02_asyncwebcrawler.html" class="nav-list-link">AsyncWebCrawler</a></li><li class="nav-list-item "><a href="/Crawl4AI/02_asyncwebcrawler_.html" class="nav-list-link">Chapter 2: AsyncWebCrawler</a></li><li class="nav-list-item active"><a href="/Crawl4AI/03_content_extraction_pipeline_.html" class="nav-list-link active">Chapter 3: Content Extraction Pipeline</a></li><li class="nav-list-item "><a href="/Crawl4AI/03_crawlerrunconfig.html" class="nav-list-link">CrawlerRunConfig</a></li><li class="nav-list-item "><a href="/Crawl4AI/04_contentscrapingstrategy.html" class="nav-list-link">ContentScrapingStrategy</a></li><li class="nav-list-item "><a href="/Crawl4AI/04_url_filtering___scoring_.html" class="nav-list-link">Chapter 4: URL Filtering & Scoring</a></li><li class="nav-list-item "><a href="/Crawl4AI/05_deep_crawling_system_.html" class="nav-list-link">Chapter 5: Deep Crawling System</a></li><li class="nav-list-item "><a href="/Crawl4AI/05_relevantcontentfilter.html" class="nav-list-link">RelevantContentFilter</a></li><li class="nav-list-item "><a href="/Crawl4AI/06_caching_system_.html" class="nav-list-link">Chapter 6: Caching System</a></li><li class="nav-list-item "><a href="/Crawl4AI/06_extractionstrategy.html" class="nav-list-link">ExtractionStrategy</a></li><li class="nav-list-item "><a href="/Crawl4AI/07_crawlresult.html" class="nav-list-link">CrawlResult</a></li><li class="nav-list-item "><a href="/Crawl4AI/07_dispatcher_framework_.html" class="nav-list-link">Chapter 7: Dispatcher Framework</a></li><li class="nav-list-item "><a href="/Crawl4AI/08_async_logging_infrastructure_.html" class="nav-list-link">Chapter 8: Async Logging Infrastructure</a></li><li class="nav-list-item "><a href="/Crawl4AI/08_deepcrawlstrategy.html" class="nav-list-link">DeepCrawlStrategy</a></li><li class="nav-list-item "><a href="/Crawl4AI/09_cachecontext___cachemode.html" class="nav-list-link">CacheContext & CacheMode</a></li><li class="nav-list-item "><a href="/Crawl4AI/09_api___docker_integration_.html" class="nav-list-link">Chapter 9: API & Docker Integration</a></li><li class="nav-list-item "><a href="/Crawl4AI/10_basedispatcher.html" class="nav-list-link">BaseDispatcher</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in My Tutorial for Crawl4ai category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/my-crawl4AI/" class="nav-list-link">My Tutorial for Crawl4ai</a><ul class="nav-list"><li class="nav-list-item "><a href="/my-crawl4ai/01_configuration_system_.html" class="nav-list-link">Chapter 1: Configuration System</a></li><li class="nav-list-item "><a href="/my-crawl4ai/02_asyncwebcrawler_.html" class="nav-list-link">Chapter 2: AsyncWebCrawler</a></li><li class="nav-list-item "><a href="/my-crawl4ai/03_content_extraction_pipeline_.html" class="nav-list-link">Chapter 3: Content Extraction Pipeline</a></li><li class="nav-list-item "><a href="/my-crawl4ai/04_url_filtering___scoring_.html" class="nav-list-link">Chapter 4: URL Filtering & Scoring</a></li><li class="nav-list-item "><a href="/my-crawl4ai/05_deep_crawling_system_.html" class="nav-list-link">Chapter 5: Deep Crawling System</a></li><li class="nav-list-item "><a href="/my-crawl4ai/06_caching_system_.html" class="nav-list-link">Chapter 6: Caching System</a></li><li class="nav-list-item "><a href="/my-crawl4ai/07_dispatcher_framework_.html" class="nav-list-link">Chapter 7: Dispatcher Framework</a></li><li class="nav-list-item "><a href="/my-crawl4ai/08_async_logging_infrastructure_.html" class="nav-list-link">Chapter 8: Async Logging Infrastructure</a></li><li class="nav-list-item "><a href="/my-crawl4ai/09_api___docker_integration_.html" class="nav-list-link">Chapter 9: API & Docker Integration</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in My Tutorial for Modular's Max category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/modular_max/" class="nav-list-link">My Tutorial for Modular's Max</a><ul class="nav-list"><li class="nav-list-item "><a href="/modular_max/01_settings___settings__class__.html" class="nav-list-link">Chapter 1: Settings Class</a></li><li class="nav-list-item "><a href="/modular_max/02_serving_api_layer__fastapi_app___routers__.html" class="nav-list-link">Chapter 2: Serving API Layer</a></li><li class="nav-list-item "><a href="/modular_max/03_llm_pipeline_orchestrator___tokengeneratorpipeline___.html" class="nav-list-link">Chapter 3: LLM Pipeline Orchestrator</a></li><li class="nav-list-item "><a href="/modular_max/04_model_worker_.html" class="nav-list-link">Chapter 4: Model Worker</a></li><li class="nav-list-item "><a href="/modular_max/05_scheduler___tokengenerationscheduler____embeddingsscheduler___.html" class="nav-list-link">Chapter 5: Scheduler</a></li><li class="nav-list-item "><a href="/modular_max/06_kv_cache_management_.html" class="nav-list-link">Chapter 6: KV Cache Management</a></li><li class="nav-list-item "><a href="/modular_max/07_enginequeue_.html" class="nav-list-link">Chapter 7: EngineQueue</a></li><li class="nav-list-item "><a href="/modular_max/08_telemetry_and_metrics___metrics____metricclient___.html" class="nav-list-link">Chapter 8: Telemetry and Metrics</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in My Tutorial for Mojo v1 category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/mojo-v1/" class="nav-list-link">My Tutorial for Mojo v1</a><ul class="nav-list"><li class="nav-list-item "><a href="/mojo-v1/01_addressspace_.html" class="nav-list-link">Chapter 1: AddressSpace</a></li><li class="nav-list-item "><a href="/mojo-v1/02_unsafepointer_.html" class="nav-list-link">Chapter 2: UnsafePointer</a></li><li class="nav-list-item "><a href="/mojo-v1/03_indexlist_.html" class="nav-list-link">Chapter 3: IndexList</a></li><li class="nav-list-item "><a href="/mojo-v1/04_dimlist_.html" class="nav-list-link">Chapter 4: DimList</a></li><li class="nav-list-item "><a href="/mojo-v1/05_ndbuffer_.html" class="nav-list-link">Chapter 5: NDBuffer</a></li><li class="nav-list-item "><a href="/mojo-v1/06_n_d_to_1d_indexing_logic__strided_memory_access__.html" class="nav-list-link">Chapter 6: N-D to 1D Indexing Logic</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in My Tutorial for Mojo v2 category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/mojo-v2/" class="nav-list-link">My Tutorial for Mojo v2</a><ul class="nav-list"><li class="nav-list-item "><a href="/mojo-v2/01_unsafepointer__as_used_by_ndbuffer__.html" class="nav-list-link">Chapter 1: UnsafePointer</a></li><li class="nav-list-item "><a href="/mojo-v2/02_dimlist_and_dim_.html" class="nav-list-link">Chapter 2: DimList and Dim</a></li><li class="nav-list-item "><a href="/mojo-v2/03_ndbuffer_.html" class="nav-list-link">Chapter 3: NDBuffer</a></li><li class="nav-list-item "><a href="/mojo-v2/04_strides_and_offset_computation_.html" class="nav-list-link">Chapter 4: Strides and Offset Computation</a></li><li class="nav-list-item "><a href="/mojo-v2/05_simd_data_access_.html" class="nav-list-link">Chapter 5: SIMD Data Access</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in Comparisons category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/comparisons/" class="nav-list-link">Comparisons</a><ul class="nav-list"><li class="nav-list-item "><a href="/comparisons/crawl4ai-versions.html" class="nav-list-link">The original version of Crawl4AI vs. the sanity check I did</a></li><li class="nav-list-item "><a href="/comparisons/mojo-versions.html" class="nav-list-link">The 1st version of the Mojo Tutorial vs. The 2nd version of the Mojo Tutorial</a></li></ul></li><li class="nav-list-item"><a href="/generating/" class="nav-list-link">Generating & Preparing for the Mojo Tutorials using Pocket Flow</a></li><li class="nav-list-item"><a href="/design.html" class="nav-list-link">System Design</a></li></ul> <div class="nav-category">Crawl4AI</div> <ul class="nav-list"></ul> <div class="nav-category">Modular Max</div> <ul class="nav-list"></ul> <div class="nav-category">Mojo (v1)</div> <ul class="nav-list"></ul> <div class="nav-category">Mojo (v2)</div> <ul class="nav-list"></ul> <div class="nav-category">Generating</div> <ul class="nav-list"></ul> <div class="nav-category">AI Design</div> <ul class="nav-list"></ul> </nav> <footer class="site-footer"> This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll. </footer> </div> <div class="main" id="top"> <div id="main-header" class="main-header"> <div class="search" role="search"> <div class="search-input-wrap"> <input type="text" id="search-input" class="search-input" tabindex="0" placeholder="Search Two Tutorials for Mojo using Pocket Flow" aria-label="Search Two Tutorials for Mojo using Pocket Flow" autocomplete="off"> <label for="search-input" class="search-label"><svg viewBox="0 0 24 24" class="search-icon"><use xlink:href="#svg-search"></use></svg></label> </div> <div id="search-results" class="search-results"></div> </div> <nav aria-label="Auxiliary" class="aux-nav"> <ul class="aux-nav-list"> <li class="aux-nav-list-item"> <a href="https://github.com/MrBesterTester/pf-understand" class="site-button" > View on GitHub </a> </li> </ul> </nav> </div> <div id="main-content-wrap" class="main-content-wrap"> <nav aria-label="Breadcrumb" class="breadcrumb-nav"> <ol class="breadcrumb-nav-list"> <li class="breadcrumb-nav-list-item"><a href="/Crawl4AI/">Crawl4AI</a></li> <li class="breadcrumb-nav-list-item"><span>Chapter 3: Content Extraction Pipeline</span></li> </ol> </nav> <div id="main-content" class="main-content"> <main> <h1 id="chapter-3-content-extraction-pipeline"> <a href="#chapter-3-content-extraction-pipeline" class="anchor-heading" aria-labelledby="chapter-3-content-extraction-pipeline"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Chapter 3: Content Extraction Pipeline </h1> <p>In <a href="02_asyncwebcrawler_.md">Chapter 2: AsyncWebCrawler</a>, we learned how to use the AsyncWebCrawler to fetch web content. But what happens to that content after it’s downloaded? How does it go from raw HTML to structured, usable information? Let’s find out!</p> <h2 id="what-is-the-content-extraction-pipeline"> <a href="#what-is-the-content-extraction-pipeline" class="anchor-heading" aria-labelledby="what-is-the-content-extraction-pipeline"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What is the Content Extraction Pipeline? </h2> <p>Imagine you’re a gold miner. You don’t just find a chunk of earth and call it a day - you need to extract the gold! You’ll wash the dirt away, break down larger rocks, separate the gold from other minerals, and finally polish it into something valuable.</p> <p>The Content Extraction Pipeline works the same way, but for web content. It’s a series of steps that transform messy HTML into clean, structured content that’s ready to use:</p><pre><code class="language-mermaid">flowchart LR
+<h1 id="chapter-3-content-extraction-pipeline">Chapter 3: Content Extraction Pipeline</h1>
+
+<p>In <a href="02_asyncwebcrawler_.md">Chapter 2: AsyncWebCrawler</a>, we learned how to use the AsyncWebCrawler to fetch web content. But what happens to that content after it’s downloaded? How does it go from raw HTML to structured, usable information? Let’s find out!</p>
+
+<h2 id="what-is-the-content-extraction-pipeline">What is the Content Extraction Pipeline?</h2>
+
+<p>Imagine you’re a gold miner. You don’t just find a chunk of earth and call it a day - you need to extract the gold! You’ll wash the dirt away, break down larger rocks, separate the gold from other minerals, and finally polish it into something valuable.</p>
+
+<p>The Content Extraction Pipeline works the same way, but for web content. It’s a series of steps that transform messy HTML into clean, structured content that’s ready to use:</p>
+
+<pre><code class="language-mermaid">flowchart LR
     A[Raw HTML] --&gt; B[Clean HTML]
     B --&gt; C[Content Chunks]
     C --&gt; D[Extracted Information]
     D --&gt; E[Markdown]
     style A fill:#f9d5e5
     style E fill:#ade8f4
-</code></pre><h2 id="a-simple-example"> <a href="#a-simple-example" class="anchor-heading" aria-labelledby="a-simple-example"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> A Simple Example </h2> <p>Let’s start with a simple use case: extracting the main article content from a news website and converting it to readable markdown.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
+</code></pre>
+
+<h2 id="a-simple-example">A Simple Example</h2>
+
+<p>Let’s start with a simple use case: extracting the main article content from a news website and converting it to readable markdown.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.content_scraping_strategy</span> <span class="kn">import</span> <span class="n">WebScrapingStrategy</span>
 
 <span class="k">async</span> <span class="k">def</span> <span class="nf">extract_article</span><span class="p">():</span>
@@ -22,7 +38,19 @@
         <span class="p">)</span>
         
         <span class="k">print</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">)</span>
-</code></pre></div></div> <p>In this code, we’re using the <code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> to clean the HTML, and the default settings for the other pipeline steps. The crawler will return our article as clean markdown!</p> <h2 id="the-four-key-components"> <a href="#the-four-key-components" class="anchor-heading" aria-labelledby="the-four-key-components"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> The Four Key Components </h2> <p>The Content Extraction Pipeline has four main components, each handling a specific part of the transformation process:</p> <h3 id="1-content-scraping-strategy"> <a href="#1-content-scraping-strategy" class="anchor-heading" aria-labelledby="1-content-scraping-strategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> 1. Content Scraping Strategy </h3> <p>This strategy cleans up the raw HTML by removing ads, navigation menus, footers, and other non-content elements.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.content_scraping_strategy</span> <span class="kn">import</span> <span class="n">WebScrapingStrategy</span>
+</code></pre></div></div>
+
+<p>In this code, we’re using the <code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> to clean the HTML, and the default settings for the other pipeline steps. The crawler will return our article as clean markdown!</p>
+
+<h2 id="the-four-key-components">The Four Key Components</h2>
+
+<p>The Content Extraction Pipeline has four main components, each handling a specific part of the transformation process:</p>
+
+<h3 id="1-content-scraping-strategy">1. Content Scraping Strategy</h3>
+
+<p>This strategy cleans up the raw HTML by removing ads, navigation menus, footers, and other non-content elements.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.content_scraping_strategy</span> <span class="kn">import</span> <span class="n">WebScrapingStrategy</span>
 
 <span class="c1"># Create a simple scraping strategy
 </span><span class="n">scraping_strategy</span> <span class="o">=</span> <span class="n">WebScrapingStrategy</span><span class="p">()</span>
@@ -31,7 +59,15 @@
 </span><span class="n">custom_strategy</span> <span class="o">=</span> <span class="n">WebScrapingStrategy</span><span class="p">(</span>
     <span class="n">css_selector</span><span class="o">=</span><span class="s">"article.main-content"</span>
 <span class="p">)</span>
-</code></pre></div></div> <p>The scraping strategy is like a filter that separates the gold (main content) from the dirt (ads, menus, etc.).</p> <h3 id="2-chunking-strategy"> <a href="#2-chunking-strategy" class="anchor-heading" aria-labelledby="2-chunking-strategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> 2. Chunking Strategy </h3> <p>This strategy splits the content into manageable pieces (chunks) that can be processed individually.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.chunking_strategy</span> <span class="kn">import</span> <span class="n">RegexChunking</span>
+</code></pre></div></div>
+
+<p>The scraping strategy is like a filter that separates the gold (main content) from the dirt (ads, menus, etc.).</p>
+
+<h3 id="2-chunking-strategy">2. Chunking Strategy</h3>
+
+<p>This strategy splits the content into manageable pieces (chunks) that can be processed individually.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.chunking_strategy</span> <span class="kn">import</span> <span class="n">RegexChunking</span>
 
 <span class="c1"># Create a strategy that splits content by paragraphs
 </span><span class="n">chunking_strategy</span> <span class="o">=</span> <span class="n">RegexChunking</span><span class="p">(</span><span class="n">patterns</span><span class="o">=</span><span class="p">[</span><span class="sa">r</span><span class="s">"\n\n"</span><span class="p">])</span>
@@ -39,17 +75,41 @@
 <span class="c1"># OR create a strategy for fixed-length chunks
 </span><span class="kn">from</span> <span class="nn">crawl4ai.chunking_strategy</span> <span class="kn">import</span> <span class="n">FixedLengthWordChunking</span>
 <span class="n">fixed_chunks</span> <span class="o">=</span> <span class="n">FixedLengthWordChunking</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
-</code></pre></div></div> <p>Think of the chunking strategy as cutting a large gold nugget into smaller pieces that are easier to process.</p> <h3 id="3-extraction-strategy"> <a href="#3-extraction-strategy" class="anchor-heading" aria-labelledby="3-extraction-strategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> 3. Extraction Strategy </h3> <p>This strategy extracts specific information from the chunks, like article titles, author names, dates, or any other structured data.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.extraction_strategy</span> <span class="kn">import</span> <span class="n">RegexExtractionStrategy</span>
+</code></pre></div></div>
+
+<p>Think of the chunking strategy as cutting a large gold nugget into smaller pieces that are easier to process.</p>
+
+<h3 id="3-extraction-strategy">3. Extraction Strategy</h3>
+
+<p>This strategy extracts specific information from the chunks, like article titles, author names, dates, or any other structured data.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.extraction_strategy</span> <span class="kn">import</span> <span class="n">RegexExtractionStrategy</span>
 
 <span class="c1"># Create a strategy that extracts dates using regex
 </span><span class="n">extraction_strategy</span> <span class="o">=</span> <span class="n">RegexExtractionStrategy</span><span class="p">(</span>
     <span class="n">patterns</span><span class="o">=</span><span class="p">{</span><span class="s">"date"</span><span class="p">:</span> <span class="sa">r</span><span class="s">"\d{1,2}/\d{1,2}/\d{4}"</span><span class="p">}</span>
 <span class="p">)</span>
-</code></pre></div></div> <p>The extraction strategy is like identifying and separating different types of precious metals from your raw materials.</p> <h3 id="4-markdown-generation-strategy"> <a href="#4-markdown-generation-strategy" class="anchor-heading" aria-labelledby="4-markdown-generation-strategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> 4. Markdown Generation Strategy </h3> <p>This strategy converts the processed content into readable markdown format.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.markdown_generation_strategy</span> <span class="kn">import</span> <span class="n">DefaultMarkdownGenerator</span>
+</code></pre></div></div>
+
+<p>The extraction strategy is like identifying and separating different types of precious metals from your raw materials.</p>
+
+<h3 id="4-markdown-generation-strategy">4. Markdown Generation Strategy</h3>
+
+<p>This strategy converts the processed content into readable markdown format.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.markdown_generation_strategy</span> <span class="kn">import</span> <span class="n">DefaultMarkdownGenerator</span>
 
 <span class="c1"># Create a markdown generator with citations
 </span><span class="n">markdown_generator</span> <span class="o">=</span> <span class="n">DefaultMarkdownGenerator</span><span class="p">(</span><span class="n">citations</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
-</code></pre></div></div> <p>The markdown generator is like the final polish that turns your raw gold into a beautiful, finished product.</p> <h2 id="putting-it-all-together"> <a href="#putting-it-all-together" class="anchor-heading" aria-labelledby="putting-it-all-together"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Putting It All Together </h2> <p>Now let’s see how to use all four components together in a complete pipeline:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
+</code></pre></div></div>
+
+<p>The markdown generator is like the final polish that turns your raw gold into a beautiful, finished product.</p>
+
+<h2 id="putting-it-all-together">Putting It All Together</h2>
+
+<p>Now let’s see how to use all four components together in a complete pipeline:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.content_scraping_strategy</span> <span class="kn">import</span> <span class="n">WebScrapingStrategy</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.chunking_strategy</span> <span class="kn">import</span> <span class="n">RegexChunking</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.extraction_strategy</span> <span class="kn">import</span> <span class="n">JsonCssExtractionStrategy</span>
@@ -84,7 +144,21 @@
     <span class="c1"># 4. Access the extracted content
 </span>    <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Title: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">extracted_content</span><span class="p">[</span><span class="s">'title'</span><span class="p">]</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
     <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Markdown: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
-</code></pre></div></div> <p>In this example:</p> <ol> <li>We create each component with specific settings</li> <li>We build a configuration that includes all our components</li> <li>We run the crawler with our custom pipeline</li> <li>We access both the structured data and the markdown output</li> </ol> <h2 id="understanding-the-default-pipeline"> <a href="#understanding-the-default-pipeline" class="anchor-heading" aria-labelledby="understanding-the-default-pipeline"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Understanding the Default Pipeline </h2> <p>If you don’t specify custom components, crawl4ai uses sensible defaults:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
+</code></pre></div></div>
+
+<p>In this example:</p>
+<ol>
+  <li>We create each component with specific settings</li>
+  <li>We build a configuration that includes all our components</li>
+  <li>We run the crawler with our custom pipeline</li>
+  <li>We access both the structured data and the markdown output</li>
+</ol>
+
+<h2 id="understanding-the-default-pipeline">Understanding the Default Pipeline</h2>
+
+<p>If you don’t specify custom components, crawl4ai uses sensible defaults:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
 
 <span class="k">async</span> <span class="k">def</span> <span class="nf">simple_extraction</span><span class="p">():</span>
     <span class="c1"># Using all default pipeline components
@@ -97,7 +171,21 @@
         <span class="p">)</span>
         
     <span class="k">print</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">)</span>
-</code></pre></div></div> <p>By default:</p> <ul> <li>It uses <code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> to extract the main content</li> <li>It uses <code class="language-plaintext highlighter-rouge">RegexChunking</code> to split by paragraphs</li> <li>It doesn’t use an extraction strategy (no structured data)</li> <li>It uses <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> for markdown conversion</li> </ul> <h2 id="what-happens-under-the-hood"> <a href="#what-happens-under-the-hood" class="anchor-heading" aria-labelledby="what-happens-under-the-hood"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What Happens Under the Hood </h2> <p>When you run a crawl with a Content Extraction Pipeline, here’s what’s happening step by step:</p><pre><code class="language-mermaid">sequenceDiagram
+</code></pre></div></div>
+
+<p>By default:</p>
+<ul>
+  <li>It uses <code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> to extract the main content</li>
+  <li>It uses <code class="language-plaintext highlighter-rouge">RegexChunking</code> to split by paragraphs</li>
+  <li>It doesn’t use an extraction strategy (no structured data)</li>
+  <li>It uses <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> for markdown conversion</li>
+</ul>
+
+<h2 id="what-happens-under-the-hood">What Happens Under the Hood</h2>
+
+<p>When you run a crawl with a Content Extraction Pipeline, here’s what’s happening step by step:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
     participant User as Your Code
     participant Crawler as WebCrawler
     participant ScrapingS as Scraping Strategy
@@ -113,7 +201,11 @@
     Crawler-&gt;&gt;MG: generate_markdown(html)
     MG-&gt;&gt;Crawler: Return markdown
     Crawler-&gt;&gt;User: Return CrawlResult
-</code></pre><p>Let’s look at some of the actual implementation:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From AsyncWebCrawler.aprocess_html method
+</code></pre>
+
+<p>Let’s look at some of the actual implementation:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From AsyncWebCrawler.aprocess_html method
 </span><span class="n">scraping_strategy</span> <span class="o">=</span> <span class="n">config</span><span class="p">.</span><span class="n">scraping_strategy</span>
 <span class="n">result</span><span class="p">:</span> <span class="n">ScrapingResult</span> <span class="o">=</span> <span class="n">scraping_strategy</span><span class="p">.</span><span class="n">scrap</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">html</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
 
@@ -122,7 +214,19 @@
     <span class="n">chunking</span> <span class="o">=</span> <span class="n">config</span><span class="p">.</span><span class="n">chunking_strategy</span>
     <span class="n">sections</span> <span class="o">=</span> <span class="n">chunking</span><span class="p">.</span><span class="n">chunk</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>
     <span class="n">extracted_content</span> <span class="o">=</span> <span class="n">config</span><span class="p">.</span><span class="n">extraction_strategy</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">sections</span><span class="p">)</span>
-</code></pre></div></div> <p>Each strategy is called in sequence, passing the results from one step to the next.</p> <h2 id="customizing-each-component"> <a href="#customizing-each-component" class="anchor-heading" aria-labelledby="customizing-each-component"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Customizing Each Component </h2> <p>Let’s look at how to customize each component in more detail:</p> <h3 id="advanced-content-scraping"> <a href="#advanced-content-scraping" class="anchor-heading" aria-labelledby="advanced-content-scraping"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Advanced Content Scraping </h3> <p>The <code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> has many options for fine-tuning:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.content_scraping_strategy</span> <span class="kn">import</span> <span class="n">WebScrapingStrategy</span>
+</code></pre></div></div>
+
+<p>Each strategy is called in sequence, passing the results from one step to the next.</p>
+
+<h2 id="customizing-each-component">Customizing Each Component</h2>
+
+<p>Let’s look at how to customize each component in more detail:</p>
+
+<h3 id="advanced-content-scraping">Advanced Content Scraping</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> has many options for fine-tuning:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.content_scraping_strategy</span> <span class="kn">import</span> <span class="n">WebScrapingStrategy</span>
 
 <span class="n">advanced_scraping</span> <span class="o">=</span> <span class="n">WebScrapingStrategy</span><span class="p">(</span>
     <span class="n">css_selector</span><span class="o">=</span><span class="s">"article"</span><span class="p">,</span>        <span class="c1"># Focus on specific element
@@ -130,14 +234,30 @@
 </span>    <span class="n">keep_images</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>              <span class="c1"># Keep images in content
 </span>    <span class="n">extract_metadata</span><span class="o">=</span><span class="bp">True</span>          <span class="c1"># Extract page metadata
 </span><span class="p">)</span>
-</code></pre></div></div> <p>This creates a scraping strategy that focuses on article elements, ignores sections with less than 100 characters, keeps images, and extracts metadata like title and description.</p> <h3 id="advanced-chunking"> <a href="#advanced-chunking" class="anchor-heading" aria-labelledby="advanced-chunking"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Advanced Chunking </h3> <p>For more complex chunking needs:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.chunking_strategy</span> <span class="kn">import</span> <span class="n">SlidingWindowChunking</span>
+</code></pre></div></div>
+
+<p>This creates a scraping strategy that focuses on article elements, ignores sections with less than 100 characters, keeps images, and extracts metadata like title and description.</p>
+
+<h3 id="advanced-chunking">Advanced Chunking</h3>
+
+<p>For more complex chunking needs:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.chunking_strategy</span> <span class="kn">import</span> <span class="n">SlidingWindowChunking</span>
 
 <span class="c1"># Create overlapping chunks for better context
 </span><span class="n">sliding_chunks</span> <span class="o">=</span> <span class="n">SlidingWindowChunking</span><span class="p">(</span>
     <span class="n">window_size</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>  <span class="c1"># Words per chunk
 </span>    <span class="n">step</span><span class="o">=</span><span class="mi">100</span>          <span class="c1"># Words to move forward
 </span><span class="p">)</span>
-</code></pre></div></div> <p>This creates chunks that overlap, which can be useful when analyzing text where context matters.</p> <h3 id="advanced-extraction"> <a href="#advanced-extraction" class="anchor-heading" aria-labelledby="advanced-extraction"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Advanced Extraction </h3> <p>For extracting complex structured data:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.extraction_strategy</span> <span class="kn">import</span> <span class="n">JsonLxmlExtractionStrategy</span>
+</code></pre></div></div>
+
+<p>This creates chunks that overlap, which can be useful when analyzing text where context matters.</p>
+
+<h3 id="advanced-extraction">Advanced Extraction</h3>
+
+<p>For extracting complex structured data:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.extraction_strategy</span> <span class="kn">import</span> <span class="n">JsonLxmlExtractionStrategy</span>
 
 <span class="c1"># Extract product information from an e-commerce page
 </span><span class="n">product_extractor</span> <span class="o">=</span> <span class="n">JsonLxmlExtractionStrategy</span><span class="p">({</span>
@@ -146,7 +266,15 @@
     <span class="s">"description"</span><span class="p">:</span> <span class="s">"//div[@id='description']//text()"</span><span class="p">,</span>
     <span class="s">"specs"</span><span class="p">:</span> <span class="s">"//table[@class='specs']"</span>
 <span class="p">})</span>
-</code></pre></div></div> <p>This uses XPath expressions to extract specific product data from an e-commerce page.</p> <h3 id="advanced-markdown-generation"> <a href="#advanced-markdown-generation" class="anchor-heading" aria-labelledby="advanced-markdown-generation"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Advanced Markdown Generation </h3> <p>For customizing the markdown output:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.markdown_generation_strategy</span> <span class="kn">import</span> <span class="n">DefaultMarkdownGenerator</span>
+</code></pre></div></div>
+
+<p>This uses XPath expressions to extract specific product data from an e-commerce page.</p>
+
+<h3 id="advanced-markdown-generation">Advanced Markdown Generation</h3>
+
+<p>For customizing the markdown output:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.markdown_generation_strategy</span> <span class="kn">import</span> <span class="n">DefaultMarkdownGenerator</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.content_filter_strategy</span> <span class="kn">import</span> <span class="n">PruningContentFilter</span>
 
 <span class="c1"># Generate markdown with citations and content filtering
@@ -155,28 +283,143 @@
 </span>    <span class="n">citations</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>                         <span class="c1"># Include citations
 </span>    <span class="n">content_source</span><span class="o">=</span><span class="s">"cleaned_html"</span>           <span class="c1"># Use cleaned HTML as source
 </span><span class="p">)</span>
-</code></pre></div></div> <p>This creates a markdown generator that filters out less relevant content and includes citations for links.</p> <h2 id="how-the-pipeline-processes-a-real-web-page"> <a href="#how-the-pipeline-processes-a-real-web-page" class="anchor-heading" aria-labelledby="how-the-pipeline-processes-a-real-web-page"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> How the Pipeline Processes a Real Web Page </h2> <p>Let’s walk through what happens when you process a typical news article:</p> <ol> <li> <p><strong>Raw HTML</strong>: The crawler fetches the complete HTML of the article page, which includes navigation menus, ads, comments, footers, etc.</p> </li> <li> <p><strong>Content Scraping</strong>: The <code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> analyzes the page and identifies the main article content, removing everything else.</p> <p>Before: <code class="language-plaintext highlighter-rouge">&lt;html&gt;...&lt;header&gt;...&lt;/header&gt;&lt;main&gt;&lt;article&gt;Real content&lt;/article&gt;&lt;/main&gt;&lt;footer&gt;...&lt;/footer&gt;...&lt;/html&gt;</code></p> <p>After: <code class="language-plaintext highlighter-rouge">&lt;article&gt;Real content&lt;/article&gt;</code></p> </li> <li> <p><strong>Chunking</strong>: The <code class="language-plaintext highlighter-rouge">RegexChunking</code> strategy splits the content into paragraphs.</p> <p>Before: <code class="language-plaintext highlighter-rouge">&lt;article&gt;&lt;p&gt;Paragraph 1&lt;/p&gt;&lt;p&gt;Paragraph 2&lt;/p&gt;&lt;/article&gt;</code></p> <p>After: <code class="language-plaintext highlighter-rouge">["&lt;p&gt;Paragraph 1&lt;/p&gt;", "&lt;p&gt;Paragraph 2&lt;/p&gt;"]</code></p> </li> <li> <p><strong>Extraction</strong>: The <code class="language-plaintext highlighter-rouge">JsonCssExtractionStrategy</code> extracts specific information using CSS selectors.</p> <p>Input: <code class="language-plaintext highlighter-rouge">["&lt;p&gt;Paragraph 1&lt;/p&gt;", "&lt;p&gt;Paragraph 2&lt;/p&gt;"]</code></p> <p>Output: <code class="language-plaintext highlighter-rouge">{"content": ["Paragraph 1", "Paragraph 2"]}</code></p> </li> <li> <p><strong>Markdown Generation</strong>: The <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> converts the HTML to markdown.</p> <p>Input: <code class="language-plaintext highlighter-rouge">&lt;article&gt;&lt;p&gt;Paragraph 1&lt;/p&gt;&lt;p&gt;Paragraph 2&lt;/p&gt;&lt;/article&gt;</code></p> <p>Output: <code class="language-plaintext highlighter-rouge">Paragraph 1\n\nParagraph 2</code></p> </li> </ol> <p>The final <code class="language-plaintext highlighter-rouge">CrawlResult</code> includes both the markdown output and any structured data that was extracted.</p> <h2 id="implementation-details"> <a href="#implementation-details" class="anchor-heading" aria-labelledby="implementation-details"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Implementation Details </h2> <p>The Content Extraction Pipeline is implemented through a series of strategy classes. Let’s look at some of the implementation details:</p> <h3 id="contentscrapingstrategy"> <a href="#contentscrapingstrategy" class="anchor-heading" aria-labelledby="contentscrapingstrategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> ContentScrapingStrategy </h3> <p>The base class for scraping strategies:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From content_scraping_strategy.py
+</code></pre></div></div>
+
+<p>This creates a markdown generator that filters out less relevant content and includes citations for links.</p>
+
+<h2 id="how-the-pipeline-processes-a-real-web-page">How the Pipeline Processes a Real Web Page</h2>
+
+<p>Let’s walk through what happens when you process a typical news article:</p>
+
+<ol>
+  <li>
+    <p><strong>Raw HTML</strong>: The crawler fetches the complete HTML of the article page, which includes navigation menus, ads, comments, footers, etc.</p>
+  </li>
+  <li>
+    <p><strong>Content Scraping</strong>: The <code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> analyzes the page and identifies the main article content, removing everything else.</p>
+
+    <p>Before: <code class="language-plaintext highlighter-rouge">&lt;html&gt;...&lt;header&gt;...&lt;/header&gt;&lt;main&gt;&lt;article&gt;Real content&lt;/article&gt;&lt;/main&gt;&lt;footer&gt;...&lt;/footer&gt;...&lt;/html&gt;</code></p>
+
+    <p>After: <code class="language-plaintext highlighter-rouge">&lt;article&gt;Real content&lt;/article&gt;</code></p>
+  </li>
+  <li>
+    <p><strong>Chunking</strong>: The <code class="language-plaintext highlighter-rouge">RegexChunking</code> strategy splits the content into paragraphs.</p>
+
+    <p>Before: <code class="language-plaintext highlighter-rouge">&lt;article&gt;&lt;p&gt;Paragraph 1&lt;/p&gt;&lt;p&gt;Paragraph 2&lt;/p&gt;&lt;/article&gt;</code></p>
+
+    <p>After: <code class="language-plaintext highlighter-rouge">["&lt;p&gt;Paragraph 1&lt;/p&gt;", "&lt;p&gt;Paragraph 2&lt;/p&gt;"]</code></p>
+  </li>
+  <li>
+    <p><strong>Extraction</strong>: The <code class="language-plaintext highlighter-rouge">JsonCssExtractionStrategy</code> extracts specific information using CSS selectors.</p>
+
+    <p>Input: <code class="language-plaintext highlighter-rouge">["&lt;p&gt;Paragraph 1&lt;/p&gt;", "&lt;p&gt;Paragraph 2&lt;/p&gt;"]</code></p>
+
+    <p>Output: <code class="language-plaintext highlighter-rouge">{"content": ["Paragraph 1", "Paragraph 2"]}</code></p>
+  </li>
+  <li>
+    <p><strong>Markdown Generation</strong>: The <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> converts the HTML to markdown.</p>
+
+    <p>Input: <code class="language-plaintext highlighter-rouge">&lt;article&gt;&lt;p&gt;Paragraph 1&lt;/p&gt;&lt;p&gt;Paragraph 2&lt;/p&gt;&lt;/article&gt;</code></p>
+
+    <p>Output: <code class="language-plaintext highlighter-rouge">Paragraph 1\n\nParagraph 2</code></p>
+  </li>
+</ol>
+
+<p>The final <code class="language-plaintext highlighter-rouge">CrawlResult</code> includes both the markdown output and any structured data that was extracted.</p>
+
+<h2 id="implementation-details">Implementation Details</h2>
+
+<p>The Content Extraction Pipeline is implemented through a series of strategy classes. Let’s look at some of the implementation details:</p>
+
+<h3 id="contentscrapingstrategy">ContentScrapingStrategy</h3>
+
+<p>The base class for scraping strategies:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From content_scraping_strategy.py
 </span><span class="k">class</span> <span class="nc">ContentScrapingStrategy</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
     <span class="o">@</span><span class="n">abstractmethod</span>
     <span class="k">def</span> <span class="nf">scrap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">html</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ScrapingResult</span><span class="p">:</span>
         <span class="s">"""Scrape content from HTML."""</span>
         <span class="k">pass</span>
-</code></pre></div></div> <p>Different implementations use various techniques:</p> <ul> <li><code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> uses readability algorithms</li> <li><code class="language-plaintext highlighter-rouge">LXMLWebScrapingStrategy</code> uses LXML for HTML parsing</li> </ul> <h3 id="chunkingstrategy"> <a href="#chunkingstrategy" class="anchor-heading" aria-labelledby="chunkingstrategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> ChunkingStrategy </h3> <p>The base class for chunking strategies:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From chunking_strategy.py
+</code></pre></div></div>
+
+<p>Different implementations use various techniques:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">WebScrapingStrategy</code> uses readability algorithms</li>
+  <li><code class="language-plaintext highlighter-rouge">LXMLWebScrapingStrategy</code> uses LXML for HTML parsing</li>
+</ul>
+
+<h3 id="chunkingstrategy">ChunkingStrategy</h3>
+
+<p>The base class for chunking strategies:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From chunking_strategy.py
 </span><span class="k">class</span> <span class="nc">ChunkingStrategy</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
     <span class="o">@</span><span class="n">abstractmethod</span>
     <span class="k">def</span> <span class="nf">chunk</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
         <span class="s">"""Chunk the given text."""</span>
         <span class="k">pass</span>
-</code></pre></div></div> <p>The implementation shown in the code you provided includes:</p> <ul> <li><code class="language-plaintext highlighter-rouge">RegexChunking</code> for pattern-based splitting</li> <li><code class="language-plaintext highlighter-rouge">FixedLengthWordChunking</code> for fixed-size chunks</li> <li><code class="language-plaintext highlighter-rouge">SlidingWindowChunking</code> for overlapping chunks</li> </ul> <h3 id="extractionstrategy"> <a href="#extractionstrategy" class="anchor-heading" aria-labelledby="extractionstrategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> ExtractionStrategy </h3> <p>The base class for extraction strategies:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Hypothetical from extraction_strategy.py
+</code></pre></div></div>
+
+<p>The implementation shown in the code you provided includes:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">RegexChunking</code> for pattern-based splitting</li>
+  <li><code class="language-plaintext highlighter-rouge">FixedLengthWordChunking</code> for fixed-size chunks</li>
+  <li><code class="language-plaintext highlighter-rouge">SlidingWindowChunking</code> for overlapping chunks</li>
+</ul>
+
+<h3 id="extractionstrategy">ExtractionStrategy</h3>
+
+<p>The base class for extraction strategies:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Hypothetical from extraction_strategy.py
 </span><span class="k">class</span> <span class="nc">ExtractionStrategy</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
     <span class="o">@</span><span class="n">abstractmethod</span>
     <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">chunks</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
         <span class="s">"""Extract structured data from chunks."""</span>
         <span class="k">pass</span>
-</code></pre></div></div> <p>Different implementations support different methods:</p> <ul> <li><code class="language-plaintext highlighter-rouge">RegexExtractionStrategy</code> for pattern matching</li> <li><code class="language-plaintext highlighter-rouge">JsonCssExtractionStrategy</code> for CSS selector-based extraction</li> <li><code class="language-plaintext highlighter-rouge">LLMExtractionStrategy</code> for using language models</li> </ul> <h3 id="markdowngenerationstrategy"> <a href="#markdowngenerationstrategy" class="anchor-heading" aria-labelledby="markdowngenerationstrategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> MarkdownGenerationStrategy </h3> <p>The base class for markdown generators:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From markdown_generation_strategy.py
+</code></pre></div></div>
+
+<p>Different implementations support different methods:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">RegexExtractionStrategy</code> for pattern matching</li>
+  <li><code class="language-plaintext highlighter-rouge">JsonCssExtractionStrategy</code> for CSS selector-based extraction</li>
+  <li><code class="language-plaintext highlighter-rouge">LLMExtractionStrategy</code> for using language models</li>
+</ul>
+
+<h3 id="markdowngenerationstrategy">MarkdownGenerationStrategy</h3>
+
+<p>The base class for markdown generators:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># From markdown_generation_strategy.py
 </span><span class="k">class</span> <span class="nc">MarkdownGenerationStrategy</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
     <span class="o">@</span><span class="n">abstractmethod</span>
     <span class="k">def</span> <span class="nf">generate_markdown</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_html</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MarkdownGenerationResult</span><span class="p">:</span>
         <span class="s">"""Generate markdown from HTML."""</span>
         <span class="k">pass</span>
-</code></pre></div></div> <p>The <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> implementation handles:</p> <ul> <li>Converting HTML to markdown</li> <li>Adding citations for links</li> <li>Filtering content if a content filter is provided</li> </ul> <h2 id="conclusion"> <a href="#conclusion" class="anchor-heading" aria-labelledby="conclusion"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Conclusion </h2> <p>The Content Extraction Pipeline is a powerful system that transforms raw HTML into useful content through a series of specialized steps. By understanding and customizing each component, you can extract exactly the information you need from any web page.</p> <p>In this chapter, we’ve learned:</p> <ul> <li>How the pipeline works as a sequence of processing steps</li> <li>The four key components: scraping, chunking, extraction, and markdown generation</li> <li>How to customize each component for specific needs</li> <li>How to use the complete pipeline in your crawl4ai applications</li> </ul> <p>In the next chapter, <a href="04_url_filtering___scoring_.md">URL Filtering &amp; Scoring</a>, we’ll explore how to decide which URLs to crawl and how to prioritize them, which is essential for building efficient web crawlers.</p><hr /> <p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p> </main> </div> </div> <div class="search-overlay"></div> </div> <script type="module"> import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs'; var config = {} ; mermaid.initialize(config); mermaid.run({ querySelector: '.language-mermaid', }); </script> </body> </html>
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">DefaultMarkdownGenerator</code> implementation handles:</p>
+<ul>
+  <li>Converting HTML to markdown</li>
+  <li>Adding citations for links</li>
+  <li>Filtering content if a content filter is provided</li>
+</ul>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The Content Extraction Pipeline is a powerful system that transforms raw HTML into useful content through a series of specialized steps. By understanding and customizing each component, you can extract exactly the information you need from any web page.</p>
+
+<p>In this chapter, we’ve learned:</p>
+<ul>
+  <li>How the pipeline works as a sequence of processing steps</li>
+  <li>The four key components: scraping, chunking, extraction, and markdown generation</li>
+  <li>How to customize each component for specific needs</li>
+  <li>How to use the complete pipeline in your crawl4ai applications</li>
+</ul>
+
+<p>In the next chapter, <a href="04_url_filtering___scoring_.md">URL Filtering &amp; Scoring</a>, we’ll explore how to decide which URLs to crawl and how to prioritize them, which is essential for building efficient web crawlers.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>

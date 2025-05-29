@@ -1,4 +1,33 @@
-<!DOCTYPE html> <html lang="en-US"> <head> <meta charset="UTF-8"> <meta http-equiv="X-UA-Compatible" content="IE=Edge"> <link rel="stylesheet" href="/assets/css/just-the-docs-default.css"> <script src="/assets/js/vendor/lunr.min.js"></script> <script src="/assets/js/just-the-docs.js"></script> <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- Begin Jekyll SEO tag v2.8.0 --> <title>Chapter 5: Deep Crawling System | Two Tutorials for Mojo using Pocket Flow</title> <meta name="generator" content="Jekyll v4.3.4" /> <meta property="og:title" content="Chapter 5: Deep Crawling System" /> <meta name="author" content="Sam Kirk" /> <meta property="og:locale" content="en_US" /> <meta name="description" content="Documentation generated using AI to explain codebases" /> <meta property="og:description" content="Documentation generated using AI to explain codebases" /> <link rel="canonical" href="http://localhost:4000/Crawl4AI/05_deep_crawling_system_.html" /> <meta property="og:url" content="http://localhost:4000/Crawl4AI/05_deep_crawling_system_.html" /> <meta property="og:site_name" content="Two Tutorials for Mojo using Pocket Flow" /> <meta property="og:type" content="website" /> <meta name="twitter:card" content="summary" /> <meta property="twitter:title" content="Chapter 5: Deep Crawling System" /> <script type="application/ld+json"> {"@context":"https://schema.org","@type":"WebPage","author":{"@type":"Person","name":"Sam Kirk","url":"https://www.linkedin.com/in/samuelkirk"},"description":"Documentation generated using AI to explain codebases","headline":"Chapter 5: Deep Crawling System","url":"http://localhost:4000/Crawl4AI/05_deep_crawling_system_.html"}</script> <!-- End Jekyll SEO tag --> <!-- Add Mermaid support --> <script src="https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.min.js"></script> <script> document.addEventListener("DOMContentLoaded", function() { mermaid.initialize({ startOnLoad: true, theme: "default" }); // Process code blocks document.querySelectorAll('pre code.language-mermaid').forEach(function(block) { // Create a div with class 'mermaid' var mermaidDiv = document.createElement('div'); mermaidDiv.className = 'mermaid'; mermaidDiv.innerHTML = block.textContent; // Replace the parent pre with the mermaid div block.parentNode.parentNode.replaceChild(mermaidDiv, block.parentNode); console.log("Processed Mermaid block:", mermaidDiv.innerHTML.substring(0, 50) + "..."); }); console.log("Mermaid initialization complete. Version:", mermaid.version()); }); </script> </head> <body> <a class="skip-to-main" href="#main-content">Skip to main content</a> <svg xmlns="http://www.w3.org/2000/svg" class="d-none"> <symbol id="svg-link" viewBox="0 0 24 24"> <title>Link</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link"> <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path> </svg> </symbol> <symbol id="svg-menu" viewBox="0 0 24 24"> <title>Menu</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu"> <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line> </svg> </symbol> <symbol id="svg-arrow-right" viewBox="0 0 24 24"> <title>Expand</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right"> <polyline points="9 18 15 12 9 6"></polyline> </svg> </symbol> <!-- Feather. MIT License: https://github.com/feathericons/feather/blob/master/LICENSE --> <symbol id="svg-external-link" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-external-link"> <title id="svg-external-link-title">(external link)</title> <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line> </symbol> <symbol id="svg-doc" viewBox="0 0 24 24"> <title>Document</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file"> <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline> </svg> </symbol> <symbol id="svg-search" viewBox="0 0 24 24"> <title>Search</title> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search"> <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line> </svg> </symbol> <!-- Bootstrap Icons. MIT License: https://github.com/twbs/icons/blob/main/LICENSE.md --> <symbol id="svg-copy" viewBox="0 0 16 16"> <title>Copy</title> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16"> <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/> <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/> </svg> </symbol> <symbol id="svg-copied" viewBox="0 0 16 16"> <title>Copied</title> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-check-fill" viewBox="0 0 16 16"> <path d="M6.5 0A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Zm3 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Z"/> <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1A2.5 2.5 0 0 1 9.5 5h-3A2.5 2.5 0 0 1 4 2.5v-1Zm6.854 7.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708.708Z"/> </svg> </symbol> </svg> <div class="side-bar"> <div class="site-header" role="banner"> <a href="/" class="site-title lh-tight"> Two Tutorials for Mojo using Pocket Flow </a> <button id="menu-button" class="site-button btn-reset" aria-label="Toggle menu" aria-pressed="false"> <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg> </a> </div> <nav aria-label="Main" id="site-nav" class="site-nav"> <ul class="nav-list"><li class="nav-list-item"><a href="/" class="nav-list-link">README</a></li><li class="nav-list-item active"><button class="nav-list-expander btn-reset" aria-label="toggle items in Crawl4AI category" aria-pressed="true"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/Crawl4AI/" class="nav-list-link">Crawl4AI</a><ul class="nav-list"><li class="nav-list-item "><a href="/Crawl4AI/01_asynccrawlerstrategy.html" class="nav-list-link">AsyncCrawlerStrategy</a></li><li class="nav-list-item "><a href="/Crawl4AI/01_configuration_system_.html" class="nav-list-link">Chapter 1: Configuration System</a></li><li class="nav-list-item "><a href="/Crawl4AI/02_asyncwebcrawler.html" class="nav-list-link">AsyncWebCrawler</a></li><li class="nav-list-item "><a href="/Crawl4AI/02_asyncwebcrawler_.html" class="nav-list-link">Chapter 2: AsyncWebCrawler</a></li><li class="nav-list-item "><a href="/Crawl4AI/03_content_extraction_pipeline_.html" class="nav-list-link">Chapter 3: Content Extraction Pipeline</a></li><li class="nav-list-item "><a href="/Crawl4AI/03_crawlerrunconfig.html" class="nav-list-link">CrawlerRunConfig</a></li><li class="nav-list-item "><a href="/Crawl4AI/04_contentscrapingstrategy.html" class="nav-list-link">ContentScrapingStrategy</a></li><li class="nav-list-item "><a href="/Crawl4AI/04_url_filtering___scoring_.html" class="nav-list-link">Chapter 4: URL Filtering & Scoring</a></li><li class="nav-list-item active"><a href="/Crawl4AI/05_deep_crawling_system_.html" class="nav-list-link active">Chapter 5: Deep Crawling System</a></li><li class="nav-list-item "><a href="/Crawl4AI/05_relevantcontentfilter.html" class="nav-list-link">RelevantContentFilter</a></li><li class="nav-list-item "><a href="/Crawl4AI/06_caching_system_.html" class="nav-list-link">Chapter 6: Caching System</a></li><li class="nav-list-item "><a href="/Crawl4AI/06_extractionstrategy.html" class="nav-list-link">ExtractionStrategy</a></li><li class="nav-list-item "><a href="/Crawl4AI/07_crawlresult.html" class="nav-list-link">CrawlResult</a></li><li class="nav-list-item "><a href="/Crawl4AI/07_dispatcher_framework_.html" class="nav-list-link">Chapter 7: Dispatcher Framework</a></li><li class="nav-list-item "><a href="/Crawl4AI/08_async_logging_infrastructure_.html" class="nav-list-link">Chapter 8: Async Logging Infrastructure</a></li><li class="nav-list-item "><a href="/Crawl4AI/08_deepcrawlstrategy.html" class="nav-list-link">DeepCrawlStrategy</a></li><li class="nav-list-item "><a href="/Crawl4AI/09_cachecontext___cachemode.html" class="nav-list-link">CacheContext & CacheMode</a></li><li class="nav-list-item "><a href="/Crawl4AI/09_api___docker_integration_.html" class="nav-list-link">Chapter 9: API & Docker Integration</a></li><li class="nav-list-item "><a href="/Crawl4AI/10_basedispatcher.html" class="nav-list-link">BaseDispatcher</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in My Tutorial for Crawl4ai category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/my-crawl4AI/" class="nav-list-link">My Tutorial for Crawl4ai</a><ul class="nav-list"><li class="nav-list-item "><a href="/my-crawl4ai/01_configuration_system_.html" class="nav-list-link">Chapter 1: Configuration System</a></li><li class="nav-list-item "><a href="/my-crawl4ai/02_asyncwebcrawler_.html" class="nav-list-link">Chapter 2: AsyncWebCrawler</a></li><li class="nav-list-item "><a href="/my-crawl4ai/03_content_extraction_pipeline_.html" class="nav-list-link">Chapter 3: Content Extraction Pipeline</a></li><li class="nav-list-item "><a href="/my-crawl4ai/04_url_filtering___scoring_.html" class="nav-list-link">Chapter 4: URL Filtering & Scoring</a></li><li class="nav-list-item "><a href="/my-crawl4ai/05_deep_crawling_system_.html" class="nav-list-link">Chapter 5: Deep Crawling System</a></li><li class="nav-list-item "><a href="/my-crawl4ai/06_caching_system_.html" class="nav-list-link">Chapter 6: Caching System</a></li><li class="nav-list-item "><a href="/my-crawl4ai/07_dispatcher_framework_.html" class="nav-list-link">Chapter 7: Dispatcher Framework</a></li><li class="nav-list-item "><a href="/my-crawl4ai/08_async_logging_infrastructure_.html" class="nav-list-link">Chapter 8: Async Logging Infrastructure</a></li><li class="nav-list-item "><a href="/my-crawl4ai/09_api___docker_integration_.html" class="nav-list-link">Chapter 9: API & Docker Integration</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in My Tutorial for Modular's Max category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/modular_max/" class="nav-list-link">My Tutorial for Modular's Max</a><ul class="nav-list"><li class="nav-list-item "><a href="/modular_max/01_settings___settings__class__.html" class="nav-list-link">Chapter 1: Settings Class</a></li><li class="nav-list-item "><a href="/modular_max/02_serving_api_layer__fastapi_app___routers__.html" class="nav-list-link">Chapter 2: Serving API Layer</a></li><li class="nav-list-item "><a href="/modular_max/03_llm_pipeline_orchestrator___tokengeneratorpipeline___.html" class="nav-list-link">Chapter 3: LLM Pipeline Orchestrator</a></li><li class="nav-list-item "><a href="/modular_max/04_model_worker_.html" class="nav-list-link">Chapter 4: Model Worker</a></li><li class="nav-list-item "><a href="/modular_max/05_scheduler___tokengenerationscheduler____embeddingsscheduler___.html" class="nav-list-link">Chapter 5: Scheduler</a></li><li class="nav-list-item "><a href="/modular_max/06_kv_cache_management_.html" class="nav-list-link">Chapter 6: KV Cache Management</a></li><li class="nav-list-item "><a href="/modular_max/07_enginequeue_.html" class="nav-list-link">Chapter 7: EngineQueue</a></li><li class="nav-list-item "><a href="/modular_max/08_telemetry_and_metrics___metrics____metricclient___.html" class="nav-list-link">Chapter 8: Telemetry and Metrics</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in My Tutorial for Mojo v1 category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/mojo-v1/" class="nav-list-link">My Tutorial for Mojo v1</a><ul class="nav-list"><li class="nav-list-item "><a href="/mojo-v1/01_addressspace_.html" class="nav-list-link">Chapter 1: AddressSpace</a></li><li class="nav-list-item "><a href="/mojo-v1/02_unsafepointer_.html" class="nav-list-link">Chapter 2: UnsafePointer</a></li><li class="nav-list-item "><a href="/mojo-v1/03_indexlist_.html" class="nav-list-link">Chapter 3: IndexList</a></li><li class="nav-list-item "><a href="/mojo-v1/04_dimlist_.html" class="nav-list-link">Chapter 4: DimList</a></li><li class="nav-list-item "><a href="/mojo-v1/05_ndbuffer_.html" class="nav-list-link">Chapter 5: NDBuffer</a></li><li class="nav-list-item "><a href="/mojo-v1/06_n_d_to_1d_indexing_logic__strided_memory_access__.html" class="nav-list-link">Chapter 6: N-D to 1D Indexing Logic</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in My Tutorial for Mojo v2 category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/mojo-v2/" class="nav-list-link">My Tutorial for Mojo v2</a><ul class="nav-list"><li class="nav-list-item "><a href="/mojo-v2/01_unsafepointer__as_used_by_ndbuffer__.html" class="nav-list-link">Chapter 1: UnsafePointer</a></li><li class="nav-list-item "><a href="/mojo-v2/02_dimlist_and_dim_.html" class="nav-list-link">Chapter 2: DimList and Dim</a></li><li class="nav-list-item "><a href="/mojo-v2/03_ndbuffer_.html" class="nav-list-link">Chapter 3: NDBuffer</a></li><li class="nav-list-item "><a href="/mojo-v2/04_strides_and_offset_computation_.html" class="nav-list-link">Chapter 4: Strides and Offset Computation</a></li><li class="nav-list-item "><a href="/mojo-v2/05_simd_data_access_.html" class="nav-list-link">Chapter 5: SIMD Data Access</a></li></ul></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="toggle items in Comparisons category" aria-pressed="false"> <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg> </button><a href="/comparisons/" class="nav-list-link">Comparisons</a><ul class="nav-list"><li class="nav-list-item "><a href="/comparisons/crawl4ai-versions.html" class="nav-list-link">The original version of Crawl4AI vs. the sanity check I did</a></li><li class="nav-list-item "><a href="/comparisons/mojo-versions.html" class="nav-list-link">The 1st version of the Mojo Tutorial vs. The 2nd version of the Mojo Tutorial</a></li></ul></li><li class="nav-list-item"><a href="/generating/" class="nav-list-link">Generating & Preparing for the Mojo Tutorials using Pocket Flow</a></li><li class="nav-list-item"><a href="/design.html" class="nav-list-link">System Design</a></li></ul> <div class="nav-category">Crawl4AI</div> <ul class="nav-list"></ul> <div class="nav-category">Modular Max</div> <ul class="nav-list"></ul> <div class="nav-category">Mojo (v1)</div> <ul class="nav-list"></ul> <div class="nav-category">Mojo (v2)</div> <ul class="nav-list"></ul> <div class="nav-category">Generating</div> <ul class="nav-list"></ul> <div class="nav-category">AI Design</div> <ul class="nav-list"></ul> </nav> <footer class="site-footer"> This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll. </footer> </div> <div class="main" id="top"> <div id="main-header" class="main-header"> <div class="search" role="search"> <div class="search-input-wrap"> <input type="text" id="search-input" class="search-input" tabindex="0" placeholder="Search Two Tutorials for Mojo using Pocket Flow" aria-label="Search Two Tutorials for Mojo using Pocket Flow" autocomplete="off"> <label for="search-input" class="search-label"><svg viewBox="0 0 24 24" class="search-icon"><use xlink:href="#svg-search"></use></svg></label> </div> <div id="search-results" class="search-results"></div> </div> <nav aria-label="Auxiliary" class="aux-nav"> <ul class="aux-nav-list"> <li class="aux-nav-list-item"> <a href="https://github.com/MrBesterTester/pf-understand" class="site-button" > View on GitHub </a> </li> </ul> </nav> </div> <div id="main-content-wrap" class="main-content-wrap"> <nav aria-label="Breadcrumb" class="breadcrumb-nav"> <ol class="breadcrumb-nav-list"> <li class="breadcrumb-nav-list-item"><a href="/Crawl4AI/">Crawl4AI</a></li> <li class="breadcrumb-nav-list-item"><span>Chapter 5: Deep Crawling System</span></li> </ol> </nav> <div id="main-content" class="main-content"> <main> <h1 id="chapter-5-deep-crawling-system"> <a href="#chapter-5-deep-crawling-system" class="anchor-heading" aria-labelledby="chapter-5-deep-crawling-system"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Chapter 5: Deep Crawling System </h1> <p>In <a href="04_url_filtering___scoring_.md">Chapter 4: URL Filtering &amp; Scoring</a>, we learned how to filter and prioritize URLs. Now, let’s take the next step: exploring websites beyond a single page using the Deep Crawling System.</p> <h2 id="what-is-a-deep-crawling-system"> <a href="#what-is-a-deep-crawling-system" class="anchor-heading" aria-labelledby="what-is-a-deep-crawling-system"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What is a Deep Crawling System? </h2> <p>Imagine you’re exploring a vast library. You could just look at one book (a single webpage), or you could navigate through the entire library systematically (deep crawling).</p> <p>The Deep Crawling System is like your exploration strategy for that library. It answers questions like:</p> <ul> <li>Which doors should I go through first?</li> <li>How far should I venture from the entrance?</li> <li>Which rooms are most likely to contain what I’m looking for?</li> </ul> <p>When crawling websites, these become decisions about:</p> <ul> <li>Which links to follow first</li> <li>How many pages deep to go</li> <li>When to stop exploring</li> </ul> <p>Let’s learn how to explore websites intelligently using <code class="language-plaintext highlighter-rouge">crawl4ai</code>!</p> <h2 id="a-simple-example-exploring-a-documentation-site"> <a href="#a-simple-example-exploring-a-documentation-site" class="anchor-heading" aria-labelledby="a-simple-example-exploring-a-documentation-site"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> A Simple Example: Exploring a Documentation Site </h2> <p>Let’s say you want to crawl the Python documentation site to collect all tutorial pages:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
+<h1 id="chapter-5-deep-crawling-system">Chapter 5: Deep Crawling System</h1>
+
+<p>In <a href="04_url_filtering___scoring_.md">Chapter 4: URL Filtering &amp; Scoring</a>, we learned how to filter and prioritize URLs. Now, let’s take the next step: exploring websites beyond a single page using the Deep Crawling System.</p>
+
+<h2 id="what-is-a-deep-crawling-system">What is a Deep Crawling System?</h2>
+
+<p>Imagine you’re exploring a vast library. You could just look at one book (a single webpage), or you could navigate through the entire library systematically (deep crawling).</p>
+
+<p>The Deep Crawling System is like your exploration strategy for that library. It answers questions like:</p>
+
+<ul>
+  <li>Which doors should I go through first?</li>
+  <li>How far should I venture from the entrance?</li>
+  <li>Which rooms are most likely to contain what I’m looking for?</li>
+</ul>
+
+<p>When crawling websites, these become decisions about:</p>
+<ul>
+  <li>Which links to follow first</li>
+  <li>How many pages deep to go</li>
+  <li>When to stop exploring</li>
+</ul>
+
+<p>Let’s learn how to explore websites intelligently using <code class="language-plaintext highlighter-rouge">crawl4ai</code>!</p>
+
+<h2 id="a-simple-example-exploring-a-documentation-site">A Simple Example: Exploring a Documentation Site</h2>
+
+<p>Let’s say you want to crawl the Python documentation site to collect all tutorial pages:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">BFSDeepCrawlStrategy</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling.filters</span> <span class="kn">import</span> <span class="n">DomainFilter</span>
 
@@ -22,18 +51,54 @@
     <span class="c1"># Process the results
 </span>    <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
         <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Page: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
-</code></pre></div></div> <p>This code sets up a crawler that:</p> <ol> <li>Starts at the Python tutorial page</li> <li>Explores up to 3 links deep</li> <li>Only stays within the docs.python.org domain</li> <li>Returns all the pages it found</li> </ol> <h2 id="understanding-crawling-strategies"> <a href="#understanding-crawling-strategies" class="anchor-heading" aria-labelledby="understanding-crawling-strategies"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Understanding Crawling Strategies </h2> <p>The Deep Crawling System offers different ways to explore a website, just like you’d have different strategies for exploring a city:</p> <h3 id="1-breadth-first-search-bfs"> <a href="#1-breadth-first-search-bfs" class="anchor-heading" aria-labelledby="1-breadth-first-search-bfs"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> 1. Breadth-First Search (BFS) </h3> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">BFSDeepCrawlStrategy</span>
+</code></pre></div></div>
+
+<p>This code sets up a crawler that:</p>
+<ol>
+  <li>Starts at the Python tutorial page</li>
+  <li>Explores up to 3 links deep</li>
+  <li>Only stays within the docs.python.org domain</li>
+  <li>Returns all the pages it found</li>
+</ol>
+
+<h2 id="understanding-crawling-strategies">Understanding Crawling Strategies</h2>
+
+<p>The Deep Crawling System offers different ways to explore a website, just like you’d have different strategies for exploring a city:</p>
+
+<h3 id="1-breadth-first-search-bfs">1. Breadth-First Search (BFS)</h3>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">BFSDeepCrawlStrategy</span>
 
 <span class="n">bfs_strategy</span> <span class="o">=</span> <span class="n">BFSDeepCrawlStrategy</span><span class="p">(</span><span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
-</code></pre></div></div> <p>BFS is like exploring a city one block at a time, checking all streets on your current block before going to the next block. In web terms, it explores all links on the current page before going deeper.</p> <h3 id="2-depth-first-search-dfs"> <a href="#2-depth-first-search-dfs" class="anchor-heading" aria-labelledby="2-depth-first-search-dfs"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> 2. Depth-First Search (DFS) </h3> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">DFSDeepCrawlStrategy</span>
+</code></pre></div></div>
+
+<p>BFS is like exploring a city one block at a time, checking all streets on your current block before going to the next block. In web terms, it explores all links on the current page before going deeper.</p>
+
+<h3 id="2-depth-first-search-dfs">2. Depth-First Search (DFS)</h3>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">DFSDeepCrawlStrategy</span>
 
 <span class="n">dfs_strategy</span> <span class="o">=</span> <span class="n">DFSDeepCrawlStrategy</span><span class="p">(</span><span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
-</code></pre></div></div> <p>DFS is like following a single street as far as it goes before coming back to try the next street. In web terms, it follows each path to its maximum depth before trying other paths.</p> <h3 id="3-best-first-search"> <a href="#3-best-first-search" class="anchor-heading" aria-labelledby="3-best-first-search"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> 3. Best-First Search </h3> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">BestFirstCrawlingStrategy</span>
+</code></pre></div></div>
+
+<p>DFS is like following a single street as far as it goes before coming back to try the next street. In web terms, it follows each path to its maximum depth before trying other paths.</p>
+
+<h3 id="3-best-first-search">3. Best-First Search</h3>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">BestFirstCrawlingStrategy</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling.scorers</span> <span class="kn">import</span> <span class="n">KeywordRelevanceScorer</span>
 
 <span class="n">scorer</span> <span class="o">=</span> <span class="n">KeywordRelevanceScorer</span><span class="p">(</span><span class="n">keywords</span><span class="o">=</span><span class="p">[</span><span class="s">"tutorial"</span><span class="p">,</span> <span class="s">"guide"</span><span class="p">])</span>
 <span class="n">best_first</span> <span class="o">=</span> <span class="n">BestFirstCrawlingStrategy</span><span class="p">(</span><span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">url_scorer</span><span class="o">=</span><span class="n">scorer</span><span class="p">)</span>
-</code></pre></div></div> <p>Best-First is like having a treasure map that guides you to the most promising areas first. It uses scorers to decide which links are most likely to have what you’re looking for.</p> <h2 id="setting-crawling-boundaries"> <a href="#setting-crawling-boundaries" class="anchor-heading" aria-labelledby="setting-crawling-boundaries"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Setting Crawling Boundaries </h2> <p>Just as you’d set limits on a real-world exploration, you need to set boundaries for your web crawler:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Limit by depth (how many clicks from the start page)
+</code></pre></div></div>
+
+<p>Best-First is like having a treasure map that guides you to the most promising areas first. It uses scorers to decide which links are most likely to have what you’re looking for.</p>
+
+<h2 id="setting-crawling-boundaries">Setting Crawling Boundaries</h2>
+
+<p>Just as you’d set limits on a real-world exploration, you need to set boundaries for your web crawler:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Limit by depth (how many clicks from the start page)
 </span><span class="n">strategy</span> <span class="o">=</span> <span class="n">BFSDeepCrawlStrategy</span><span class="p">(</span><span class="n">max_depth</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
 
 <span class="c1"># Limit by total pages
@@ -43,12 +108,28 @@
 </span><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling.filters</span> <span class="kn">import</span> <span class="n">DomainFilter</span>
 <span class="n">filter_chain</span> <span class="o">=</span> <span class="n">DomainFilter</span><span class="p">(</span><span class="n">allowed_domains</span><span class="o">=</span><span class="p">[</span><span class="s">"example.com"</span><span class="p">])</span>
 <span class="n">strategy</span> <span class="o">=</span> <span class="n">BFSDeepCrawlStrategy</span><span class="p">(</span><span class="n">max_depth</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">filter_chain</span><span class="o">=</span><span class="n">filter_chain</span><span class="p">)</span>
-</code></pre></div></div> <p>These boundaries help keep your crawler focused and efficient.</p> <h2 id="streaming-vs-batch-processing"> <a href="#streaming-vs-batch-processing" class="anchor-heading" aria-labelledby="streaming-vs-batch-processing"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Streaming vs. Batch Processing </h2> <p>You can process crawled pages as they come in (streaming) or wait for all results (batch):</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Streaming: Process pages as they're found
+</code></pre></div></div>
+
+<p>These boundaries help keep your crawler focused and efficient.</p>
+
+<h2 id="streaming-vs-batch-processing">Streaming vs. Batch Processing</h2>
+
+<p>You can process crawled pages as they come in (streaming) or wait for all results (batch):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Streaming: Process pages as they're found
 </span><span class="n">config</span> <span class="o">=</span> <span class="n">CrawlerRunConfig</span><span class="p">(</span><span class="n">deep_crawl_strategy</span><span class="o">=</span><span class="n">strategy</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
 <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncWebCrawler</span><span class="p">()</span> <span class="k">as</span> <span class="n">crawler</span><span class="p">:</span>
     <span class="k">async</span> <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://example.com"</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">):</span>
         <span class="k">print</span><span class="p">(</span><span class="sa">f</span><span class="s">"Just found: </span><span class="si">{</span><span class="n">result</span><span class="p">.</span><span class="n">url</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
-</code></pre></div></div> <p>Streaming is great when you want to start processing right away, without waiting for the entire crawl to finish.</p> <h2 id="a-real-world-example-news-aggregator"> <a href="#a-real-world-example-news-aggregator" class="anchor-heading" aria-labelledby="a-real-world-example-news-aggregator"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> A Real-World Example: News Aggregator </h2> <p>Let’s build a simple news aggregator that collects recent articles from a news site:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
+</code></pre></div></div>
+
+<p>Streaming is great when you want to start processing right away, without waiting for the entire crawl to finish.</p>
+
+<h2 id="a-real-world-example-news-aggregator">A Real-World Example: News Aggregator</h2>
+
+<p>Let’s build a simple news aggregator that collects recent articles from a news site:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai</span> <span class="kn">import</span> <span class="n">AsyncWebCrawler</span><span class="p">,</span> <span class="n">CrawlerRunConfig</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">BestFirstCrawlingStrategy</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling.scorers</span> <span class="kn">import</span> <span class="n">FreshnessScorer</span><span class="p">,</span> <span class="n">KeywordRelevanceScorer</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling.filters</span> <span class="kn">import</span> <span class="n">URLPatternFilter</span>
@@ -74,7 +155,15 @@
         <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">crawler</span><span class="p">.</span><span class="n">arun</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="s">"https://news-site.com"</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
     
     <span class="k">return</span> <span class="n">results</span>
-</code></pre></div></div> <p>This crawler will prioritize the most recent articles and ignore pages like author profiles and category listings.</p> <h2 id="what-happens-under-the-hood"> <a href="#what-happens-under-the-hood" class="anchor-heading" aria-labelledby="what-happens-under-the-hood"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What Happens Under the Hood </h2> <p>What actually happens when you start a deep crawl? Let’s visualize the process:</p><pre><code class="language-mermaid">sequenceDiagram
+</code></pre></div></div>
+
+<p>This crawler will prioritize the most recent articles and ignore pages like author profiles and category listings.</p>
+
+<h2 id="what-happens-under-the-hood">What Happens Under the Hood</h2>
+
+<p>What actually happens when you start a deep crawl? Let’s visualize the process:</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
     participant User as Your Code
     participant Crawler as WebCrawler
     participant Strategy as DeepCrawlStrategy
@@ -99,7 +188,20 @@
         Strategy-&gt;&gt;User: yield result (if streaming)
     end
     Strategy-&gt;&gt;User: return all results (if batch mode)
-</code></pre><p>This process repeats until either:</p> <ul> <li>The queue is empty (no more URLs to crawl)</li> <li>We’ve reached the maximum depth</li> <li>We’ve crawled the maximum number of pages</li> </ul> <h2 id="implementation-details"> <a href="#implementation-details" class="anchor-heading" aria-labelledby="implementation-details"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Implementation Details </h2> <p>Let’s look at how the BFS crawling strategy is implemented:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from crawl4ai/deep_crawling/bfs_strategy.py
+</code></pre>
+
+<p>This process repeats until either:</p>
+<ul>
+  <li>The queue is empty (no more URLs to crawl)</li>
+  <li>We’ve reached the maximum depth</li>
+  <li>We’ve crawled the maximum number of pages</li>
+</ul>
+
+<h2 id="implementation-details">Implementation Details</h2>
+
+<p>Let’s look at how the BFS crawling strategy is implemented:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from crawl4ai/deep_crawling/bfs_strategy.py
 </span><span class="k">async</span> <span class="k">def</span> <span class="nf">_arun_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_url</span><span class="p">,</span> <span class="n">crawler</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
     <span class="n">visited</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
     <span class="n">current_level</span> <span class="o">=</span> <span class="p">[(</span><span class="n">start_url</span><span class="p">,</span> <span class="bp">None</span><span class="p">)]</span>  <span class="c1"># (url, parent_url)
@@ -128,7 +230,20 @@
         
         <span class="c1"># Move to the next level
 </span>        <span class="n">current_level</span> <span class="o">=</span> <span class="n">next_level</span>
-</code></pre></div></div> <p>This implementation shows how the BFS strategy works:</p> <ol> <li>It starts with a single URL at depth 0</li> <li>It processes all URLs at the current depth</li> <li>It extracts new links and adds them to the next level</li> <li>It moves to the next level and repeats</li> </ol> <p>The <code class="language-plaintext highlighter-rouge">link_discovery</code> method is where URLs are filtered:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from link_discovery method
+</code></pre></div></div>
+
+<p>This implementation shows how the BFS strategy works:</p>
+
+<ol>
+  <li>It starts with a single URL at depth 0</li>
+  <li>It processes all URLs at the current depth</li>
+  <li>It extracts new links and adds them to the next level</li>
+  <li>It moves to the next level and repeats</li>
+</ol>
+
+<p>The <code class="language-plaintext highlighter-rouge">link_discovery</code> method is where URLs are filtered:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Simplified from link_discovery method
 </span><span class="k">async</span> <span class="k">def</span> <span class="nf">link_discovery</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">source_url</span><span class="p">,</span> <span class="n">current_depth</span><span class="p">,</span> <span class="n">visited</span><span class="p">,</span> <span class="n">next_level</span><span class="p">,</span> <span class="n">depths</span><span class="p">):</span>
     <span class="n">next_depth</span> <span class="o">=</span> <span class="n">current_depth</span> <span class="o">+</span> <span class="mi">1</span>
     <span class="k">if</span> <span class="n">next_depth</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="p">.</span><span class="n">max_depth</span><span class="p">:</span>
@@ -147,7 +262,38 @@
         <span class="n">visited</span><span class="p">.</span><span class="n">add</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
         <span class="n">next_level</span><span class="p">.</span><span class="n">append</span><span class="p">((</span><span class="n">url</span><span class="p">,</span> <span class="n">source_url</span><span class="p">))</span>
         <span class="n">depths</span><span class="p">[</span><span class="n">url</span><span class="p">]</span> <span class="o">=</span> <span class="n">next_depth</span>
-</code></pre></div></div> <p>This method:</p> <ol> <li>Checks if we’ve reached the maximum depth</li> <li>Gets all the links from the current page</li> <li>Filters out already visited URLs</li> <li>Applies URL filters to decide which URLs to follow</li> <li>Adds approved URLs to the next level</li> </ol> <h2 id="choosing-the-right-strategy"> <a href="#choosing-the-right-strategy" class="anchor-heading" aria-labelledby="choosing-the-right-strategy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Choosing the Right Strategy </h2> <p>Which strategy should you choose? Here’s a quick guide:</p> <ul> <li> <p><strong>BFS</strong>: When you want a broad overview of a website, exploring many sections</p> </li> <li> <p><strong>DFS</strong>: When you’re looking for something specific and want to go deep into specific paths</p> </li> <li> <p><strong>Best-First</strong>: When you have a good idea of what you’re looking for and want to find the most relevant content first</p> </li> </ul> <h2 id="advanced-usage-combining-strategies"> <a href="#advanced-usage-combining-strategies" class="anchor-heading" aria-labelledby="advanced-usage-combining-strategies"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Advanced Usage: Combining Strategies </h2> <p>You can combine different aspects of the Deep Crawling System for more sophisticated crawling:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">BestFirstCrawlingStrategy</span>
+</code></pre></div></div>
+
+<p>This method:</p>
+<ol>
+  <li>Checks if we’ve reached the maximum depth</li>
+  <li>Gets all the links from the current page</li>
+  <li>Filters out already visited URLs</li>
+  <li>Applies URL filters to decide which URLs to follow</li>
+  <li>Adds approved URLs to the next level</li>
+</ol>
+
+<h2 id="choosing-the-right-strategy">Choosing the Right Strategy</h2>
+
+<p>Which strategy should you choose? Here’s a quick guide:</p>
+
+<ul>
+  <li>
+    <p><strong>BFS</strong>: When you want a broad overview of a website, exploring many sections</p>
+  </li>
+  <li>
+    <p><strong>DFS</strong>: When you’re looking for something specific and want to go deep into specific paths</p>
+  </li>
+  <li>
+    <p><strong>Best-First</strong>: When you have a good idea of what you’re looking for and want to find the most relevant content first</p>
+  </li>
+</ul>
+
+<h2 id="advanced-usage-combining-strategies">Advanced Usage: Combining Strategies</h2>
+
+<p>You can combine different aspects of the Deep Crawling System for more sophisticated crawling:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling</span> <span class="kn">import</span> <span class="n">BestFirstCrawlingStrategy</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling.filters</span> <span class="kn">import</span> <span class="n">FilterChain</span><span class="p">,</span> <span class="n">DomainFilter</span><span class="p">,</span> <span class="n">ContentTypeFilter</span>
 <span class="kn">from</span> <span class="nn">crawl4ai.deep_crawling.scorers</span> <span class="kn">import</span> <span class="n">CompositeScorer</span><span class="p">,</span> <span class="n">KeywordScorer</span><span class="p">,</span> <span class="n">FreshnessScorer</span>
 
@@ -168,7 +314,15 @@
     <span class="n">url_scorer</span><span class="o">=</span><span class="n">composite_scorer</span><span class="p">,</span>
     <span class="n">max_pages</span><span class="o">=</span><span class="mi">50</span>
 <span class="p">)</span>
-</code></pre></div></div> <p>This creates a powerful crawler that stays within example.com, only crawls HTML pages, and prioritizes fresh content about Python tutorials.</p> <h2 id="working-with-crawl-results"> <a href="#working-with-crawl-results" class="anchor-heading" aria-labelledby="working-with-crawl-results"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Working with Crawl Results </h2> <p>Once you’ve collected pages, you can do many things with the results:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">async</span> <span class="k">def</span> <span class="nf">process_results</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+</code></pre></div></div>
+
+<p>This creates a powerful crawler that stays within example.com, only crawls HTML pages, and prioritizes fresh content about Python tutorials.</p>
+
+<h2 id="working-with-crawl-results">Working with Crawl Results</h2>
+
+<p>Once you’ve collected pages, you can do many things with the results:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">async</span> <span class="k">def</span> <span class="nf">process_results</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
     <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
         <span class="c1"># Access metadata about the crawl
 </span>        <span class="n">depth</span> <span class="o">=</span> <span class="n">result</span><span class="p">.</span><span class="n">metadata</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"depth"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
@@ -182,4 +336,24 @@
         <span class="c1"># Check for specific patterns
 </span>        <span class="k">if</span> <span class="s">"download"</span> <span class="ow">in</span> <span class="n">result</span><span class="p">.</span><span class="n">markdown</span><span class="p">.</span><span class="n">lower</span><span class="p">():</span>
             <span class="k">print</span><span class="p">(</span><span class="s">"Found a download page!"</span><span class="p">)</span>
-</code></pre></div></div> <p>Each result includes the page content, metadata about the crawl, and all the links that were found.</p> <h2 id="conclusion"> <a href="#conclusion" class="anchor-heading" aria-labelledby="conclusion"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Conclusion </h2> <p>The Deep Crawling System is a powerful tool that lets you explore websites systematically. By choosing the right strategy, setting appropriate boundaries, and configuring filters and scorers, you can efficiently find and extract exactly the content you need.</p> <p>In this chapter, we’ve learned:</p> <ul> <li>How to set up different crawling strategies (BFS, DFS, Best-First)</li> <li>How to set boundaries on your crawling</li> <li>How to process results in real-time or in batch</li> <li>How the Deep Crawling System works under the hood</li> </ul> <p>In the next chapter, <a href="06_caching_system_.md">Caching System</a>, we’ll learn how to store and reuse crawled content to make our crawlers even more efficient.</p><hr /> <p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p> </main> </div> </div> <div class="search-overlay"></div> </div> <script type="module"> import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs'; var config = {} ; mermaid.initialize(config); mermaid.run({ querySelector: '.language-mermaid', }); </script> </body> </html>
+</code></pre></div></div>
+
+<p>Each result includes the page content, metadata about the crawl, and all the links that were found.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The Deep Crawling System is a powerful tool that lets you explore websites systematically. By choosing the right strategy, setting appropriate boundaries, and configuring filters and scorers, you can efficiently find and extract exactly the content you need.</p>
+
+<p>In this chapter, we’ve learned:</p>
+<ul>
+  <li>How to set up different crawling strategies (BFS, DFS, Best-First)</li>
+  <li>How to set boundaries on your crawling</li>
+  <li>How to process results in real-time or in batch</li>
+  <li>How the Deep Crawling System works under the hood</li>
+</ul>
+
+<p>In the next chapter, <a href="06_caching_system_.md">Caching System</a>, we’ll learn how to store and reuse crawled content to make our crawlers even more efficient.</p>
+
+<hr />
+
+<p>Generated by <a href="https://github.com/The-Pocket/Tutorial-Codebase-Knowledge">AI Codebase Knowledge Builder</a></p>
