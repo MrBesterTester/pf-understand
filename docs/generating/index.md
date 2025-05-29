@@ -197,7 +197,3 @@ Once the build procedure for Just The Docs to create the GitHub page is done onc
 
 The good news is that once the bugs are with Just The Docs are worked out locally they always work remotely on GitHub after the build job runs there.
 - To check for the Pages build job, look under the Actions tab on the Settings for your repo on GitHub.
-
---Sam Kirk
-sam@samkirk.com
-https://www.linkedin.com/in/samuelkirk

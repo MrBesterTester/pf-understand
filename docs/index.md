@@ -44,7 +44,9 @@ If you're a software developer see [Generating & Preparing for the Generation of
 
 Note that the chapter on [System Design](./design.html) was left over from Zachary's original repo.  That file is referenced in `.cursorrules` files and because I used Cursor exclusively that file was used throughout all the tutorial generation I did.
 
-
+--Sam Kirk<br>
+[Email me](mailto:sam@samkirk.com)<br>
+[My LinkedIn profile](https://www.linkedin.com/in/samuelkirk)
 
 
 
