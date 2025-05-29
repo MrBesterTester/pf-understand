@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "Clean Run of The Mojo Tutorial, version 2"
+parent: "Generating & Preparing for the Mojo Tutorials using Pocket Flow"
 nav_order: 1
 ---
 

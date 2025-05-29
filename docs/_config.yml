@@ -25,7 +25,7 @@ mermaid:
   version: "11.6.0"
 
 # Footer content
-footer_content: "Copyright &copy; 2023 Sam Kirk"
+# footer_content: 
 
 # Collections for the tutorials
 collections:
@@ -41,6 +41,12 @@ collections:
   mojo-v2:
     permalink: "/:collection/:path/"
     output: true
+  generating:
+    permalink: "/:collection/:path/"
+    output: true
+  design:
+    permalink: "/:collection/:path/"
+    output: true
 
 # Set up navigation for the collections
 just_the_docs:
@@ -53,6 +59,10 @@ just_the_docs:
       name: Mojo (v1)
     mojo-v2:
       name: Mojo (v2)
+    generating:
+      name: Generating
+    design:
+      name: AI Design
 
 # Navigation
 nav_sort: case_sensitive
@@ -60,7 +70,8 @@ nav_sort: case_sensitive
 # Author settings
 author:
     name: Sam Kirk
-    url: https://www.columbia.edu/~zh2408/
+    url: https://www.linkedin.com/in/samuelkirk
+    email: sam@samkirk.com
 
 # Callouts settings
 callouts:
